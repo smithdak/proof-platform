@@ -1231,6 +1231,7 @@ name = "proof-storage"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "ed25519-dalek",
  "proof-content",
  "proof-kernel",
  "rusqlite",
@@ -1264,8 +1265,9 @@ dependencies = [
  "axum",
  "chrono",
  "http-body-util",
- "proof-content",
  "proof-kernel",
+ "proof-storage",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

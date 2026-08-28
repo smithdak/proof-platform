@@ -6,7 +6,8 @@ license.workspace = true
 
 [dependencies]
 proof-kernel = { path = "../proof-kernel" }
-proof-content = { path = "../proof-content" }
+proof-storage = { path = "../proof-storage" }
+rusqlite.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

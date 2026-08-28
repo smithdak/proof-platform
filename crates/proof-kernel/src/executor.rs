@@ -54,6 +54,25 @@ pub trait ExecutionStore: Send + Sync {
     fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String>;
 }
 
+/// A simple in-memory execution store for testing.
+#[derive(Default)]
+pub struct RecordingStore {
+    pub proofs: std::sync::Mutex<Vec<Proof>>,
+    pub contexts: std::sync::Mutex<Vec<ExecutionContext>>,
+}
+
+impl ExecutionStore for RecordingStore {
+    fn save_proof(&self, proof: &Proof) -> Result<(), String> {
+        self.proofs.lock().unwrap().push(proof.clone());
+        Ok(())
+    }
+
+    fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String> {
+        self.contexts.lock().unwrap().push(context.clone());
+        Ok(Uuid::now_v7().to_string())
+    }
+}
+
 /// A handler that executes a specific operation.
 pub trait OperationHandler: Send + Sync {
     /// The operation name this handler executes.

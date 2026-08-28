@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["name", "version", "fields"],
+  "properties": {
+    "id": {"type": "string"},
+    "name": {"type": "string", "minLength": 1},
+    "version": {"type": "integer", "minimum": 1},
+    "fields": {"type": "array", "items": {"type": "object"}},
+    "created_at": {"type": "string"}
+  },
+  "additionalProperties": false
+}

@@ -1,27 +1,30 @@
 //! HTTP/REST transport adapter for the Proof platform.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
 use proof_kernel::{
-    create_proof, generate_keypair, ExecutionContext, ExecutionEngine, ExecutionError, Keypair,
-    OperationHandler, Registry,
+    create_proof, generate_keypair, principal_from_keypair, ExecutionContext, ExecutionEngine,
+    ExecutionError, Keypair, OperationHandler, Proof, Registry,
 };
+use proof_storage::SqliteStore;
 use serde_json::{json, Value};
 use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
 };
+use uuid::Uuid;
 
 pub struct AppState {
     pub workspace_path: String,
     pub version: String,
     pub engine: Arc<RwLock<ExecutionEngine>>,
     pub keypair: Keypair,
+    pub store: Arc<SqliteStore>,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -31,15 +34,40 @@ impl AppState {
         let workspace_path = workspace_path.into();
         let registry =
             Registry::load_from_directory(PathBuf::from(&workspace_path).join(".proof/registry"))?;
-        Ok(Self::with_registry(workspace_path, registry))
+        let database_path =
+            PathBuf::from(&workspace_path).join(".proof/data/proofs/proofs.sqlite3");
+        if let Some(parent) = database_path.parent() {
+            std::fs::create_dir_all(parent).map_err(proof_kernel::RegistryError::Io)?;
+        }
+        let store = SqliteStore::open(&database_path).map_err(|error| {
+            proof_kernel::RegistryError::Io(std::io::Error::other(error.to_string()))
+        })?;
+        Ok(Self::with_registry_and_store(
+            workspace_path,
+            registry,
+            store,
+        ))
     }
 
     pub fn with_registry(workspace_path: impl Into<String>, registry: Registry) -> Self {
+        Self::with_registry_and_store(
+            workspace_path,
+            registry,
+            SqliteStore::in_memory().expect("in-memory SQLite should initialize"),
+        )
+    }
+
+    pub fn with_registry_and_store(
+        workspace_path: impl Into<String>,
+        registry: Registry,
+        store: SqliteStore,
+    ) -> Self {
         Self {
             workspace_path: workspace_path.into(),
             version: "0.1.0".to_string(),
             engine: Arc::new(RwLock::new(ExecutionEngine::new(registry))),
             keypair: generate_keypair(),
+            store: Arc::new(store),
         }
     }
 
@@ -57,6 +85,10 @@ pub fn router(state: SharedState) -> Router {
         .route("/v1/schemas", get(list_schemas))
         .route("/v1/objects", get(list_objects))
         .route("/v1/proofs", get(list_proofs))
+        .route("/proofs/:id", get(get_proof))
+        .route("/proofs", get(list_proofs_filtered))
+        .route("/proofs/verify", post(verify_proof))
+        .route("/audit", get(list_audit))
         .with_state(state)
 }
 
@@ -114,19 +146,155 @@ async fn list_objects(State(state): State<SharedState>) -> impl IntoResponse {
     Json(json!({"objects": objects}))
 }
 
-async fn list_proofs(State(state): State<SharedState>) -> impl IntoResponse {
-    let dir = std::path::Path::new(&state.workspace_path).join(".proof/data/proofs");
-    let mut proofs = vec![];
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.filter_map(|e| e.ok()) {
-            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                if let Ok(value) = serde_json::from_str::<Value>(&content) {
-                    proofs.push(value);
-                }
-            }
-        }
+#[derive(Default, serde::Deserialize)]
+struct ProofFilters {
+    operation: Option<String>,
+    version: Option<String>,
+    actor: Option<Uuid>,
+}
+
+async fn list_proofs(
+    State(state): State<SharedState>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    list_proofs_inner(&state, ProofFilters::default()).await
+}
+
+async fn list_proofs_filtered(
+    State(state): State<SharedState>,
+    Query(filters): Query<ProofFilters>,
+) -> impl IntoResponse {
+    list_proofs_inner(&state, filters).await
+}
+
+async fn list_proofs_inner(
+    state: &SharedState,
+    filters: ProofFilters,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let connection = state.store.connection();
+    let mut sql = "
+        SELECT signature, operation, actor
+        FROM proofs
+        WHERE (?1 IS NULL OR operation = ?1)
+          AND (?2 IS NULL OR actor = ?2)
+        ORDER BY timestamp DESC
+    "
+    .to_string();
+    if filters.operation.is_some() && filters.version.is_some() {
+        sql.push_str(" LIMIT 0");
     }
-    Json(json!({"proofs": proofs}))
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| internal_error(error.to_string()))?;
+    let serialized_proofs = statement
+        .query_map(
+            rusqlite::params![
+                filters.operation,
+                filters.actor.map(|actor| actor.to_string()),
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| internal_error(error.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| internal_error(error.to_string()))?;
+    let proofs = serialized_proofs
+        .iter()
+        .map(|serialized| serde_json::from_str::<Proof>(serialized))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| internal_error(error.to_string()))?;
+    Ok(Json(json!({ "proofs": proofs })))
+}
+
+async fn get_proof(
+    State(state): State<SharedState>,
+    Path(proof_id): Path<Uuid>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let proof = state
+        .store
+        .load_proof(&proof_id)
+        .map_err(|error| match error {
+            proof_storage::StorageError::NotFound(_) => (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "proof not found"})),
+            ),
+            error => internal_error(error.to_string()),
+        })?;
+    Ok(Json(json!({
+        "proof": proof,
+        "verification": verification_status(&proof),
+    })))
+}
+
+#[derive(serde::Deserialize)]
+struct VerifyProofRequest {
+    proof_id: Uuid,
+}
+
+async fn verify_proof(
+    State(state): State<SharedState>,
+    Json(request): Json<VerifyProofRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let proof = state
+        .store
+        .load_proof(&request.proof_id)
+        .map_err(|error| match error {
+            proof_storage::StorageError::NotFound(_) => (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "proof not found"})),
+            ),
+            error => internal_error(error.to_string()),
+        })?;
+    let proof_actor = proof.body.actor;
+    let public_key = if proof_actor == state.keypair.principal_id {
+        principal_from_keypair(&state.keypair).public_key
+    } else {
+        state
+            .store
+            .load_principal(&proof_actor)
+            .map_err(|error| match error {
+                proof_storage::StorageError::NotFound(_) => (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "signing principal not found"})),
+                ),
+                error => internal_error(error.to_string()),
+            })?
+            .public_key
+    };
+    Ok(Json(json!({
+        "proof_id": request.proof_id,
+        "valid": proof.verify(&public_key).is_ok(),
+    })))
+}
+
+async fn list_audit(
+    State(state): State<SharedState>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let connection = state.store.connection();
+    let mut statement = connection
+        .prepare(
+            "SELECT id, actor, workspace_path, timestamp
+             FROM execution_contexts
+             ORDER BY timestamp DESC",
+        )
+        .map_err(|error| internal_error(error.to_string()))?;
+    let audit = statement
+        .query_map([], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "actor": row.get::<_, String>(1)?,
+                "workspace_path": row.get::<_, String>(2)?,
+                "timestamp": row.get::<_, String>(3)?,
+            }))
+        })
+        .map_err(|error| internal_error(error.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| internal_error(error.to_string()))?;
+    Ok(Json(json!({ "contexts": audit })))
+}
+
+fn verification_status(proof: &Proof) -> &'static str {
+    match proof {
+        Proof { .. } => "unverified",
+    }
 }
 
 async fn execute_operation(

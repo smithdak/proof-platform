@@ -1,6 +1,8 @@
 //! SQLite storage adapter for Proof.
 
 use crate::StorageError;
+use chrono::{DateTime, Utc};
+use ed25519_dalek::VerifyingKey;
 use proof_kernel::{ExecutionContext, ExecutionStore, Proof, RegistryEntry};
 use rusqlite::Connection;
 use std::path::Path;
@@ -101,6 +103,7 @@ impl SqliteStore {
             CREATE TABLE IF NOT EXISTS proofs (
                 id TEXT PRIMARY KEY,
                 actor TEXT NOT NULL,
+                version TEXT,
                 delegation_id TEXT,
                 operation TEXT NOT NULL,
                 input_digest TEXT NOT NULL,
@@ -146,6 +149,11 @@ impl SqliteStore {
             CREATE INDEX IF NOT EXISTS idx_changesets_status ON changesets(status);
             CREATE INDEX IF NOT EXISTS idx_releases_edition ON releases(edition_id);
             CREATE INDEX IF NOT EXISTS idx_releases_env ON releases(environment);
+            CREATE INDEX IF NOT EXISTS idx_proofs_operation ON proofs(operation);
+            CREATE INDEX IF NOT EXISTS idx_proofs_operation_version ON proofs(operation, version);
+            CREATE INDEX IF NOT EXISTS idx_proofs_actor ON proofs(actor);
+            CREATE INDEX IF NOT EXISTS idx_execution_contexts_timestamp
+                ON execution_contexts(timestamp);
             ",
         )?;
         Ok(())
@@ -186,18 +194,104 @@ impl SqliteStore {
         Ok(count)
     }
 
+    /// Returns the count of audit contexts in the store.
+    pub fn context_count(&self) -> Result<u64, StorageError> {
+        let count: u64 = self.conn.lock().unwrap().query_row(
+            "SELECT COUNT(*) FROM execution_contexts",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    /// Persists a principal so signed proofs can later be verified.
+    pub fn save_principal(&self, principal: &proof_kernel::Principal) -> Result<(), StorageError> {
+        self.conn.lock().unwrap().execute(
+            "
+            INSERT INTO principals (id, kind, display_name, public_key)
+            VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(id) DO UPDATE SET
+                kind = excluded.kind,
+                display_name = excluded.display_name,
+                public_key = excluded.public_key
+            ",
+            rusqlite::params![
+                principal.id.as_uuid().to_string(),
+                serde_json::to_string(&principal.kind)?,
+                serde_json::to_string(&principal.kind)?,
+                principal.public_key.as_bytes().to_vec(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Loads a principal by ID.
+    pub fn load_principal(
+        &self,
+        principal_id: &proof_kernel::PrincipalId,
+    ) -> Result<proof_kernel::Principal, StorageError> {
+        let (id, kind, public_key) = self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT id, kind, public_key FROM principals WHERE id = ?1",
+                [principal_id.as_uuid().to_string()],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                    ))
+                },
+            )
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    StorageError::NotFound(principal_id.as_uuid().to_string())
+                }
+                error => error.into(),
+            })?;
+        let kind: proof_kernel::PrincipalKind = serde_json::from_str(&kind)?;
+        let public_key_bytes: [u8; 32] = public_key
+            .as_slice()
+            .try_into()
+            .map_err(|_| StorageError::Conflict("invalid principal public key".to_string()))?;
+        let public_key = VerifyingKey::from_bytes(&public_key_bytes)
+            .map_err(|_| StorageError::Conflict("invalid principal public key".to_string()))?;
+        Ok(proof_kernel::Principal {
+            id: proof_kernel::PrincipalId::new(Uuid::parse_str(&id).map_err(|error| {
+                StorageError::Conflict(format!("invalid principal ID: {error}"))
+            })?),
+            kind,
+            public_key,
+            created_at: Utc::now(),
+        })
+    }
+
     /// Persists a serialized proof, replacing any prior proof with the same ID.
     pub fn save_proof(&self, proof: &Proof) -> Result<(), StorageError> {
         let serialized = serde_json::to_string(proof)?;
+        let version = proof.body.operation.rsplit("::").next().map(str::to_string);
+        let operation = proof.body.operation.clone();
+        let actor = proof.body.actor.as_uuid().to_string();
+        let id = proof.body.id.to_string();
+        let delegation_id = proof
+            .body
+            .delegation_id
+            .map(|delegation_id| delegation_id.to_string());
+        let input_digest = proof.body.input_digest.hex();
+        let output_digest = proof.body.output_digest.hex();
+        let timestamp = proof.body.timestamp.to_rfc3339();
         self.conn.lock().unwrap().execute(
             "
-            INSERT INTO proofs (
-                id, actor, delegation_id, operation, input_digest, output_digest,
-                timestamp, signature
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-            ON CONFLICT(id) DO UPDATE SET
-                actor = excluded.actor,
-                delegation_id = excluded.delegation_id,
+                INSERT INTO proofs (
+                    id, actor, version, delegation_id, operation, input_digest, output_digest,
+                    timestamp, signature
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                ON CONFLICT(id) DO UPDATE SET
+                    actor = excluded.actor,
+                    version = excluded.version,
+                    delegation_id = excluded.delegation_id,
                 operation = excluded.operation,
                 input_digest = excluded.input_digest,
                 output_digest = excluded.output_digest,
@@ -205,16 +299,14 @@ impl SqliteStore {
                 signature = excluded.signature
             ",
             rusqlite::params![
-                proof.body.id.to_string(),
-                proof.body.actor.as_uuid().to_string(),
-                proof
-                    .body
-                    .delegation_id
-                    .map(|delegation_id| delegation_id.to_string()),
-                proof.body.operation,
-                proof.body.input_digest.hex(),
-                proof.body.output_digest.hex(),
-                proof.body.timestamp.to_rfc3339(),
+                id,
+                actor,
+                version,
+                delegation_id,
+                operation,
+                input_digest,
+                output_digest,
+                timestamp,
                 serialized,
             ],
         )?;
@@ -239,6 +331,100 @@ impl SqliteStore {
                 error => error.into(),
             })?;
         Ok(serde_json::from_str(&serialized)?)
+    }
+
+    /// Loads all proofs for an operation in ascending proof timestamp order.
+    pub fn list_proofs_for_operation(
+        &self,
+        operation: &str,
+        version: Option<&str>,
+    ) -> Result<Vec<Proof>, StorageError> {
+        let connection = self.conn.lock().unwrap();
+        let mut serialized_proofs;
+        if let Some(version) = version {
+            let mut statement = connection.prepare_cached(
+                "SELECT signature FROM proofs
+                 WHERE operation = ?1 AND version = ?2
+                 ORDER BY timestamp, id",
+            )?;
+            serialized_proofs = statement
+                .query_map(
+                    rusqlite::params![format!("{operation}::{version}"), version],
+                    |row| row.get::<_, String>(0),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+        } else {
+            let mut statement = connection.prepare_cached(
+                "SELECT signature FROM proofs WHERE operation LIKE ?1 || '::%' ORDER BY timestamp, id",
+            )?;
+            serialized_proofs = statement
+                .query_map([operation], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+        }
+        Ok(serialized_proofs
+            .iter()
+            .map(|serialized| serde_json::from_str(serialized))
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Loads all proofs signed by an actor in ascending proof timestamp order.
+    pub fn list_proofs_for_actor(
+        &self,
+        actor_id: &proof_kernel::PrincipalId,
+    ) -> Result<Vec<Proof>, StorageError> {
+        let connection = self.conn.lock().unwrap();
+        let mut statement = connection.prepare_cached(
+            "SELECT signature FROM proofs WHERE actor = ?1 ORDER BY timestamp, id",
+        )?;
+        let serialized_proofs = statement
+            .query_map([actor_id.as_uuid().to_string()], |row| {
+                row.get::<_, String>(0)
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        serialized_proofs
+            .iter()
+            .map(|serialized| Ok(serde_json::from_str(serialized)?))
+            .collect()
+    }
+
+    /// Verifies signatures and digest continuity for the supplied proof chain.
+    pub fn verify_proof_chain(&self, proof_ids: &[Uuid]) -> Result<(), StorageError> {
+        let proofs = proof_ids
+            .iter()
+            .map(|proof_id| self.load_proof(proof_id))
+            .collect::<Result<Vec<_>, _>>()?;
+        for proof in &proofs {
+            let principal =
+                self.load_principal(&proof.body.actor)
+                    .map_err(|error| match error {
+                        StorageError::NotFound(_) => StorageError::Conflict(format!(
+                            "missing principal for proof {}: {}",
+                            proof.body.id, proof.body.actor
+                        )),
+                        error => error,
+                    })?;
+            proof.verify(&principal.public_key).map_err(|_| {
+                StorageError::Conflict(format!("invalid signature for proof {}", proof.body.id))
+            })?;
+        }
+        for pair in proofs.windows(2) {
+            if pair[0].body.output_digest != pair[1].body.input_digest {
+                return Err(StorageError::Conflict(format!(
+                    "proof chain discontinuity between {} and {}",
+                    pair[0].body.id, pair[1].body.id
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Deletes audit contexts strictly older than the supplied timestamp.
+    pub fn delete_expired_contexts(&self, before: DateTime<Utc>) -> Result<u64, StorageError> {
+        let deleted = self.conn.lock().unwrap().execute(
+            "DELETE FROM execution_contexts WHERE timestamp < ?1",
+            [before.to_rfc3339()],
+        )?;
+        Ok(deleted as u64)
     }
 
     /// Persists registry entries, replacing the stored collection.
@@ -328,6 +514,34 @@ mod tests {
         .unwrap()
     }
 
+    fn signed_proof(
+        keypair: &proof_kernel::Keypair,
+        operation: &str,
+        input_digest: proof_kernel::ContentDigest,
+        output_digest: proof_kernel::ContentDigest,
+        timestamp: chrono::DateTime<Utc>,
+    ) -> Proof {
+        Proof::new(
+            Uuid::now_v7(),
+            keypair.principal_id,
+            None,
+            operation,
+            input_digest,
+            output_digest,
+            timestamp,
+        )
+        .sign(keypair)
+        .unwrap()
+    }
+
+    fn json_digest(
+        kind: proof_kernel::ArtifactKind,
+        value: serde_json::Value,
+    ) -> proof_kernel::ContentDigest {
+        let canonical = proof_kernel::canonicalize(&value).unwrap();
+        proof_kernel::digest(kind, &canonical)
+    }
+
     fn test_registry_entry(operation: &str) -> RegistryEntry {
         RegistryEntry {
             operation: operation.to_string(),
@@ -387,5 +601,258 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         assert!(Uuid::parse_str(&context_id.to_string()).is_ok());
+    }
+
+    #[test]
+    fn principals_round_trip() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        let principal = proof_kernel::principal_from_keypair(&keypair);
+
+        store.save_principal(&principal).unwrap();
+        let loaded = store.load_principal(&principal.id).unwrap();
+
+        assert_eq!(loaded.id, principal.id);
+        assert_eq!(loaded.kind, principal.kind);
+        assert_eq!(
+            loaded.public_key.as_bytes(),
+            principal.public_key.as_bytes()
+        );
+        assert!(matches!(
+            store.load_principal(&proof_kernel::PrincipalId::now()),
+            Err(StorageError::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn lists_proofs_by_operation_and_version() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        let principal = proof_kernel::principal_from_keypair(&keypair);
+        store.save_principal(&principal).unwrap();
+
+        let first = signed_proof(
+            &keypair,
+            "chain.operation::v1",
+            json_digest(
+                proof_kernel::ArtifactKind::OperationInput,
+                json!({"step": 0}),
+            ),
+            json_digest(
+                proof_kernel::ArtifactKind::OperationOutput,
+                json!({"step": 1}),
+            ),
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 1).unwrap(),
+        );
+        let second = signed_proof(
+            &keypair,
+            "chain.operation::v2",
+            json_digest(
+                proof_kernel::ArtifactKind::OperationInput,
+                json!({"step": 2}),
+            ),
+            json_digest(
+                proof_kernel::ArtifactKind::OperationOutput,
+                json!({"step": 3}),
+            ),
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 2).unwrap(),
+        );
+        store.save_proof(&first).unwrap();
+        store.save_proof(&second).unwrap();
+
+        let all = store
+            .list_proofs_for_operation("chain.operation", None)
+            .unwrap();
+        let v1 = store
+            .list_proofs_for_operation("chain.operation", Some("v1"))
+            .unwrap();
+        let v2 = store
+            .list_proofs_for_operation("chain.operation", Some("v2"))
+            .unwrap();
+
+        assert_eq!(all, vec![first.clone(), second.clone()]);
+        assert_eq!(v1, vec![first]);
+        assert_eq!(v2, vec![second]);
+    }
+
+    #[test]
+    fn lists_proofs_by_actor() {
+        let store = SqliteStore::in_memory().unwrap();
+        let first_keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        let second_keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        for keypair in [&first_keypair, &second_keypair] {
+            store
+                .save_principal(&proof_kernel::principal_from_keypair(keypair))
+                .unwrap();
+        }
+
+        let first = signed_proof(
+            &first_keypair,
+            "actor.operation::v1",
+            json_digest(proof_kernel::ArtifactKind::OperationInput, json!({"a": 1})),
+            json_digest(proof_kernel::ArtifactKind::OperationOutput, json!({"a": 2})),
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 1).unwrap(),
+        );
+        let second = signed_proof(
+            &first_keypair,
+            "actor.operation::v1",
+            json_digest(proof_kernel::ArtifactKind::OperationInput, json!({"a": 2})),
+            json_digest(proof_kernel::ArtifactKind::OperationOutput, json!({"a": 3})),
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 2).unwrap(),
+        );
+        let other = signed_proof(
+            &second_keypair,
+            "actor.operation::v1",
+            json_digest(proof_kernel::ArtifactKind::OperationInput, json!({"b": 1})),
+            json_digest(proof_kernel::ArtifactKind::OperationOutput, json!({"b": 2})),
+            Utc::now(),
+        );
+        for proof in [&first, &second, &other] {
+            store.save_proof(proof).unwrap();
+        }
+
+        let actor_proofs = store
+            .list_proofs_for_actor(&first_keypair.principal_id)
+            .unwrap();
+
+        assert_eq!(actor_proofs, vec![first, second]);
+    }
+
+    #[test]
+    fn verifies_a_valid_proof_chain() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        store
+            .save_principal(&proof_kernel::principal_from_keypair(&keypair))
+            .unwrap();
+
+        let first_input = json_digest(
+            proof_kernel::ArtifactKind::OperationInput,
+            json!({"state": 0}),
+        );
+        let first_output = json_digest(
+            proof_kernel::ArtifactKind::OperationOutput,
+            json!({"state": 1}),
+        );
+        let second_input = first_output;
+        let second_output = json_digest(
+            proof_kernel::ArtifactKind::OperationOutput,
+            json!({"state": 2}),
+        );
+        let first = signed_proof(
+            &keypair,
+            "chain.operation::v1",
+            first_input,
+            first_output,
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 1).unwrap(),
+        );
+        let second = signed_proof(
+            &keypair,
+            "chain.operation::v1",
+            second_input,
+            second_output,
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 2).unwrap(),
+        );
+        store.save_proof(&first).unwrap();
+        store.save_proof(&second).unwrap();
+
+        store
+            .verify_proof_chain(&[first.body.id, second.body.id])
+            .unwrap();
+    }
+
+    #[test]
+    fn rejects_signature_without_principal() {
+        let store = SqliteStore::in_memory().unwrap();
+        let proof = test_proof();
+        store.save_proof(&proof).unwrap();
+
+        let result = store.verify_proof_chain(&[proof.body.id]);
+
+        assert!(matches!(result, Err(StorageError::Conflict(_))));
+    }
+
+    #[test]
+    fn rejects_disconnected_proof_chain() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        store
+            .save_principal(&proof_kernel::principal_from_keypair(&keypair))
+            .unwrap();
+
+        let first = signed_proof(
+            &keypair,
+            "chain.operation::v1",
+            json_digest(
+                proof_kernel::ArtifactKind::OperationInput,
+                json!({"state": 0}),
+            ),
+            json_digest(
+                proof_kernel::ArtifactKind::OperationOutput,
+                json!({"state": 1}),
+            ),
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 1).unwrap(),
+        );
+        let second = signed_proof(
+            &keypair,
+            "chain.operation::v1",
+            json_digest(
+                proof_kernel::ArtifactKind::OperationInput,
+                json!({"unrelated": 1}),
+            ),
+            json_digest(
+                proof_kernel::ArtifactKind::OperationOutput,
+                json!({"unrelated": 2}),
+            ),
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 2).unwrap(),
+        );
+        store.save_proof(&first).unwrap();
+        store.save_proof(&second).unwrap();
+
+        let result = store.verify_proof_chain(&[first.body.id, second.body.id]);
+
+        assert!(matches!(result, Err(StorageError::Conflict(_))));
+    }
+
+    #[test]
+    fn deletes_expired_contexts() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Human);
+        let make_context = |timestamp| ExecutionContext {
+            actor: keypair.principal_id,
+            delegation_id: None,
+            delegation_chain: None,
+            workspace_path: PathBuf::from("/tmp/workspace"),
+            timestamp,
+        };
+        let expired_id = store
+            .save_execution_context(&make_context(
+                Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+            ))
+            .unwrap();
+        let keep_id = store
+            .save_execution_context(&make_context(
+                Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap(),
+            ))
+            .unwrap();
+
+        let deleted = store
+            .delete_expired_contexts(Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap())
+            .unwrap();
+        let count = store.context_count().unwrap();
+
+        assert_eq!(deleted, 1);
+        assert_eq!(count, 1);
+        assert_eq!(store.proof_count().unwrap(), 0);
+        let remaining: Vec<String> = store
+            .connection()
+            .prepare("SELECT id FROM execution_contexts")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(remaining, vec![keep_id.to_string()]);
+        assert_ne!(expired_id, keep_id);
     }
 }

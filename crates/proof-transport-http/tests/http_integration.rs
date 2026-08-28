@@ -4,8 +4,10 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use proof_kernel::{
-    ExecutionContext, ExecutionError, Governance, OperationHandler, Registry, RegistryEntry,
+    canonicalize, create_proof, generate_keypair_for, ExecutionContext, ExecutionError, Governance,
+    OperationHandler, PrincipalKind, Registry, RegistryEntry,
 };
+use proof_storage::SqliteStore;
 use proof_transport_http::{router, AppState};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -74,6 +76,16 @@ fn app_state() -> Arc<AppState> {
     state.register_handler(Arc::new(EchoHandler));
     state.register_handler(Arc::new(FailingHandler));
     state
+}
+
+fn registry() -> Registry {
+    Registry::new(vec![
+        registry_entry("test.echo", Governance::AgentExecutable),
+        registry_entry("test.failing", Governance::AgentExecutable),
+        registry_entry("test.unhandled", Governance::AgentExecutable),
+        registry_entry("test.human_only", Governance::HumanOnly),
+    ])
+    .unwrap()
 }
 
 async fn response_json(
@@ -227,4 +239,113 @@ async fn handler_failure_returns_500() {
         body,
         json!({"error": "handler execution failed: handler exploded"})
     );
+}
+
+#[tokio::test]
+async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
+    let store = SqliteStore::in_memory().unwrap();
+    let state = Arc::new(AppState::with_registry_and_store(
+        "/tmp/proof-http-test",
+        registry(),
+        store,
+    ));
+    let keypair = generate_keypair_for(PrincipalKind::Agent);
+    let input = json!({"message": "hello"});
+    let output = json!({"ok": true});
+    let matching = create_proof(
+        keypair.principal_id,
+        None,
+        "object.create",
+        &input,
+        &output,
+        chrono::Utc::now(),
+        &keypair,
+    )
+    .unwrap();
+    let other_actor = generate_keypair_for(PrincipalKind::Human);
+    let other = create_proof(
+        other_actor.principal_id,
+        None,
+        "other.operation",
+        &input,
+        &output,
+        chrono::Utc::now(),
+        &other_actor,
+    )
+    .unwrap();
+    state.store.save_proof(&matching).unwrap();
+    state.store.save_proof(&other).unwrap();
+    let principal = proof_kernel::principal_from_keypair(&keypair);
+    state.store.save_principal(&principal).unwrap();
+
+    let app = router(state.clone());
+    let (status, body) = response_json(app, "GET", "/proofs", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["proofs"].as_array().unwrap().len(), 2);
+
+    let app = router(state.clone());
+    let (_, body) = response_json(
+        app,
+        "GET",
+        &format!("/proofs?operation={}", matching.body.operation),
+        None,
+    )
+    .await;
+    assert_eq!(body["proofs"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        body["proofs"][0]["body"]["id"],
+        matching.body.id.to_string()
+    );
+
+    let app = router(state.clone());
+    let (_, body) = response_json(
+        app,
+        "GET",
+        &format!("/proofs?actor={}", keypair.principal_id),
+        None,
+    )
+    .await;
+    assert_eq!(body["proofs"].as_array().unwrap().len(), 1);
+
+    let app = router(state.clone());
+    let (status, body) =
+        response_json(app, "GET", &format!("/proofs/{}", matching.body.id), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["proof"]["body"]["id"], matching.body.id.to_string());
+    assert_eq!(body["verification"], "unverified");
+
+    let app = router(state.clone());
+    let (status, body) = response_json(
+        app,
+        "POST",
+        "/proofs/verify",
+        Some(json!({"proof_id": matching.body.id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["valid"], true);
+}
+
+#[tokio::test]
+async fn audit_endpoint_returns_saved_execution_contexts() {
+    let store = SqliteStore::in_memory().unwrap();
+    let state = Arc::new(AppState::with_registry_and_store(
+        "/tmp/proof-http-test",
+        registry(),
+        store,
+    ));
+    state
+        .store
+        .save_execution_context(&ExecutionContext {
+            actor: state.keypair.principal_id,
+            delegation_id: None,
+            delegation_chain: None,
+            workspace_path: "/tmp/proof-http-test".into(),
+            timestamp: chrono::Utc::now(),
+        })
+        .unwrap();
+
+    let (status, body) = response_json(router(state), "GET", "/audit", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["contexts"].as_array().unwrap().len(), 1);
 }

@@ -2,6 +2,7 @@ pub mod changeset;
 pub mod digest;
 pub mod edition;
 pub mod error;
+pub mod handlers;
 pub mod object;
 pub mod principal;
 pub mod release;
