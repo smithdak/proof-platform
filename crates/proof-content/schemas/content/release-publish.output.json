@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["release", "version_label"],
+  "properties": {
+    "release": {"type": "object"},
+    "version_label": {"type": "string"}
+  },
+  "additionalProperties": false
+}

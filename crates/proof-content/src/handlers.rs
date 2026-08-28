@@ -5,15 +5,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
-use crate::{
-    digest::canonical_digest, object::Object, schema::SchemaDefinition,
-};
+use crate::{digest::canonical_digest, object::Object, schema::SchemaDefinition};
 
 const SCHEMA_CREATE: &str = "schema.create";
 const OBJECT_CREATE: &str = "object.create";
 const OBJECT_EDIT: &str = "object.edit";
 const APPROVE: &str = "content.approve";
 const RELEASE: &str = "content.release";
+const RELEASE_PUBLISH: &str = "release.publish";
 
 #[derive(Debug, Deserialize)]
 struct JsonSchema {
@@ -57,14 +56,25 @@ fn registry_schema(
     operation: &str,
     file_name: &str,
 ) -> Result<Value, ExecutionError> {
-    let registry_path = context.workspace_path.join("registry").join(file_name);
+    let candidates = [
+        context.workspace_path.join(file_name),
+        context
+            .workspace_path
+            .join("crates/proof-content")
+            .join(file_name),
+        context.workspace_path.join("schemas").join(file_name),
+        context.workspace_path.join("registry").join(file_name),
+    ];
+    let registry_path = candidates
+        .iter()
+        .find(|path| path.exists())
+        .unwrap_or(&candidates[0])
+        .clone();
     let contents = std::fs::read_to_string(registry_path).map_err(|error| {
         ExecutionError::HandlerFailed(format!("failed to read registry schema: {error}"))
     })?;
     serde_json::from_str(&contents).map_err(|error| {
-        ExecutionError::HandlerFailed(format!(
-            "invalid registry schema for {operation}: {error}"
-        ))
+        ExecutionError::HandlerFailed(format!("invalid registry schema for {operation}: {error}"))
     })
 }
 
@@ -87,11 +97,8 @@ trait ToHandlerResult {
 impl<T: Serialize> ToHandlerResult for Result<T, ExecutionError> {
     fn result(self, operation: &'static str) -> Result<Value, ExecutionError> {
         self.map(|data| {
-            serde_json::to_value(HandlerResult {
-                operation,
-                data,
-            })
-            .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))
+            serde_json::to_value(HandlerResult { operation, data })
+                .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))
         })?
     }
 }
@@ -99,8 +106,7 @@ impl<T: Serialize> ToHandlerResult for Result<T, ExecutionError> {
 struct GenericContentHandler {
     operation: &'static str,
     schema_file: &'static str,
-    execute_fn:
-        fn(&Value, &ExecutionContext) -> Result<serde_json::Value, ExecutionError>,
+    execute_fn: fn(&Value, &ExecutionContext) -> Result<serde_json::Value, ExecutionError>,
 }
 
 impl OperationHandler for GenericContentHandler {
@@ -108,11 +114,7 @@ impl OperationHandler for GenericContentHandler {
         self.operation
     }
 
-    fn execute(
-        &self,
-        input: &Value,
-        context: &ExecutionContext,
-    ) -> Result<Value, ExecutionError> {
+    fn execute(&self, input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError> {
         let raw_schema = registry_schema(context, self.operation, self.schema_file)?;
         JsonSchema::parse(raw_schema)?.validate(input)?;
         (self.execute_fn)(input, context).result(self.operation)
@@ -227,12 +229,38 @@ fn execute_release(
         .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
     let actor: crate::principal::PrincipalId =
         serde_json::from_value(serde_json::to_value(context.actor).unwrap()).unwrap();
-    let release =
-        crate::release::Release::new(request.edition_id, request.environment, actor);
+    let release = crate::release::Release::new(request.edition_id, request.environment, actor);
     Ok(json!({
         "release": release,
         "object": object,
     }))
+}
+
+fn execute_release_publish(
+    input: &Value,
+    context: &ExecutionContext,
+) -> Result<serde_json::Value, ExecutionError> {
+    let request: ReleasePublishRequest = serde_json::from_value(input.clone())
+        .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
+    if request.environment.trim().is_empty() {
+        return Err(input_error("environment must not be empty"));
+    }
+    if request.version_label.trim().is_empty() {
+        return Err(input_error("version_label must not be empty"));
+    }
+    let actor: crate::principal::PrincipalId =
+        serde_json::from_value(serde_json::to_value(context.actor).unwrap()).unwrap();
+    let release = crate::release::Release::new(Uuid::now_v7(), request.environment, actor);
+    Ok(json!({
+        "release": release,
+        "version_label": request.version_label,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ReleasePublishRequest {
+    environment: String,
+    version_label: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -268,6 +296,11 @@ pub fn content_handlers() -> Vec<Arc<dyn OperationHandler>> {
             operation: RELEASE,
             schema_file: "content/release.input.json",
             execute_fn: execute_release,
+        }),
+        Arc::new(GenericContentHandler {
+            operation: RELEASE_PUBLISH,
+            schema_file: "content/release-publish.input.json",
+            execute_fn: execute_release_publish,
         }),
     ]
 }
@@ -308,6 +341,7 @@ mod tests {
                 "object.edit".to_string(),
                 "content.approve".to_string(),
                 "content.release".to_string(),
+                "release.publish".to_string(),
             ]
         );
     }

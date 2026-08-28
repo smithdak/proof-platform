@@ -8,6 +8,8 @@ pub mod principal;
 pub mod release;
 pub mod schema;
 
+pub use handlers::content_handlers;
+
 pub use changeset::{
     BaseState, ChangeSet, ChangeSetEdit, ChangeSetStatus, ObjectCreateEdit, ObjectDeleteEdit,
     ObjectUpdateEdit,
@@ -16,7 +18,10 @@ pub use edition::Edition;
 pub use error::ContentError;
 pub use object::{Object, ObjectStatus};
 pub use principal::PrincipalId;
-pub use release::Release;
+pub use release::{
+    verify_release, ContentChange, ContentChangeKind, Release, ReleaseManifest,
+    ReleaseManifestEntry, ReleasePipeline, ReleasePipelineOutput,
+};
 pub use schema::{FieldType, SchemaDefinition, SchemaField};
 
 #[cfg(test)]
