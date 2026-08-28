@@ -1245,8 +1245,10 @@ name = "proof-transport-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "chrono",
  "clap",
+ "ed25519-dalek",
  "proof-content",
  "proof-kernel",
  "serde",
@@ -1261,11 +1263,14 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "http-body-util",
  "proof-content",
  "proof-kernel",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tower",
  "uuid",
 ]
 

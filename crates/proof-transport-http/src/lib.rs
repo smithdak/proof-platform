@@ -7,11 +7,11 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde_json::{json, Value};
 use proof_kernel::{
     create_proof, generate_keypair, ExecutionContext, ExecutionEngine, ExecutionError, Keypair,
     OperationHandler, Registry,
 };
+use serde_json::{json, Value};
 use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
@@ -138,6 +138,7 @@ async fn execute_operation(
     let context = ExecutionContext {
         actor: keypair.principal_id,
         delegation_id: None,
+        delegation_chain: None,
         workspace_path: PathBuf::from(&state.workspace_path),
         timestamp: chrono::Utc::now(),
     };
@@ -182,11 +183,16 @@ fn execution_error_response(error: &ExecutionError) -> (StatusCode, Json<Value>)
         ExecutionError::HumanOnly => StatusCode::FORBIDDEN,
         ExecutionError::NoHandler(_)
         | ExecutionError::HandlerFailed(_)
-        | ExecutionError::EvidenceFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        | ExecutionError::EvidenceFailed(_)
+        | ExecutionError::Delegation(_)
+        | ExecutionError::StorageFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(json!({"error": error.to_string()})))
 }
 
 fn internal_error(error: String) -> (StatusCode, Json<Value>) {
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error })))
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({ "error": error })),
+    )
 }

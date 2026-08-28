@@ -114,6 +114,7 @@ pub fn handle_tool_call(
     let context = proof_kernel::ExecutionContext {
         actor,
         delegation_id: None,
+        delegation_chain: None,
         workspace_path,
         timestamp: chrono::Utc::now(),
     };

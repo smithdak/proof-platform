@@ -1,14 +1,27 @@
 //! SQLite storage adapter for Proof.
 
 use crate::StorageError;
-use proof_kernel::{ExecutionContext, Proof, RegistryEntry};
+use proof_kernel::{ExecutionContext, ExecutionStore, Proof, RegistryEntry};
 use rusqlite::Connection;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 
 /// A SQLite-backed store for Proof data.
 pub struct SqliteStore {
-    conn: Connection,
+    conn: Mutex<Connection>,
+}
+
+impl ExecutionStore for SqliteStore {
+    fn save_proof(&self, proof: &Proof) -> Result<(), String> {
+        SqliteStore::save_proof(self, proof).map_err(|error| error.to_string())
+    }
+
+    fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String> {
+        SqliteStore::save_execution_context(self, context)
+            .map(|context_id| context_id.to_string())
+            .map_err(|error| error.to_string())
+    }
 }
 
 impl SqliteStore {
@@ -16,14 +29,18 @@ impl SqliteStore {
     pub fn open(path: &Path) -> Result<Self, StorageError> {
         let conn = Connection::open(path)?;
         Self::initialize(&conn)?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Opens an in-memory database (for testing).
     pub fn in_memory() -> Result<Self, StorageError> {
         let conn = Connection::open_in_memory()?;
         Self::initialize(&conn)?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     fn initialize(conn: &Connection) -> Result<(), StorageError> {
@@ -134,39 +151,45 @@ impl SqliteStore {
         Ok(())
     }
 
-    /// Returns the underlying connection (for queries not covered by higher-level APIs).
-    pub fn connection(&self) -> &Connection {
-        &self.conn
+    /// Returns the underlying connection for queries not covered by higher-level APIs.
+    pub fn connection(&self) -> MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap()
     }
 
     /// Returns the count of objects in the store.
     pub fn object_count(&self) -> Result<u64, StorageError> {
-        let count: u64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM objects", [], |row| row.get(0))?;
+        let count: u64 =
+            self.conn
+                .lock()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM objects", [], |row| row.get(0))?;
         Ok(count)
     }
 
     /// Returns the count of schemas in the store.
     pub fn schema_count(&self) -> Result<u64, StorageError> {
-        let count: u64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM schemas", [], |row| row.get(0))?;
+        let count: u64 =
+            self.conn
+                .lock()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM schemas", [], |row| row.get(0))?;
         Ok(count)
     }
 
     /// Returns the count of proofs in the store.
     pub fn proof_count(&self) -> Result<u64, StorageError> {
-        let count: u64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM proofs", [], |row| row.get(0))?;
+        let count: u64 =
+            self.conn
+                .lock()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM proofs", [], |row| row.get(0))?;
         Ok(count)
     }
 
     /// Persists a serialized proof, replacing any prior proof with the same ID.
     pub fn save_proof(&self, proof: &Proof) -> Result<(), StorageError> {
         let serialized = serde_json::to_string(proof)?;
-        self.conn.execute(
+        self.conn.lock().unwrap().execute(
             "
             INSERT INTO proofs (
                 id, actor, delegation_id, operation, input_digest, output_digest,
@@ -202,6 +225,8 @@ impl SqliteStore {
     pub fn load_proof(&self, proof_id: &Uuid) -> Result<Proof, StorageError> {
         let serialized: String = self
             .conn
+            .lock()
+            .unwrap()
             .query_row(
                 "SELECT signature FROM proofs WHERE id = ?1",
                 [proof_id.to_string()],
@@ -218,7 +243,8 @@ impl SqliteStore {
 
     /// Persists registry entries, replacing the stored collection.
     pub fn save_registry(&self, entries: &[RegistryEntry]) -> Result<(), StorageError> {
-        let transaction = self.conn.unchecked_transaction()?;
+        let connection = self.conn.lock().unwrap();
+        let transaction = connection.unchecked_transaction()?;
         transaction.execute("DELETE FROM registry_entries", [])?;
         for entry in entries {
             transaction.execute(
@@ -239,9 +265,9 @@ impl SqliteStore {
 
     /// Loads all persisted registry entries in operation/version order.
     pub fn load_registry(&self) -> Result<Vec<RegistryEntry>, StorageError> {
-        let mut statement = self
-            .conn
-            .prepare("SELECT data FROM registry_entries ORDER BY operation, version")?;
+        let connection = self.conn.lock().unwrap();
+        let mut statement =
+            connection.prepare("SELECT data FROM registry_entries ORDER BY operation, version")?;
         let serialized_entries = statement
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -255,7 +281,7 @@ impl SqliteStore {
     /// Persists an execution context for the audit trail.
     pub fn save_execution_context(&self, context: &ExecutionContext) -> Result<Uuid, StorageError> {
         let context_id = Uuid::now_v7();
-        self.conn.execute(
+        self.conn.lock().unwrap().execute(
             "
             INSERT INTO execution_contexts (
                 id, actor, delegation_id, workspace_path, timestamp
@@ -348,6 +374,7 @@ mod tests {
         let context = ExecutionContext {
             actor: keypair.principal_id,
             delegation_id: None,
+            delegation_chain: None,
             workspace_path: PathBuf::from("/tmp/workspace"),
             timestamp: Utc::now(),
         };
