@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+bytes = "1"
 proof-kernel = { path = "../proof-kernel" }
 proof-storage = { path = "../proof-storage" }
 rusqlite.workspace = true
@@ -14,6 +15,7 @@ serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+tower-http = { version = "0.6", features = ["limit"] }
 
 [dev-dependencies]
 http-body-util = "0.1"

@@ -23,4 +23,4 @@ pub use identity::{
     generate_keypair, generate_keypair_for, principal_from_keypair, sign, verify, IdentityError,
     Keypair, Principal, PrincipalId, PrincipalKind,
 };
-pub use registry::{Governance, Registry, RegistryEntry, RegistryError};
+pub use registry::{Governance, Registry, RegistryEntry, RegistryError, VersionStatus};

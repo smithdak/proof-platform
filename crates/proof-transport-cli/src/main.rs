@@ -17,7 +17,8 @@ use proof_kernel::{Delegation, DelegationChain};
 use proof_storage::SqliteStore;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Parser)]
@@ -81,6 +82,14 @@ enum Command {
     },
     #[command(subcommand)]
     Delegation(DelegationCommand),
+    Export {
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    Import {
+        #[arg(short, long)]
+        input: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -508,6 +517,8 @@ fn main() -> Result<()> {
                 cmd_delegation_validate(&cli, delegation_id)?
             }
         },
+        Command::Export { output } => cmd_export(&cli, output)?,
+        Command::Import { input } => cmd_import(&cli, input)?,
     }
     Ok(())
 }
@@ -1243,4 +1254,688 @@ fn cmd_delegation_validate(cli: &Cli, delegation_id: &str) -> Result<()> {
         })
     );
     Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct WorkspaceArchive {
+    format_version: u32,
+    exported_at: chrono::DateTime<chrono::Utc>,
+    registry: Value,
+    proofs: Vec<Proof>,
+    principals: Vec<ExportedPrincipal>,
+    delegations: Vec<Delegation>,
+    blobs: Vec<ExportedBlob>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ExportedPrincipal {
+    id: String,
+    kind: proof_kernel::PrincipalKind,
+    public_key: [u8; 32],
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ExportedBlob {
+    digest: String,
+    size: u64,
+    created_at: String,
+    content: Vec<u8>,
+    references: Vec<ExportedBlobReference>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ExportedBlobReference {
+    artifact_kind: String,
+    artifact_id: String,
+    created_at: String,
+}
+
+fn load_exported_principal(row: (String, String, Vec<u8>, String)) -> Result<ExportedPrincipal> {
+    let (id, kind, public_key, created_at) = row;
+    let public_key_bytes: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("invalid exported principal public key"))?;
+    Ok(ExportedPrincipal {
+        id,
+        kind: serde_json::from_str(&kind)?,
+        public_key: public_key_bytes,
+        created_at: chrono::DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&chrono::Utc),
+    })
+}
+
+fn store_exported_principal(store: &SqliteStore, principal: &ExportedPrincipal) -> Result<()> {
+    store.connection().execute(
+        "
+        INSERT INTO principals (id, kind, display_name, public_key)
+        VALUES (?1, ?2, ?3, ?4)
+        ON CONFLICT(id) DO UPDATE SET
+            kind = excluded.kind,
+            display_name = excluded.display_name,
+            public_key = excluded.public_key
+        ",
+        rusqlite::params![
+            principal.id,
+            serde_json::to_string(&principal.kind)?,
+            serde_json::to_string(&principal.kind)?,
+            principal.public_key.as_slice(),
+        ],
+    )?;
+    Ok(())
+}
+
+fn load_exported_delegations(store: &SqliteStore) -> Result<Vec<Delegation>> {
+    let connection = store.connection();
+    let mut statement = connection.prepare(
+        "
+        SELECT id, issuer, recipient, allowed_actions, resource_scope,
+               valid_from, valid_until, revoked
+        FROM delegations
+        ORDER BY id
+        ",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+            row.get::<_, String>(6)?,
+            row.get::<_, i64>(7)?,
+        ))
+    })?;
+    rows.map(|row| {
+        let (
+            id,
+            issuer,
+            recipient,
+            allowed_actions,
+            resource_scope,
+            valid_from,
+            valid_until,
+            revoked,
+        ) = row?;
+        delegation_from_row(
+            id,
+            issuer,
+            recipient,
+            allowed_actions,
+            resource_scope,
+            valid_from,
+            valid_until,
+            revoked,
+        )
+        .map(|(delegation, _)| delegation)
+    })
+    .collect()
+}
+
+fn load_exported_blobs(store: &proof_storage::ContentAddressedStore) -> Result<Vec<ExportedBlob>> {
+    let mut blobs = Vec::new();
+    let rows: Vec<(String, u64, String)> = {
+        let connection = store.connection();
+        let mut statement = connection.prepare(
+            "SELECT digest, size_bytes, created_at FROM content_blobs ORDER BY digest",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, u64>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    for (digest_hex, size, created_at) in rows {
+        let mut digest_bytes = [0_u8; 32];
+        hex::decode_to_slice(&digest_hex, &mut digest_bytes)
+            .map_err(|_| anyhow::anyhow!("invalid blob digest: {digest_hex}"))?;
+        let digest = proof_kernel::ContentDigest::from_bytes(digest_bytes);
+        let content = store
+            .get(&digest)?
+            .ok_or_else(|| anyhow::anyhow!("missing blob content: {digest_hex}"))?;
+        let mut references = Vec::new();
+        for (artifact_kind, artifact_id) in store.references(&digest)? {
+            references.push(ExportedBlobReference {
+                artifact_kind,
+                artifact_id,
+                created_at: chrono::Utc::now().to_rfc3339(),
+            });
+        }
+        blobs.push(ExportedBlob {
+            digest: digest_hex,
+            size,
+            created_at,
+            content,
+            references,
+        });
+    }
+    Ok(blobs)
+}
+
+fn store_exported_blob(
+    store: &proof_storage::ContentAddressedStore,
+    blob: &ExportedBlob,
+) -> Result<()> {
+    let digest = store.put(&blob.content)?;
+    if digest.hex() != blob.digest {
+        bail!(
+            "blob content digest mismatch: expected {}, got {}",
+            blob.digest,
+            digest.hex()
+        );
+    }
+    for reference in &blob.references {
+        store.add_reference(
+            &digest,
+            proof_storage::BlobReference {
+                artifact_kind: &reference.artifact_kind,
+                artifact_id: &reference.artifact_id,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn add_directory_to_archive(
+    builder: &mut tar::Builder<flate2::write::GzEncoder<std::fs::File>>,
+    source: &Path,
+    prefix: &str,
+) -> Result<()> {
+    if !source.exists() {
+        return Ok(());
+    }
+    builder.append_dir_all(prefix, source)?;
+    Ok(())
+}
+
+fn read_archive_files(
+    archive: &mut tar::Archive<flate2::read::GzDecoder<std::fs::File>>,
+) -> Result<Vec<(String, String, Value)>> {
+    let mut files = Vec::new();
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry
+            .path()?
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        if path.len() != 3 || path[0] != "workspace-data" {
+            continue;
+        }
+        let mut contents = String::new();
+        entry.read_to_string(&mut contents)?;
+        let value = serde_json::from_str(&contents)?;
+        files.push((path[1].clone(), path[2].clone(), value));
+    }
+    Ok(files)
+}
+
+fn import_workspace_files(root: &Path, files: Vec<(String, String, Value)>) -> Result<()> {
+    for (subdirectory, id, value) in files {
+        let directory = root.join(".proof/data").join(subdirectory);
+        std::fs::create_dir_all(&directory)?;
+        std::fs::write(
+            directory.join(id),
+            serde_json::to_string_pretty(&value)?,
+        )?;
+    }
+    Ok(())
+}
+
+fn cmd_export(cli: &Cli, output: &Path) -> Result<()> {
+    let workspace = Workspace::open(&cli.workspace)?;
+    let store = open_store(&workspace.root)?;
+    let cas = open_content_store(&workspace.root)?;
+
+    let proofs_dir = workspace.root.join(".proof/data/proofs");
+    if proofs_dir.exists() {
+        for proof_path in std::fs::read_dir(&proofs_dir)? {
+            let proof_path = proof_path?;
+            let raw = std::fs::read_to_string(proof_path.path())?;
+            let proof: Proof = serde_json::from_str(&raw)?;
+            store.save_proof(&proof)?;
+        }
+    }
+
+    let registry_entries = store.load_registry().map_err(anyhow::Error::from)?;
+    let registry = if registry_entries.is_empty() {
+        serde_json::to_value(load_registry(&workspace.root)?.operations())?
+    } else {
+        serde_json::to_value(&registry_entries)?
+    };
+
+    let mut proofs = Vec::new();
+    let proof_ids = {
+        let proof_connection = store.connection();
+        let mut proof_statement =
+            proof_connection.prepare("SELECT id FROM proofs ORDER BY timestamp, id")?;
+        let rows = proof_statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    for proof_id_text in proof_ids {
+        let proof_id = uuid::Uuid::parse_str(&proof_id_text)?;
+        proofs.push(store.load_proof(&proof_id)?);
+    }
+
+    let principal_rows = {
+        let principal_connection = store.connection();
+        let mut principal_statement =
+            principal_connection.prepare("SELECT id, kind, public_key FROM principals ORDER BY id")?;
+        let rows = principal_statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Vec<u8>>(2)?,
+                    chrono::Utc::now().to_rfc3339(),
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    let mut principals = Vec::new();
+    for row in principal_rows {
+        principals.push(load_exported_principal(row)?);
+    }
+
+    let archive = WorkspaceArchive {
+        format_version: 1,
+        exported_at: chrono::Utc::now(),
+        registry,
+        proofs,
+        principals,
+        delegations: load_exported_delegations(&store)?,
+        blobs: load_exported_blobs(&cas)?,
+    };
+
+    let output_file = std::fs::File::create(output)
+        .with_context(|| format!("cannot create export archive: {}", output.display()))?;
+    let encoder = flate2::write::GzEncoder::new(output_file, flate2::Compression::default());
+    let mut builder = tar::Builder::new(encoder);
+    let manifest = serde_json::to_vec_pretty(&archive)?;
+    let mut header = tar::Header::new_gnu();
+    header.set_size(manifest.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    builder.append_data(&mut header, "manifest.json", manifest.as_slice())?;
+    add_directory_to_archive(
+        &mut builder,
+        &workspace.root.join(".proof/registry"),
+        "registry",
+    )?;
+    add_directory_to_archive(
+        &mut builder,
+        &workspace.root.join(".proof/data"),
+        "workspace-data",
+    )?;
+    builder.finish()?;
+    builder.into_inner()?.finish()?;
+    Ok(())
+}
+
+fn cmd_import(cli: &Cli, input: &Path) -> Result<()> {
+    let workspace = Workspace::open(&cli.workspace)?;
+    let store = open_store(&workspace.root)?;
+    let cas = open_content_store(&workspace.root)?;
+
+    let input_file = std::fs::File::open(input)
+        .with_context(|| format!("cannot open import archive: {}", input.display()))?;
+    let decoder = flate2::read::GzDecoder::new(input_file);
+    let mut manifest_bytes = Vec::new();
+    {
+        let mut archive = tar::Archive::new(decoder);
+        for entry in archive.entries()? {
+            let mut entry = entry?;
+            let path = entry.path()?;
+            if path == Path::new("manifest.json") {
+                entry.read_to_end(&mut manifest_bytes)?;
+                break;
+            }
+        }
+    }
+    if manifest_bytes.is_empty() {
+        bail!("archive missing manifest.json");
+    }
+    let manifest: WorkspaceArchive = serde_json::from_slice(&manifest_bytes)?;
+    if manifest.format_version != 1 {
+        bail!(
+            "unsupported archive format version: {}",
+            manifest.format_version
+        );
+    }
+
+    let mut imported_proofs = 0_usize;
+    let mut newer_proofs = 0_usize;
+    for proof in &manifest.proofs {
+        let principal = store
+            .load_principal(&proof.body.actor)
+            .map_err(anyhow::Error::from);
+        let public_key = match principal {
+            Ok(principal) => principal.public_key,
+            Err(_) => {
+                let exported = manifest
+                    .principals
+                    .iter()
+                    .find(|principal| principal.id == proof.body.actor.to_string())
+                    .with_context(|| format!("missing principal for proof {}", proof.body.id))?;
+                ed25519_dalek::VerifyingKey::from_bytes(&exported.public_key)?
+            }
+        };
+        proof.verify(&public_key).map_err(anyhow::Error::from)?;
+
+        let existing = store.load_proof(&proof.body.id).ok();
+        if existing
+            .as_ref()
+            .map(|existing| existing.body.timestamp < proof.body.timestamp)
+            .unwrap_or(true)
+        {
+            store.save_proof(proof)?;
+            imported_proofs += 1;
+            if existing.is_some() {
+                newer_proofs += 1;
+            }
+        }
+    }
+
+    for principal in &manifest.principals {
+        store_exported_principal(&store, principal)?;
+    }
+    for delegation in &manifest.delegations {
+        save_delegation(&store, delegation)?;
+    }
+    for blob in &manifest.blobs {
+        store_exported_blob(&cas, blob)?;
+    }
+
+    let registry: Vec<proof_kernel::RegistryEntry> = serde_json::from_value(manifest.registry)?;
+    store.save_registry(&registry)?;
+
+    let mut files_archive =
+        tar::Archive::new(flate2::read::GzDecoder::new(std::fs::File::open(input)?));
+    let files = read_archive_files(&mut files_archive)?;
+    let workspace_file_count = files.len();
+    import_workspace_files(&workspace.root, files)?;
+
+    println!(
+        "{}",
+        serde_json::json!({
+            "status": "imported",
+            "format_version": manifest.format_version,
+            "proofs": imported_proofs,
+            "newer_proofs_replaced": newer_proofs,
+            "principals": manifest.principals.len(),
+            "delegations": manifest.delegations.len(),
+            "blobs": manifest.blobs.len(),
+            "workspace_files": workspace_file_count,
+        })
+    );
+    Ok(())
+}
+
+fn open_content_store(root: &Path) -> Result<proof_storage::ContentAddressedStore> {
+    let storage_directory = root.join(".proof/storage");
+    std::fs::create_dir_all(&storage_directory)?;
+    proof_storage::ContentAddressedStore::open(
+        &storage_directory.join("content.db"),
+        &storage_directory.join("blobs"),
+    )
+    .map_err(anyhow::Error::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_fs::prelude::*;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use predicates::str::contains;
+
+    #[test]
+    fn exports_and_imports_workspace_round_trip() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("workspace.tar.gz");
+        let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
+        cmd_init(&source_args).unwrap();
+        let source_workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
+        let proof = source_workspace
+            .make_proof(
+                "test.operation::v1",
+                &serde_json::json!({"roundtrip": true}),
+                &serde_json::json!({"ok": true}),
+            )
+            .unwrap();
+        let source_store = open_store(&source.path().to_path_buf()).unwrap();
+        source_store.save_proof(&proof).unwrap();
+
+        let export_args = Cli::parse_from([
+            "proof",
+            "-w",
+            source.path().to_str().unwrap(),
+            "export",
+            "--output",
+            archive.path().to_str().unwrap(),
+        ]);
+        cmd_export(&export_args, archive.path()).unwrap();
+        assert!(archive.path().is_file());
+
+        let import_args = Cli::parse_from([
+            "proof",
+            "-w",
+            target.path().to_str().unwrap(),
+            "import",
+            "--input",
+            archive.path().to_str().unwrap(),
+        ]);
+        let error = cmd_import(&import_args, archive.path()).unwrap_err();
+        assert!(error.to_string().contains("workspace not initialized"));
+
+        cmd_init(&import_args).unwrap();
+        cmd_import(&import_args, archive.path()).unwrap();
+
+        let store = open_store(&target.path().to_path_buf()).unwrap();
+        assert_eq!(store.proof_count().unwrap(), 1);
+        let proof_ids: Vec<(String,)> = store
+            .connection()
+            .prepare("SELECT id FROM proofs")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?,)))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(proof_ids.len(), 1);
+        let proof = store
+            .load_proof(&uuid::Uuid::parse_str(&proof_ids[0].0).unwrap())
+            .unwrap();
+        let principal = store.load_principal(&proof.body.actor).unwrap();
+        proof.verify(&principal.public_key).unwrap();
+    }
+
+    #[test]
+    fn export_includes_workspace_data_and_import_restores_it() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("workspace-data.tar.gz");
+        let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
+        cmd_init(&source_args).unwrap();
+        let workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
+        let schema = SchemaDefinition::new(
+            "post".to_string(),
+            1,
+            vec![proof_content::SchemaField {
+                name: "title".to_string(),
+                field_type: proof_content::FieldType::Text,
+                required: true,
+                localized: false,
+                default_value: None,
+            }],
+        );
+        let value = serde_json::to_value(&schema).unwrap();
+        workspace
+            .save_json("schemas", &schema.id.to_string(), &value)
+            .unwrap();
+        cmd_export(&source_args, archive.path()).unwrap();
+
+        let import_args = Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+        cmd_init(&import_args).unwrap();
+        cmd_import(&import_args, archive.path()).unwrap();
+        assert!(target
+            .child(".proof/data/schemas")
+            .child(format!("{}.json", schema.id))
+            .exists());
+    }
+
+    #[test]
+    fn import_rejects_invalid_proof_signature() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("invalid.tar.gz");
+        let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
+        cmd_init(&source_args).unwrap();
+        let workspace_keypair = Workspace::open(&source.path().to_path_buf()).unwrap().keypair;
+        let mut workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
+        let proof = workspace
+            .make_proof(
+                "test.operation::v1",
+                &serde_json::json!({"a": 1}),
+                &serde_json::json!({"b": 2}),
+            )
+            .unwrap();
+        let exported_principal = ExportedPrincipal {
+            id: workspace_keypair.principal_id.to_string(),
+            kind: workspace_keypair.kind,
+            public_key: workspace_keypair.signing_key.verifying_key().to_bytes(),
+            created_at: workspace_keypair.created_at,
+        };
+        let mut archive_manifest = WorkspaceArchive {
+            format_version: 1,
+            exported_at: chrono::Utc::now(),
+            registry: serde_json::json!([]),
+            proofs: vec![proof],
+            principals: vec![exported_principal],
+            delegations: vec![],
+            blobs: vec![],
+        };
+        archive_manifest.proofs[0].signature = ed25519_dalek::Signature::from_bytes(&[1; 64]);
+
+        let output_file = std::fs::File::create(archive.path()).unwrap();
+        let encoder = flate2::write::GzEncoder::new(output_file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let manifest = serde_json::to_vec_pretty(&archive_manifest).unwrap();
+        let mut header = tar::Header::new_gnu();
+        header.set_size(manifest.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "manifest.json", manifest.as_slice())
+            .unwrap();
+        builder.finish().unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+
+        cmd_init(&Cli::parse_from([
+            "proof",
+            "-w",
+            target.path().to_str().unwrap(),
+            "init",
+        ]))
+        .unwrap();
+        let import_args = Cli::parse_from([
+            "proof",
+            "-w",
+            target.path().to_str().unwrap(),
+            "import",
+            "--input",
+            archive.path().to_str().unwrap(),
+        ]);
+        let error = cmd_import(&import_args, archive.path()).unwrap_err();
+        println!("IMPORT ERROR: {}", error);
+        assert!(error.to_string().contains("invalid proof signature"));
+    }
+
+    #[test]
+    fn import_keeps_newer_existing_proof() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("older.tar.gz");
+        let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
+        cmd_init(&source_args).unwrap();
+        let mut workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
+        let source_keypair = workspace.keypair.clone();
+        let proof = workspace
+            .make_proof(
+                "test.operation::v1",
+                &serde_json::json!({"a": 1}),
+                &serde_json::json!({"b": 2}),
+            )
+            .unwrap();
+        let archive_manifest = WorkspaceArchive {
+            format_version: 1,
+            exported_at: chrono::Utc::now(),
+            registry: serde_json::json!([]),
+            proofs: vec![proof.clone()],
+            principals: vec![ExportedPrincipal {
+                id: source_keypair.principal_id.to_string(),
+                kind: source_keypair.kind,
+                public_key: source_keypair.signing_key.verifying_key().to_bytes(),
+                created_at: source_keypair.created_at,
+            }],
+            delegations: vec![],
+            blobs: vec![],
+        };
+        create_archive(archive.path(), &archive_manifest).unwrap();
+
+        cmd_init(&Cli::parse_from([
+            "proof",
+            "-w",
+            target.path().to_str().unwrap(),
+            "init",
+        ]))
+        .unwrap();
+        let target_workspace = Workspace::open(&target.path().to_path_buf()).unwrap();
+        let mut newer = Proof::new(
+            proof.body.id,
+            target_workspace.actor,
+            None,
+            proof.body.operation.clone(),
+            proof.body.input_digest,
+            proof.body.output_digest,
+            proof.body.timestamp + chrono::Duration::seconds(1),
+        );
+        newer = newer.sign(&target_workspace.keypair).unwrap();
+        {
+            let target_store = open_store(&target.path().to_path_buf()).unwrap();
+            target_store.save_proof(&newer).unwrap();
+        }
+        let import_args = Cli::parse_from([
+            "proof",
+            "-w",
+            target.path().to_str().unwrap(),
+            "import",
+            "--input",
+            archive.path().to_str().unwrap(),
+        ]);
+        cmd_import(&import_args, archive.path()).unwrap();
+        let store = open_store(&target.path().to_path_buf()).unwrap();
+        let stored = store.load_proof(&proof.body.id).unwrap();
+        assert_eq!(stored.body.timestamp, newer.body.timestamp);
+    }
+
+    fn create_archive(path: &Path, manifest: &WorkspaceArchive) -> Result<()> {
+        let output_file = std::fs::File::create(path)?;
+        let encoder = flate2::write::GzEncoder::new(output_file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let bytes = serde_json::to_vec_pretty(manifest)?;
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append_data(&mut header, "manifest.json", bytes.as_slice())?;
+        builder.finish()?;
+        builder.into_inner()?.finish()?;
+        Ok(())
+    }
 }

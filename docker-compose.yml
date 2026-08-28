@@ -1,0 +1,19 @@
+services:
+  proof-http:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: proof-platform-http:local
+    container_name: proof-http
+    ports:
+      - "3000:3000"
+    environment:
+      PROOF_WORKSPACE: /data
+      RUST_LOG: info
+    volumes:
+      - ./registry:/data/.proof/registry:ro
+      - proof-sqlite:/data/.proof/data
+    restart: unless-stopped
+
+volumes:
+  proof-sqlite:

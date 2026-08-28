@@ -17,7 +17,8 @@ chrono.workspace = true
 jsonschema.workspace = true
 tempfile = "3"
 proof-observability = { path = "../proof-observability", optional = true }
+tracing = { version = "0.1", optional = true }
 
 [features]
 test-util = []
-tracing = ["dep:proof-observability"]
+tracing = ["dep:proof-observability", "dep:tracing"]

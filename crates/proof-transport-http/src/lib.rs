@@ -1,12 +1,14 @@
 //! HTTP/REST transport adapter for the Proof platform.
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{header::CONTENT_TYPE, HeaderValue, Method, Request, StatusCode},
     response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
+use bytes::Bytes;
 use proof_kernel::{
     create_proof, generate_keypair, principal_from_keypair, ExecutionContext, ExecutionEngine,
     ExecutionError, Keypair, OperationHandler, Proof, Registry,
@@ -14,9 +16,12 @@ use proof_kernel::{
 use proof_storage::SqliteStore;
 use serde_json::{json, Value};
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     sync::{Arc, RwLock},
+    time::{Duration, Instant},
 };
+use tower_http::limit::RequestBodyLimitLayer;
 use uuid::Uuid;
 
 pub struct AppState {
@@ -28,6 +33,11 @@ pub struct AppState {
 }
 
 pub type SharedState = Arc<AppState>;
+
+const DEFAULT_RATE_LIMIT_PER_MINUTE: usize = 100;
+const DEFAULT_REQUEST_BODY_LIMIT: usize = 1_024 * 1_024;
+const JSON_METHODS: [Method; 2] = [Method::POST, Method::PUT];
+const CONTENT_LENGTH: &str = "content-length";
 
 impl AppState {
     pub fn new(workspace_path: impl Into<String>) -> Result<Self, proof_kernel::RegistryError> {
@@ -76,7 +86,102 @@ impl AppState {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct RateLimitConfig {
+    pub requests_per_minute: usize,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            requests_per_minute: env_value(
+                "PROOF_RATE_LIMIT_PER_MINUTE",
+                DEFAULT_RATE_LIMIT_PER_MINUTE,
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HttpLimits {
+    pub rate_limit: RateLimitConfig,
+    pub body_limit: usize,
+}
+
+impl Default for HttpLimits {
+    fn default() -> Self {
+        Self {
+            rate_limit: RateLimitConfig::default(),
+            body_limit: env_value("PROOF_REQUEST_BODY_LIMIT", DEFAULT_REQUEST_BODY_LIMIT),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct TokenBucket {
+    capacity: usize,
+    tokens: f64,
+    refill_per_second: f64,
+    last_refill: Instant,
+}
+
+impl TokenBucket {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            tokens: capacity as f64,
+            refill_per_second: capacity as f64 / 60.0,
+            last_refill: Instant::now(),
+        }
+    }
+
+    fn take(&mut self) -> Option<Duration> {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
+        self.last_refill = now;
+        self.tokens = (self.tokens + elapsed * self.refill_per_second).min(self.capacity as f64);
+
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            None
+        } else {
+            Some(Duration::from_secs_f64(
+                (1.0 - self.tokens) / self.refill_per_second,
+            ))
+        }
+    }
+}
+
+#[derive(Default)]
+struct RateLimiter {
+    buckets: RwLock<BTreeMap<String, TokenBucket>>,
+}
+
+impl RateLimiter {
+    fn new(_config: &RateLimitConfig) -> Self {
+        Self {
+            buckets: RwLock::new(BTreeMap::new()),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct HttpMiddlewareState {
+    limiter: Arc<RateLimiter>,
+    config: RateLimitConfig,
+    body_limit: usize,
+}
+
 pub fn router(state: SharedState) -> Router {
+    router_with_limits(state, HttpLimits::default())
+}
+
+pub fn router_with_limits(state: SharedState, limits: HttpLimits) -> Router {
+    let middleware_state = HttpMiddlewareState {
+        limiter: Arc::new(RateLimiter::new(&limits.rate_limit)),
+        config: limits.rate_limit,
+        body_limit: limits.body_limit,
+    };
     Router::new()
         .route("/", get(root))
         .route("/health", get(health))
@@ -85,11 +190,158 @@ pub fn router(state: SharedState) -> Router {
         .route("/v1/schemas", get(list_schemas))
         .route("/v1/objects", get(list_objects))
         .route("/v1/proofs", get(list_proofs))
-        .route("/proofs/:id", get(get_proof))
+        .route("/v1/proofs/:id", get(get_proof))
         .route("/proofs", get(list_proofs_filtered))
+        .route("/proofs/:id", get(get_proof))
         .route("/proofs/verify", post(verify_proof))
         .route("/audit", get(list_audit))
         .with_state(state)
+        .layer(RequestBodyLimitLayer::new(limits.body_limit))
+        .layer(axum::middleware::from_fn_with_state(
+            middleware_state,
+            validate_request,
+        ))
+}
+
+fn env_value(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+fn client_ip(request: &Request<Body>) -> String {
+    request
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| request_ip(request))
+}
+
+fn request_ip(request: &Request<Body>) -> String {
+    request
+        .extensions()
+        .get::<std::net::SocketAddr>()
+        .map(|address| address.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+async fn validate_request(
+    axum::extract::State(state): axum::extract::State<HttpMiddlewareState>,
+    request: Request<Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let client_ip = client_ip(&request);
+    let retry_after = {
+        let mut buckets = state.limiter.buckets.write().unwrap();
+        buckets
+            .entry(client_ip)
+            .or_insert_with(|| TokenBucket::new(state.config.requests_per_minute))
+            .take()
+    };
+
+    if let Some(retry_after) = retry_after {
+        return rate_limited_response(retry_after);
+    }
+
+    let method = request.method().clone();
+    if JSON_METHODS.contains(&method) {
+        if let Some(content_length) = request
+            .headers()
+            .get(CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<usize>().ok())
+        {
+            if content_length > state.body_limit {
+                return payload_too_large(state.body_limit);
+            }
+        }
+        if let Some(response) = validate_content_type(&request) {
+            return response;
+        }
+        let (parts, body) = request.into_parts();
+        let bytes = match axum::body::to_bytes(body, state.body_limit).await {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return payload_too_large(state.body_limit);
+            }
+        };
+        if let Err(error) = parse_json(&bytes) {
+            return json_error_response(
+                StatusCode::BAD_REQUEST,
+                json!({
+                    "error": "invalid JSON",
+                    "detail": error,
+                }),
+            );
+        }
+        let request = Request::from_parts(parts, Body::from(bytes));
+        return next.run(request).await;
+    }
+
+    next.run(request).await
+}
+
+fn validate_content_type(request: &Request<Body>) -> Option<axum::response::Response> {
+    let content_type = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .unwrap_or_default();
+    if content_type.eq_ignore_ascii_case("application/json") {
+        return None;
+    }
+    Some(json_error_response(
+        StatusCode::BAD_REQUEST,
+        json!({"error": "Content-Type must be application/json"}),
+    ))
+}
+
+fn parse_json(bytes: &Bytes) -> Result<(), String> {
+    serde_json::from_slice::<Value>(bytes)
+        .map(|_| ())
+        .map_err(|error| {
+            if bytes.is_empty() {
+                "request body must contain a JSON object".to_string()
+            } else {
+                error.to_string()
+            }
+        })
+}
+
+fn payload_too_large(limit: usize) -> axum::response::Response {
+    json_error_response(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        json!({
+            "error": "request body too large",
+            "limit_bytes": limit,
+        }),
+    )
+}
+
+fn rate_limited_response(retry_after: Duration) -> axum::response::Response {
+    let mut response = json_error_response(
+        StatusCode::TOO_MANY_REQUESTS,
+        json!({
+            "error": "rate limit exceeded",
+            "retry_after_seconds": retry_after.as_secs().max(1),
+        }),
+    );
+    response.headers_mut().insert(
+        "Retry-After",
+        HeaderValue::from(retry_after.as_secs().max(1)),
+    );
+    response
+}
+
+fn json_error_response(status: StatusCode, body: Value) -> axum::response::Response {
+    (status, Json(body)).into_response()
 }
 
 async fn root() -> impl IntoResponse {
@@ -349,6 +601,7 @@ fn execution_error_response(error: &ExecutionError) -> (StatusCode, Json<Value>)
     let status = match error {
         ExecutionError::OperationNotFound { .. } => StatusCode::NOT_FOUND,
         ExecutionError::HumanOnly => StatusCode::FORBIDDEN,
+        ExecutionError::Sunset => StatusCode::GONE,
         ExecutionError::NoHandler(_)
         | ExecutionError::HandlerFailed(_)
         | ExecutionError::EvidenceFailed(_)

@@ -389,6 +389,9 @@ mod tests {
             consequence: "content-mutation".to_string(),
             evidence_contract: "operation-effect-v1".to_string(),
             benchmark: None,
+            status: proof_kernel::VersionStatus::Active,
+            deprecated_since: None,
+            replacement_operation: None,
         }];
         // Registry needs to be constructed from entries
         // For now test the transformation function directly

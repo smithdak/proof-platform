@@ -22,3 +22,10 @@ ed25519-dalek.workspace = true
 base64.workspace = true
 proof-storage = { path = "../proof-storage" }
 rusqlite.workspace = true
+tar = "0.4"
+flate2 = "1"
+hex = "0.4"
+
+[dev-dependencies]
+assert_fs = "1.1.4"
+predicates = "3.1.4"

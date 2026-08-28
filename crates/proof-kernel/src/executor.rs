@@ -3,7 +3,7 @@
 use crate::delegation::{DelegationChain, DelegationError};
 use crate::evidence::{Proof, ProofError};
 use crate::identity::PrincipalId;
-use crate::registry::{Governance, Registry};
+use crate::registry::{Governance, Registry, VersionStatus};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -35,6 +35,8 @@ pub enum ExecutionError {
     NoHandler(String),
     #[error("operation is human-only, agents cannot execute")]
     HumanOnly,
+    #[error("operation is sunset and cannot be executed")]
+    Sunset,
     #[error("delegation chain invalid: {0}")]
     Delegation(#[from] DelegationError),
     #[error("handler execution failed: {0}")]
@@ -172,6 +174,19 @@ impl ExecutionEngine {
 
         if entry.governance == Governance::HumanOnly {
             return Err(ExecutionError::HumanOnly);
+        }
+
+        if entry.status == VersionStatus::Deprecated {
+            #[cfg(feature = "tracing")]
+            tracing::warn!(
+                operation,
+                version,
+                deprecated_since = ?entry.deprecated_since,
+                replacement_operation = entry.replacement_operation,
+                "executing deprecated operation"
+            );
+        } else if entry.status == VersionStatus::Sunset {
+            return Err(ExecutionError::Sunset);
         }
 
         if let Some(chain) = &context.delegation_chain {
@@ -319,7 +334,34 @@ mod tests {
             consequence: "test-mutation".to_string(),
             evidence_contract: "operation-effect-v1".to_string(),
             benchmark: None,
+            status: crate::registry::VersionStatus::Active,
+            deprecated_since: None,
+            replacement_operation: None,
         }
+    }
+
+    #[test]
+    fn executes_deprecated_operation() {
+        let mut entry = test_registry_entry("test.echo", Governance::AgentExecutable);
+        entry.status = crate::registry::VersionStatus::Deprecated;
+        entry.deprecated_since = Some(Utc::now().date_naive());
+        entry.replacement_operation = Some("test.echo:v2".to_string());
+        let engine = test_engine(vec![entry]);
+        let result = engine
+            .execute("test.echo", "v1", &json!({}), &test_context())
+            .unwrap();
+        assert_eq!(result["handled_by"], "test.echo");
+    }
+
+    #[test]
+    fn rejects_sunset_operation() {
+        let mut entry = test_registry_entry("test.echo", Governance::AgentExecutable);
+        entry.status = crate::registry::VersionStatus::Sunset;
+        let engine = test_engine(vec![entry]);
+        let error = engine
+            .execute("test.echo", "v1", &json!({}), &test_context())
+            .unwrap_err();
+        assert_eq!(error, ExecutionError::Sunset);
     }
 
     fn test_engine(entries: Vec<crate::registry::RegistryEntry>) -> ExecutionEngine {

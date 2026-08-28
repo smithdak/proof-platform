@@ -662,6 +662,9 @@ mod tests {
             consequence: "test-consequence".to_string(),
             evidence_contract: "test-contract".to_string(),
             benchmark: None,
+            status: proof_kernel::VersionStatus::Active,
+            deprecated_since: None,
+            replacement_operation: None,
         }
     }
 

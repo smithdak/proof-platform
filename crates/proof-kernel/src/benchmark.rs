@@ -229,7 +229,7 @@ mod tests {
     use super::*;
     use crate::executor::OperationHandler;
     use crate::identity::PrincipalId;
-    use crate::registry::{Governance, Registry};
+    use crate::registry::{Governance, Registry, VersionStatus};
     use serde_json::json;
 
     struct SleepHandler {
@@ -267,6 +267,9 @@ mod tests {
             consequence: "none".to_string(),
             evidence_contract: "operation-effect-v1".to_string(),
             benchmark: benchmark.map(ToString::to_string),
+            status: VersionStatus::Active,
+            deprecated_since: None,
+            replacement_operation: None,
         }
     }
 

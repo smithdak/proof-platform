@@ -14,6 +14,21 @@ pub enum Governance {
     HumanOnly,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum VersionStatus {
+    #[default]
+    Active,
+    Deprecated,
+    Sunset,
+}
+
+impl VersionStatus {
+    fn is_active(status: &Self) -> bool {
+        *status == Self::Active
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegistryEntry {
     pub operation: String,
@@ -30,6 +45,12 @@ pub struct RegistryEntry {
     pub evidence_contract: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub benchmark: Option<String>,
+    #[serde(default, skip_serializing_if = "VersionStatus::is_active")]
+    pub status: VersionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecated_since: Option<chrono::NaiveDate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replacement_operation: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -97,6 +118,13 @@ impl Registry {
             .copied()
             .map(|position| &self.entries[position])
     }
+
+    pub fn active_operations(&self) -> Vec<&RegistryEntry> {
+        self.entries
+            .iter()
+            .filter(|entry| entry.status == VersionStatus::Active)
+            .collect()
+    }
 }
 
 fn visit(directory: &Path, entries: &mut Vec<RegistryEntry>) -> Result<(), RegistryError> {
@@ -139,7 +167,53 @@ mod tests {
             consequence: "content-mutation".to_string(),
             evidence_contract: "operation-effect-v1".to_string(),
             benchmark: benchmark.map(ToString::to_string),
+            status: VersionStatus::Active,
+            deprecated_since: None,
+            replacement_operation: None,
         }
+    }
+
+    #[test]
+    fn defaults_lifecycle_fields_for_active_entries() {
+        let entry = entry("object.create", Governance::AgentExecutable, None);
+        let json = serde_json::to_string(&entry).unwrap();
+        let deserialized: RegistryEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.status, VersionStatus::Active);
+        assert_eq!(deserialized.deprecated_since, None);
+        assert_eq!(deserialized.replacement_operation, None);
+        assert!(!json.contains("status"));
+    }
+
+    #[test]
+    fn deserializes_lifecycle_metadata() {
+        let mut entry = entry("object.create", Governance::AgentExecutable, None);
+        entry.status = VersionStatus::Deprecated;
+        entry.deprecated_since = Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap());
+        entry.replacement_operation = Some("object.create:v2".to_string());
+        let serialized = serde_json::to_value(&entry).unwrap();
+        let deserialized: RegistryEntry = serde_json::from_value(serialized).unwrap();
+        assert_eq!(deserialized.status, VersionStatus::Deprecated);
+        assert_eq!(
+            deserialized.deprecated_since,
+            Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap())
+        );
+        assert_eq!(
+            deserialized.replacement_operation.as_deref(),
+            Some("object.create:v2")
+        );
+    }
+
+    #[test]
+    fn active_operations_excludes_deprecated_and_sunset() {
+        let mut deprecated = entry("object.create", Governance::AgentExecutable, None);
+        deprecated.status = VersionStatus::Deprecated;
+        let mut sunset = entry("object.edit", Governance::AgentExecutable, None);
+        sunset.status = VersionStatus::Sunset;
+        let active = entry("object.delete", Governance::AgentExecutable, None);
+        let registry = Registry::new(vec![deprecated, sunset, active]).unwrap();
+        let active_operations = registry.active_operations();
+        assert_eq!(active_operations.len(), 1);
+        assert_eq!(active_operations[0].operation, "object.delete");
     }
 
     #[test]

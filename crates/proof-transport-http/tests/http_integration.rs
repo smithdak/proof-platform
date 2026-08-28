@@ -4,11 +4,11 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use proof_kernel::{
-    canonicalize, create_proof, generate_keypair_for, ExecutionContext, ExecutionError, Governance,
-    OperationHandler, PrincipalKind, Registry, RegistryEntry,
+    create_proof, generate_keypair_for, ExecutionContext, ExecutionError, Governance,
+    OperationHandler, PrincipalKind, Registry, RegistryEntry, VersionStatus,
 };
 use proof_storage::SqliteStore;
-use proof_transport_http::{router, AppState};
+use proof_transport_http::{router, router_with_limits, AppState, HttpLimits, RateLimitConfig};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -61,6 +61,9 @@ fn registry_entry(operation: &str, governance: Governance) -> RegistryEntry {
         consequence: "test-mutation".to_string(),
         evidence_contract: "operation-effect-v1".to_string(),
         benchmark: None,
+        status: VersionStatus::Active,
+        deprecated_since: None,
+        replacement_operation: None,
     }
 }
 
@@ -111,6 +114,103 @@ async fn response_json(
         serde_json::from_slice(&bytes).unwrap()
     };
     (status, json)
+}
+
+async fn raw_response(
+    app: axum::Router,
+    request: Request<Body>,
+) -> (StatusCode, axum::http::HeaderMap, Value) {
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
+    (status, headers, json)
+}
+
+#[tokio::test]
+async fn rate_limit_returns_429_with_retry_after_per_client() {
+    let limits = HttpLimits {
+        rate_limit: RateLimitConfig {
+            requests_per_minute: 1,
+        },
+        body_limit: 1024,
+    };
+    let request = || {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/operations/test.echo/v1")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", "203.0.113.10")
+            .body(Body::from(json!({"message": "hello"}).to_string()))
+            .unwrap()
+    };
+    let app = router_with_limits(app_state(), limits.clone());
+
+    let (first_status, _, _) = raw_response(app.clone(), request()).await;
+    assert_eq!(first_status, StatusCode::OK);
+
+    let (limited_status, headers, body) = raw_response(app.clone(), request()).await;
+    assert_eq!(limited_status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(headers.contains_key("retry-after"));
+    assert_eq!(body["error"], "rate limit exceeded");
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/operations/test.echo/v1")
+        .header("content-type", "application/json")
+        .header("x-forwarded-for", "203.0.113.11")
+        .body(Body::from(json!({"message": "hello"}).to_string()))
+        .unwrap();
+    let (other_client_status, _, _) = raw_response(app, request).await;
+    assert_eq!(other_client_status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn oversized_json_body_returns_413() {
+    let limits = HttpLimits {
+        rate_limit: RateLimitConfig {
+            requests_per_minute: 10,
+        },
+        body_limit: 8,
+    };
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/operations/test.echo/v1")
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"message":"too long"}"#))
+        .unwrap();
+    let (status, _, body) = raw_response(router_with_limits(app_state(), limits), request).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(body["error"], "request body too large");
+}
+
+#[tokio::test]
+async fn post_rejects_non_json_content_type_and_malformed_json() {
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/operations/test.echo/v1")
+        .header("content-type", "text/plain")
+        .body(Body::from("hello"))
+        .unwrap();
+    let (status, _, body) = raw_response(router(app_state()), request).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "Content-Type must be application/json");
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/operations/test.echo/v1")
+        .header("content-type", "application/json")
+        .body(Body::from("{\"message\":"))
+        .unwrap();
+    let (status, _, body) = raw_response(router(app_state()), request).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid JSON");
+    assert!(body["detail"].as_str().is_some());
 }
 
 #[tokio::test]

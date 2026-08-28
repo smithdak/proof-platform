@@ -71,6 +71,9 @@ fn registry_entry(operation: &str, governance: Governance) -> RegistryEntry {
         consequence: consequence_for_operation(operation).to_string(),
         evidence_contract: "operation-effect-v1".to_string(),
         benchmark: None,
+        status: proof_kernel::VersionStatus::Active,
+        deprecated_since: None,
+        replacement_operation: None,
     }
 }
 

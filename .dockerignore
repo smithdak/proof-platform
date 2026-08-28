@@ -1,0 +1,14 @@
+.git
+.github
+.proof
+target
+**/*.sqlite3
+**/*.db
+.env
+.env.*
+conformance
+Dockerfile
+docker-compose.yml
+README.md
+CHANGELOG.md
+ARCHITECTURE.md

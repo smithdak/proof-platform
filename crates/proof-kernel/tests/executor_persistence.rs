@@ -1,6 +1,6 @@
 use proof_kernel::{
     ExecutionContext, ExecutionEngine, Governance, OperationHandler, RecordingStore, Registry,
-    RegistryEntry,
+    RegistryEntry, VersionStatus,
 };
 use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
@@ -36,6 +36,9 @@ fn registry_entry() -> RegistryEntry {
         consequence: "test-mutation".to_string(),
         evidence_contract: "operation-effect-v1".to_string(),
         benchmark: None,
+        status: VersionStatus::Active,
+        deprecated_since: None,
+        replacement_operation: None,
     }
 }
 
