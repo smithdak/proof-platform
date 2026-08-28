@@ -1,11 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
+    "conformance",
     "crates/proof-kernel",
     "crates/proof-observability",
     "crates/proof-content",
     "crates/proof-storage",
     "crates/proof-transport-http",
+    "crates/proof-transport-ws",
     "crates/proof-transport-mcp",
     "crates/proof-transport-cli",
 ]

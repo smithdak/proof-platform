@@ -1,0 +1,23 @@
+{
+  "name": "canonical-digest-golden",
+  "cases": [
+    {
+      "name": "null digest",
+      "artifact_kind": "generic",
+      "input": null,
+      "expected_digest": "6252bfb55f3d364d862ec191747a6a6c5c0920503178d1d1786bec34ab139241"
+    },
+    {
+      "name": "key order does not change digest",
+      "artifact_kind": "operation-input",
+      "input": {"a": "first", "b": 2},
+      "expected_digest": "b8ea08cd7195d06bf353b68b7d0bb1166a95cfb9fc69c4fe490ca8aa64bf9d6f"
+    },
+    {
+      "name": "unicode and numeric encoding remains stable",
+      "artifact_kind": "operation-output",
+      "input": {"count": 2, "name": "quote\"newline\n", "ratio": -1.25},
+      "expected_digest": "3f6d95165e04750fb35a060fca04f7234203ed594e2939bf717dcddbc9108c8c"
+    }
+  ]
+}

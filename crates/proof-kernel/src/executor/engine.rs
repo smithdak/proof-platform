@@ -1,135 +1,19 @@
-//! Operation execution engine: routes operations from transports through the kernel.
+//! The ExecutionEngine implementation.
 
-use crate::delegation::{Delegation, DelegationChain, DelegationError};
+use super::context::{AuditFilter, ExecutionContext};
+use super::error::ExecutionError;
+use super::store::{ExecutionStore, OperationHandler};
+use crate::delegation::DelegationError;
 use crate::evidence::{Proof, ProofError};
 use crate::identity::PrincipalId;
-use crate::registry::{Governance, Registry, VersionStatus};
+use crate::registry::{Governance, Registry, RegistryEntry, VersionStatus};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use thiserror::Error;
 use uuid::Uuid;
 
-/// The context in which an operation executes.
-#[derive(Clone, Debug)]
-pub struct ExecutionContext {
-    /// The Principal executing the operation.
-    pub actor: PrincipalId,
-    /// The delegation under which this operation is authorized (if any).
-    pub delegation_id: Option<Uuid>,
-    /// The delegation chain validating the actor's authority (if any).
-    pub delegation_chain: Option<DelegationChain>,
-    /// Path to the workspace.
-    pub workspace_path: PathBuf,
-    /// When the execution started.
-    pub timestamp: DateTime<Utc>,
-}
-
-#[derive(Clone, Debug, Error, PartialEq)]
-pub enum ExecutionError {
-    #[error("operation not found: {operation} {version}")]
-    OperationNotFound { operation: String, version: String },
-    #[error("no handler registered for: {0}")]
-    NoHandler(String),
-    #[error("operation is human-only, agents cannot execute")]
-    HumanOnly,
-    #[error("operation is sunset and cannot be executed")]
-    Sunset,
-    #[error("delegation chain invalid: {0}")]
-    Delegation(#[from] DelegationError),
-    #[error("operation is outside the delegation scope")]
-    ScopeViolation,
-    #[error("handler execution failed: {0}")]
-    HandlerFailed(String),
-    #[error("evidence generation failed: {0}")]
-    EvidenceFailed(String),
-    #[error("benchmark proof expired: benchmark={benchmark} proof={proof_id}")]
-    BenchmarkExpired { benchmark: String, proof_id: String },
-    #[error("storage failed: {0}")]
-    StorageFailed(String),
-}
-
-/// A storage backend for execution evidence and audit context.
-pub trait ExecutionStore: Send + Sync {
-    /// Loads a stored delegation by ID. Return `None` when it is unknown.
-    fn load_delegation(&self, delegation_id: &Uuid) -> Result<Option<Delegation>, String> {
-        let _ = delegation_id;
-        Ok(None)
-    }
-
-    /// Persists a generated proof.
-    fn save_proof(&self, proof: &Proof) -> Result<(), String>;
-
-    /// Loads the most recent proof recorded for an operation/version.
-    fn latest_proof_for_operation(
-        &self,
-        _operation: &str,
-        _version: &str,
-    ) -> Result<Option<Proof>, String> {
-        Ok(None)
-    }
-
-    /// Persists the execution context and returns its storage identifier.
-    fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String>;
-}
-
-/// A simple in-memory execution store for testing.
-#[derive(Default)]
-pub struct RecordingStore {
-    pub proofs: std::sync::Mutex<Vec<Proof>>,
-    pub contexts: std::sync::Mutex<Vec<ExecutionContext>>,
-    pub delegations: std::sync::Mutex<Vec<Delegation>>,
-}
-
-impl ExecutionStore for RecordingStore {
-    fn load_delegation(&self, delegation_id: &Uuid) -> Result<Option<Delegation>, String> {
-        Ok(self
-            .delegations
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|delegation| &delegation.id == delegation_id)
-            .cloned())
-    }
-
-    fn save_proof(&self, proof: &Proof) -> Result<(), String> {
-        self.proofs.lock().unwrap().push(proof.clone());
-        Ok(())
-    }
-
-    fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String> {
-        self.contexts.lock().unwrap().push(context.clone());
-        Ok(Uuid::now_v7().to_string())
-    }
-
-    fn latest_proof_for_operation(
-        &self,
-        operation: &str,
-        version: &str,
-    ) -> Result<Option<Proof>, String> {
-        let full_operation = format!("{operation}::{version}");
-        Ok(self
-            .proofs
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|proof| proof.body.operation == full_operation)
-            .max_by_key(|proof| proof.body.timestamp)
-            .cloned())
-    }
-}
-
-/// A handler that executes a specific operation.
-pub trait OperationHandler: Send + Sync {
-    /// The operation name this handler executes.
-    fn operation(&self) -> &str;
-    /// Executes the operation with the given input and context.
-    fn execute(&self, input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError>;
-}
-
-/// The execution engine: routes operations to handlers through the kernel.
 pub struct ExecutionEngine {
     registry: Registry,
     handlers: HashMap<String, Arc<dyn OperationHandler>>,
@@ -395,13 +279,39 @@ pub fn create_proof(
     proof.sign(keypair)
 }
 
-#[cfg(test)]
 mod tests {
+    use super::super::store::RecordingStore;
     use super::*;
-    use crate::delegation::{Delegation, DelegationScope};
+    use crate::delegation::{Delegation, DelegationChain, DelegationScope};
     use crate::identity::generate_keypair;
     use chrono::Duration;
     use serde_json::json;
+
+    #[test]
+    fn audit_filter_uses_default_limit() {
+        let filter = AuditFilter::new();
+        assert_eq!(filter.limit, 20);
+        assert_eq!(filter.offset, 0);
+        assert_eq!(filter.operation, None);
+        assert_eq!(filter.actor, None);
+        assert_eq!(filter.since, None);
+    }
+
+    #[test]
+    fn audit_filter_clamps_limit() {
+        let mut filter = AuditFilter::new();
+        filter.limit = 0;
+        filter.clamp_limit();
+        assert_eq!(filter.limit, 1);
+
+        filter.limit = 101;
+        filter.clamp_limit();
+        assert_eq!(filter.limit, 100);
+
+        filter.limit = 42;
+        filter.clamp_limit();
+        assert_eq!(filter.limit, 42);
+    }
 
     struct TestHandler {
         operation: String,

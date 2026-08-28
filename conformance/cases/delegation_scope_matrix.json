@@ -1,0 +1,85 @@
+{
+  "name": "delegation-scope-matrix",
+  "cases": [
+    {
+      "name": "unscoped grant allows everything",
+      "allowed_operations": null,
+      "allowed_domains": null,
+      "resource_scope": null,
+      "operation": "content.object.create",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "domain restriction denies foreign domain",
+      "allowed_operations": null,
+      "allowed_domains": ["content"],
+      "resource_scope": null,
+      "operation": "site.page.create",
+      "domain": "site",
+      "resource": "site/a",
+      "expected_allowed": false
+    },
+    {
+      "name": "exact operation and domain allowed",
+      "allowed_operations": ["content.object.create"],
+      "allowed_domains": ["content"],
+      "resource_scope": "site/a",
+      "operation": "content.object.create",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "foreign operation denied by exact operation scope",
+      "allowed_operations": ["content.object.create"],
+      "allowed_domains": ["content"],
+      "resource_scope": "site/a",
+      "operation": "content.object.delete",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": false
+    },
+    {
+      "name": "prefix operation wildcard allows descendants",
+      "allowed_operations": ["content.object.*"],
+      "allowed_domains": ["content"],
+      "resource_scope": "site/a",
+      "operation": "content.object.update",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "domain mismatch denies wildcard operation",
+      "allowed_operations": ["*"],
+      "allowed_domains": ["content"],
+      "resource_scope": "site/a",
+      "operation": "site.page.create",
+      "domain": "site",
+      "resource": "site/a",
+      "expected_allowed": false
+    },
+    {
+      "name": "empty domain list denies",
+      "allowed_operations": ["content.object.create"],
+      "allowed_domains": [],
+      "resource_scope": "site/a",
+      "operation": "content.object.create",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": false
+    },
+    {
+      "name": "empty operation list denies",
+      "allowed_operations": [],
+      "allowed_domains": ["content"],
+      "resource_scope": "site/a",
+      "operation": "content.object.create",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": false
+    }
+  ]
+}

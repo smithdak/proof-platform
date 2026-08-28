@@ -16,7 +16,7 @@ pub use canonical::{
 pub use delegation::{validate_chain, Delegation, DelegationChain, DelegationError};
 pub use evidence::{Proof, ProofBody, ProofError};
 pub use executor::{
-    create_proof, ExecutionContext, ExecutionEngine, ExecutionError, ExecutionStore,
+    create_proof, AuditFilter, ExecutionContext, ExecutionEngine, ExecutionError, ExecutionStore,
     OperationHandler, RecordingStore,
 };
 pub use identity::{
