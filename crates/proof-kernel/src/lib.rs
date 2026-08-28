@@ -4,6 +4,7 @@ pub mod canonical;
 pub mod delegation;
 pub mod evidence;
 pub mod identity;
+pub mod executor;
 pub mod registry;
 
 pub use canonical::{
@@ -16,4 +17,5 @@ pub use identity::{
     generate_keypair, generate_keypair_for, principal_from_keypair, sign, verify, IdentityError,
     Keypair, Principal, PrincipalId, PrincipalKind,
 };
+pub use executor::{create_proof, ExecutionContext, ExecutionEngine, ExecutionError, OperationHandler};
 pub use registry::{Governance, Registry, RegistryEntry, RegistryError};
