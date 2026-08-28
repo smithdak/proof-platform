@@ -1,6 +1,6 @@
 //! MCP (Model Context Protocol) transport adapter for the Proof platform.
 
-use proof_kernel::Registry;
+use proof_kernel::{ExecutionEngine, ExecutionError, Registry};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -11,6 +11,8 @@ pub struct McpTool {
     pub description: String,
     #[serde(rename = "inputSchema")]
     pub input_schema: Value,
+    #[serde(rename = "outputSchema")]
+    pub output_schema: Value,
 }
 
 /// An MCP tools/list response.
@@ -44,53 +46,131 @@ pub struct McpContent {
 impl McpToolResult {
     pub fn success(text: String) -> Self {
         Self {
-            content: vec![McpContent { content_type: "text".to_string(), text }],
+            content: vec![McpContent {
+                content_type: "text".to_string(),
+                text,
+            }],
             is_error: false,
         }
     }
 
     pub fn error(text: String) -> Self {
         Self {
-            content: vec![McpContent { content_type: "text".to_string(), text }],
+            content: vec![McpContent {
+                content_type: "text".to_string(),
+                text,
+            }],
             is_error: true,
         }
     }
 }
 
 /// Generates MCP tool definitions from Proof operation registry entries.
+///
+/// Registry schema fields may contain either a schema reference or an inline
+/// JSON Schema document. Inline documents are emitted directly so MCP clients
+/// receive the same contract recorded by the registry.
 pub fn tools_from_registry(registry: &Registry) -> McpToolsList {
     let tools: Vec<McpTool> = registry
         .operations()
         .iter()
         .map(|entry| McpTool {
-            name: format!("proof_{}_{}", entry.domain, entry.operation.replace('.', "_")),
+            name: format!(
+                "proof_{}_{}_{}",
+                entry.domain,
+                entry.version,
+                entry.operation.replace('.', "_")
+            ),
             description: entry.description.clone(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "description": entry.description
-            }),
+            input_schema: schema_value(&entry.input_schema),
+            output_schema: schema_value(&entry.output_schema),
         })
         .collect();
     McpToolsList { tools }
 }
 
-/// Handles an MCP tool call by routing to the appropriate Proof operation.
-pub fn handle_tool_call(call: &McpToolCall, registry: &Registry) -> McpToolResult {
-    let operation = call
-        .name
-        .trim_start_matches("proof_content_")
-        .trim_start_matches("proof_");
-    let entry = registry
+/// Handles an MCP tool call through the kernel execution engine.
+///
+/// The engine is authoritative for registry lookup, schema-independent
+/// governance checks, handler dispatch, and human-only rejection.
+pub fn handle_tool_call(
+    call: &McpToolCall,
+    engine: &ExecutionEngine,
+    actor: proof_kernel::PrincipalId,
+    workspace_path: std::path::PathBuf,
+) -> McpToolResult {
+    let Some(entry) = engine
         .operations()
         .iter()
-        .find(|e| e.operation == operation || e.operation.replace('.', "_") == operation);
+        .find(|candidate| tool_name(candidate) == call.name)
+    else {
+        return McpToolResult::error(format!("Unknown operation: {}", call.name));
+    };
 
-    match entry {
-        Some(_entry) => McpToolResult::success(format!(
-            "Operation {} dispatched (implementation pending)",
-            operation
+    if let Err(error) = validate_value(&schema_value(&entry.input_schema), &call.arguments) {
+        return McpToolResult::error(format!("Invalid input for {}: {}", entry.operation, error));
+    }
+
+    let context = proof_kernel::ExecutionContext {
+        actor,
+        delegation_id: None,
+        workspace_path,
+        timestamp: chrono::Utc::now(),
+    };
+
+    match engine.execute(&entry.operation, &entry.version, &call.arguments, &context) {
+        Ok(output) => {
+            if let Err(error) = validate_value(&schema_value(&entry.output_schema), &output) {
+                McpToolResult::error(format!(
+                    "Invalid output from {}: {}",
+                    entry.operation, error
+                ))
+            } else {
+                match serde_json::to_string(&output) {
+                    Ok(text) => McpToolResult::success(text),
+                    Err(error) => McpToolResult::error(format!(
+                        "Failed to encode output from {}: {}",
+                        entry.operation, error
+                    )),
+                }
+            }
+        }
+        Err(ExecutionError::HumanOnly) => McpToolResult::error(format!(
+            "Operation {} is human-only and cannot be executed by an agent",
+            entry.operation
         )),
-        None => McpToolResult::error(format!("Unknown operation: {}", call.name)),
+        Err(error) => McpToolResult::error(error.to_string()),
+    }
+}
+
+fn tool_name(entry: &proof_kernel::RegistryEntry) -> String {
+    format!(
+        "proof_{}_{}_{}",
+        entry.domain,
+        entry.version,
+        entry.operation.replace('.', "_")
+    )
+}
+
+fn schema_value(schema: &str) -> Value {
+    if schema.trim_start().starts_with('{') {
+        serde_json::from_str(schema).unwrap_or_else(|_| Value::String(schema.to_string()))
+    } else {
+        Value::String(schema.to_string())
+    }
+}
+
+fn validate_value(schema: &Value, value: &Value) -> Result<(), String> {
+    let compiled =
+        jsonschema::Validator::new(schema).map_err(|error| format!("invalid schema: {error}"))?;
+    let errors: Vec<String> = compiled
+        .iter_errors(value)
+        .map(|error| error.to_string())
+        .collect();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
     }
 }
 
@@ -118,20 +198,9 @@ mod tests {
         }];
         // Registry needs to be constructed from entries
         // For now test the transformation function directly
-        let tools = tools_from_registry_impl(&entries);
+        let registry = Registry::new(entries).unwrap();
+        let tools = tools_from_registry(&registry);
         assert_eq!(tools.tools.len(), 1);
-        assert_eq!(tools.tools[0].name, "proof_content_object_create");
-    }
-
-    fn tools_from_registry_impl(entries: &[RegistryEntry]) -> McpToolsList {
-        let tools: Vec<McpTool> = entries
-            .iter()
-            .map(|entry| McpTool {
-                name: format!("proof_{}_{}", entry.domain, entry.operation.replace('.', "_")),
-                description: entry.description.clone(),
-                input_schema: serde_json::json!({"type": "object"}),
-            })
-            .collect();
-        McpToolsList { tools }
+        assert_eq!(tools.tools[0].name, "proof_content_v1_object_create");
     }
 }

@@ -9,4 +9,6 @@ proof-kernel = { path = "../proof-kernel" }
 proof-content = { path = "../proof-content" }
 serde.workspace = true
 serde_json.workspace = true
+jsonschema.workspace = true
+chrono.workspace = true
 uuid.workspace = true

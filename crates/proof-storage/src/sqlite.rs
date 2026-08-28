@@ -1,8 +1,10 @@
 //! SQLite storage adapter for Proof.
 
 use crate::StorageError;
+use proof_kernel::{ExecutionContext, Proof, RegistryEntry};
 use rusqlite::Connection;
 use std::path::Path;
+use uuid::Uuid;
 
 /// A SQLite-backed store for Proof data.
 pub struct SqliteStore {
@@ -90,6 +92,21 @@ impl SqliteStore {
                 signature TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS registry_entries (
+                operation TEXT NOT NULL,
+                version TEXT NOT NULL,
+                data TEXT NOT NULL,
+                PRIMARY KEY (operation, version)
+            );
+
+            CREATE TABLE IF NOT EXISTS execution_contexts (
+                id TEXT PRIMARY KEY,
+                actor TEXT NOT NULL,
+                delegation_id TEXT,
+                workspace_path TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS principals (
                 id TEXT PRIMARY KEY,
                 kind TEXT NOT NULL,
@@ -145,27 +162,203 @@ impl SqliteStore {
             .query_row("SELECT COUNT(*) FROM proofs", [], |row| row.get(0))?;
         Ok(count)
     }
+
+    /// Persists a serialized proof, replacing any prior proof with the same ID.
+    pub fn save_proof(&self, proof: &Proof) -> Result<(), StorageError> {
+        let serialized = serde_json::to_string(proof)?;
+        self.conn.execute(
+            "
+            INSERT INTO proofs (
+                id, actor, delegation_id, operation, input_digest, output_digest,
+                timestamp, signature
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(id) DO UPDATE SET
+                actor = excluded.actor,
+                delegation_id = excluded.delegation_id,
+                operation = excluded.operation,
+                input_digest = excluded.input_digest,
+                output_digest = excluded.output_digest,
+                timestamp = excluded.timestamp,
+                signature = excluded.signature
+            ",
+            rusqlite::params![
+                proof.body.id.to_string(),
+                proof.body.actor.as_uuid().to_string(),
+                proof
+                    .body
+                    .delegation_id
+                    .map(|delegation_id| delegation_id.to_string()),
+                proof.body.operation,
+                proof.body.input_digest.hex(),
+                proof.body.output_digest.hex(),
+                proof.body.timestamp.to_rfc3339(),
+                serialized,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Loads a proof by ID.
+    pub fn load_proof(&self, proof_id: &Uuid) -> Result<Proof, StorageError> {
+        let serialized: String = self
+            .conn
+            .query_row(
+                "SELECT signature FROM proofs WHERE id = ?1",
+                [proof_id.to_string()],
+                |row| row.get(0),
+            )
+            .map_err(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    StorageError::NotFound(proof_id.to_string())
+                }
+                error => error.into(),
+            })?;
+        Ok(serde_json::from_str(&serialized)?)
+    }
+
+    /// Persists registry entries, replacing the stored collection.
+    pub fn save_registry(&self, entries: &[RegistryEntry]) -> Result<(), StorageError> {
+        let transaction = self.conn.unchecked_transaction()?;
+        transaction.execute("DELETE FROM registry_entries", [])?;
+        for entry in entries {
+            transaction.execute(
+                "
+                INSERT INTO registry_entries (operation, version, data)
+                VALUES (?1, ?2, ?3)
+                ",
+                rusqlite::params![
+                    entry.operation,
+                    entry.version,
+                    serde_json::to_string(entry)?,
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Loads all persisted registry entries in operation/version order.
+    pub fn load_registry(&self) -> Result<Vec<RegistryEntry>, StorageError> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT data FROM registry_entries ORDER BY operation, version")?;
+        let serialized_entries = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let entries = serialized_entries
+            .iter()
+            .map(|serialized| serde_json::from_str(serialized))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    /// Persists an execution context for the audit trail.
+    pub fn save_execution_context(&self, context: &ExecutionContext) -> Result<Uuid, StorageError> {
+        let context_id = Uuid::now_v7();
+        self.conn.execute(
+            "
+            INSERT INTO execution_contexts (
+                id, actor, delegation_id, workspace_path, timestamp
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
+            ",
+            rusqlite::params![
+                context_id.to_string(),
+                context.actor.as_uuid().to_string(),
+                context
+                    .delegation_id
+                    .map(|delegation_id| delegation_id.to_string()),
+                context.workspace_path.display().to_string(),
+                context.timestamp.to_rfc3339(),
+            ],
+        )?;
+        Ok(context_id)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{TimeZone, Utc};
+    use proof_kernel::{canonicalize, digest, generate_keypair_for, ArtifactKind, Governance};
+    use serde_json::json;
+    use std::path::PathBuf;
 
-    #[test]
-    fn opens_in_memory() {
-        let store = SqliteStore::in_memory().unwrap();
-        assert_eq!(store.object_count().unwrap(), 0);
-        assert_eq!(store.schema_count().unwrap(), 0);
-        assert_eq!(store.proof_count().unwrap(), 0);
+    fn test_proof() -> Proof {
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        let input_json = canonicalize(&json!({"input": "test"})).unwrap();
+        let output_json = canonicalize(&json!({"output": "ok"})).unwrap();
+        let input = digest(ArtifactKind::OperationInput, &input_json);
+        let output = digest(ArtifactKind::OperationOutput, &output_json);
+        Proof::new(
+            Uuid::now_v7(),
+            keypair.principal_id,
+            None,
+            "test.operation",
+            input,
+            output,
+            Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap(),
+        )
+        .sign(&keypair)
+        .unwrap()
+    }
+
+    fn test_registry_entry(operation: &str) -> RegistryEntry {
+        RegistryEntry {
+            operation: operation.to_string(),
+            domain: "test".to_string(),
+            version: "v1".to_string(),
+            action: "test:action".to_string(),
+            description: "test entry".to_string(),
+            input_schema: "input.json".to_string(),
+            output_schema: "output.json".to_string(),
+            required_authority: "delegation-grant".to_string(),
+            governance: Governance::AgentExecutable,
+            idempotency: "required".to_string(),
+            consequence: "test-consequence".to_string(),
+            evidence_contract: "test-contract".to_string(),
+            benchmark: None,
+        }
     }
 
     #[test]
-    fn opens_file_database() {
-        let dir = std::env::temp_dir().join("proof-storage-test");
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("test.db");
-        let _ = std::fs::remove_file(&db_path);
-        let store = SqliteStore::open(&db_path).unwrap();
-        assert_eq!(store.object_count().unwrap(), 0);
+    fn proof_round_trips() {
+        let store = SqliteStore::in_memory().unwrap();
+        let proof = test_proof();
+        store.save_proof(&proof).unwrap();
+        let loaded = store.load_proof(&proof.body.id).unwrap();
+        assert_eq!(loaded, proof);
+    }
+
+    #[test]
+    fn registry_entries_round_trip() {
+        let store = SqliteStore::in_memory().unwrap();
+        let entries = vec![
+            test_registry_entry("alpha.operation"),
+            test_registry_entry("zulu.operation"),
+        ];
+        store.save_registry(&entries).unwrap();
+        let loaded = store.load_registry().unwrap();
+        assert_eq!(loaded, entries);
+    }
+
+    #[test]
+    fn execution_context_is_persisted() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Human);
+        let context = ExecutionContext {
+            actor: keypair.principal_id,
+            delegation_id: None,
+            workspace_path: PathBuf::from("/tmp/workspace"),
+            timestamp: Utc::now(),
+        };
+        let context_id = store.save_execution_context(&context).unwrap();
+        let count: i64 = store
+            .connection()
+            .query_row("SELECT COUNT(*) FROM execution_contexts", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 1);
+        assert!(Uuid::parse_str(&context_id.to_string()).is_ok());
     }
 }
