@@ -2,7 +2,10 @@ use proof_kernel::{
     ExecutionContext, ExecutionEngine, ExecutionError, Governance, PrincipalId, Registry,
     RegistryEntry,
 };
-use proof_transport_mcp::{handle_tool_call, tools_from_registry, McpToolCall};
+use proof_transport_mcp::{
+    handle_tool_call, list_tools, tool_annotations, tools_from_registry, McpCursorError,
+    McpToolAnnotations, McpToolCall,
+};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -65,9 +68,17 @@ fn registry_entry(operation: &str, governance: Governance) -> RegistryEntry {
         required_authority: "delegation-grant".to_string(),
         governance,
         idempotency: "required-uuidv7".to_string(),
-        consequence: "content-mutation".to_string(),
+        consequence: consequence_for_operation(operation).to_string(),
         evidence_contract: "operation-effect-v1".to_string(),
         benchmark: None,
+    }
+}
+
+fn consequence_for_operation(operation: &str) -> &'static str {
+    match operation {
+        "test.echo" => "content-query",
+        "test.human_only" => "content-approval",
+        _ => "content-mutation",
     }
 }
 
@@ -118,6 +129,21 @@ fn generated_tools_match_registry_schemas() {
     assert_eq!(agent_tool.description, "Test operation test.echo");
     assert_eq!(agent_tool.input_schema, expected_agent_input);
     assert_eq!(agent_tool.output_schema, expected_agent_output);
+    assert_eq!(
+        agent_tool.annotations,
+        Some(tool_annotations(&registry.operations()[0]))
+    );
+    assert_eq!(
+        agent_tool.annotations,
+        Some(McpToolAnnotations {
+            destructive: Some(false),
+            idempotent: Some(true),
+            read_only: Some(true),
+        })
+    );
+    assert_eq!(human_tool.annotations.unwrap().read_only, Some(true));
+    assert_eq!(human_tool.annotations.unwrap().destructive, Some(false));
+    assert_eq!(human_tool.annotations.unwrap().idempotent, Some(true));
     assert_eq!(human_tool.description, "Test operation test.human_only");
     assert_eq!(human_tool.input_schema, expected_human_input);
     assert_eq!(human_tool.output_schema, expected_agent_output);
@@ -136,9 +162,64 @@ fn agent_executable_tool_succeeds_through_mcp_flow() {
     assert!(!result.is_error);
     assert_eq!(result.content.len(), 1);
     assert_eq!(result.content[0].content_type, "text");
-    let output: Value = serde_json::from_str(&result.content[0].text).unwrap();
-    assert_eq!(output["handled_by"], "test.echo");
-    assert_eq!(output["echo"]["message"], "hello");
+    let structured = result.structured_content.unwrap();
+    assert_eq!(structured["result"]["handled_by"], "test.echo");
+    assert_eq!(structured["result"]["echo"]["message"], "hello");
+    assert_eq!(
+        structured["proof"]["body"]["actor"],
+        structured["proof"]["body"]["actor"]
+    );
+    assert!(structured["proof"]["body"]["operation"] == "test.echo");
+    assert!(structured["proof"]["signature"].as_array().unwrap().len() == 64);
+}
+
+#[test]
+fn tools_are_paginated_with_cursor_protocol() {
+    let entries: Vec<RegistryEntry> = (0..25)
+        .map(|index| {
+            let operation = format!("test.tool_{index:02}");
+            registry_entry(&operation, Governance::AgentExecutable)
+        })
+        .collect();
+    let registry = Registry::new(entries).unwrap();
+
+    let first_page = list_tools(&registry, None).unwrap();
+    assert_eq!(first_page.tools.len(), 20);
+    assert!(first_page.next_cursor.is_some());
+    assert_eq!(first_page.tools[0].name, "proof_content_v1_test_tool_00");
+    assert_eq!(first_page.tools[19].name, "proof_content_v1_test_tool_19");
+
+    let second_page = list_tools(&registry, first_page.next_cursor.as_deref()).unwrap();
+    assert_eq!(second_page.tools.len(), 5);
+    assert!(second_page.next_cursor.is_none());
+    assert_eq!(second_page.tools[0].name, "proof_content_v1_test_tool_20");
+    assert_eq!(second_page.tools[4].name, "proof_content_v1_test_tool_24");
+
+    assert!(matches!(
+        list_tools(&registry, Some("not-base64")),
+        Err(McpCursorError::Invalid)
+    ));
+    assert!(matches!(
+        list_tools(&registry, Some("MjY=")),
+        Err(McpCursorError::OutOfRange)
+    ));
+}
+
+#[test]
+fn destructive_operations_are_annotated() {
+    let mut entry = registry_entry("test.delete", Governance::AgentExecutable);
+    entry.operation = "test.delete".to_string();
+    entry.idempotency = "not-required".to_string();
+    entry.consequence = "content-deletion".to_string();
+    let annotations = tool_annotations(&entry);
+    assert_eq!(
+        annotations,
+        McpToolAnnotations {
+            destructive: Some(true),
+            idempotent: Some(false),
+            read_only: Some(false),
+        }
+    );
 }
 
 #[test]

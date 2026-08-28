@@ -20,3 +20,5 @@ anyhow = "1"
 chrono.workspace = true
 ed25519-dalek.workspace = true
 base64.workspace = true
+proof-storage = { path = "../proof-storage" }
+rusqlite.workspace = true
