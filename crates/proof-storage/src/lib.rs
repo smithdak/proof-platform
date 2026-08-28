@@ -4,7 +4,7 @@ pub mod cas;
 pub mod sqlite;
 
 pub use cas::{BlobReference, ContentAddressedStore, GarbageCollectionResult};
-pub use sqlite::{Migration, SqliteStore, MIGRATIONS};
+pub use sqlite::{Migration, ProofFilter, SqliteStore, MIGRATIONS};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {

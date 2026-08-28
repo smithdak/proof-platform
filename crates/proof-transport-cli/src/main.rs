@@ -10,8 +10,8 @@ use proof_content::{
 };
 use proof_kernel::{
     canonicalize, create_proof, digest, generate_keypair, principal_from_keypair, ArtifactKind,
-    ExecutionContext, ExecutionEngine, ExecutionError, OperationHandler, PrincipalId, Proof,
-    Registry,
+    Benchmark, BenchmarkResult, BenchmarkRunner, ExecutionContext, ExecutionEngine, ExecutionError,
+    OperationHandler, PrincipalId, Proof, Registry, RegistryEntry,
 };
 use proof_kernel::{Delegation, DelegationChain};
 use proof_storage::SqliteStore;
@@ -81,6 +81,8 @@ enum Command {
         input: String,
     },
     #[command(subcommand)]
+    Benchmark(BenchmarkCommand),
+    #[command(subcommand)]
     Delegation(DelegationCommand),
     Export {
         #[arg(short, long)]
@@ -90,6 +92,21 @@ enum Command {
         #[arg(short, long)]
         input: PathBuf,
     },
+}
+
+#[derive(Subcommand)]
+enum BenchmarkCommand {
+    Run {
+        operation: String,
+        version: String,
+        #[arg(long)]
+        threshold_ms: u64,
+        #[arg(long, default_value_t = 10)]
+        runs: u32,
+        #[arg(short, long, default_value = "{}")]
+        input: String,
+    },
+    Report,
 }
 
 #[derive(Subcommand)]
@@ -505,6 +522,16 @@ fn main() -> Result<()> {
             version,
             input,
         } => cmd_execute(&cli, operation, version, input)?,
+        Command::Benchmark(command) => match command {
+            BenchmarkCommand::Run {
+                operation,
+                version,
+                threshold_ms,
+                runs,
+                input,
+            } => cmd_benchmark_run(&cli, operation, version, *threshold_ms, *runs, input)?,
+            BenchmarkCommand::Report => cmd_benchmark_report(&cli)?,
+        },
         Command::Delegation(command) => match command {
             DelegationCommand::Grant { agent_id, scope } => {
                 cmd_delegation_grant(&cli, agent_id, scope)?
@@ -913,6 +940,156 @@ fn cmd_execute(cli: &Cli, operation: &str, version: &str, input: &str) -> Result
     Ok(())
 }
 
+fn benchmark_contract(entry: &RegistryEntry, threshold_ms: u64) -> Result<Benchmark> {
+    let benchmark_id = entry.benchmark.as_deref().with_context(|| {
+        format!(
+            "operation {} {} does not declare a benchmark",
+            entry.operation, entry.version
+        )
+    })?;
+    if threshold_ms == 0 {
+        bail!("--threshold-ms must be greater than zero");
+    }
+    BenchmarkRunner::benchmark(
+        benchmark_id,
+        "CLI operation benchmark",
+        threshold_ms,
+        serde_json::json!({"type": "object"}),
+    )
+    .map_err(|error| anyhow::anyhow!(error.to_string()))
+}
+
+fn benchmark_summary(results: &[BenchmarkResult]) -> Value {
+    let mut durations: Vec<u64> = results.iter().map(|result| result.duration_ms).collect();
+    durations.sort_unstable();
+    let percentile = |percentile: f64| -> u64 {
+        if durations.is_empty() {
+            0
+        } else {
+            let index = ((durations.len() as f64 - 1.0) * percentile).ceil() as usize;
+            durations[index.min(durations.len() - 1)]
+        }
+    };
+    let count = durations.len() as u64;
+    let total: u128 = durations.iter().map(|duration| *duration as u128).sum();
+    serde_json::json!({
+        "runs": count,
+        "passed": results.iter().filter(|result| result.passed).count(),
+        "failed": results.iter().filter(|result| !result.passed).count(),
+        "avg_ms": if count == 0 { 0.0 } else { total as f64 / count as f64 },
+        "p95_ms": percentile(0.95),
+        "max_ms": durations.last().copied().unwrap_or(0),
+    })
+}
+
+fn cmd_benchmark_run(
+    cli: &Cli,
+    operation: &str,
+    version: &str,
+    threshold_ms: u64,
+    runs: u32,
+    input: &str,
+) -> Result<()> {
+    if runs == 0 {
+        bail!("--runs must be greater than zero");
+    }
+    let ws = Workspace::open(&cli.workspace)?;
+    let input_value: Value = serde_json::from_str(input).context("invalid input JSON")?;
+    let registry = load_registry(&ws.root)?;
+    let entry = registry
+        .find(operation, version)
+        .with_context(|| format!("operation not found: {operation} {version}"))?
+        .clone();
+    let benchmark = benchmark_contract(&entry, threshold_ms)?;
+    let engine = build_engine(registry)?;
+    let context = ExecutionContext {
+        actor: ws.actor,
+        delegation_id: None,
+        delegation_chain: None,
+        workspace_path: ws.root.clone(),
+        timestamp: chrono::Utc::now(),
+    };
+    let runner = BenchmarkRunner;
+    let mut results = Vec::with_capacity(runs as usize);
+    let store = open_store(&ws.root)?;
+    for _ in 0..runs {
+        let result = runner
+            .run(
+                &engine,
+                &benchmark,
+                operation,
+                version,
+                &input_value,
+                &context,
+            )
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        store
+            .save_benchmark_result(&result)
+            .map_err(anyhow::Error::from)?;
+        results.push(result);
+    }
+    let summary = benchmark_summary(&results);
+    let passed = summary["failed"] == 0;
+    println!(
+        "{}",
+        serde_json::json!({
+            "status": if passed { "passed" } else { "failed" },
+            "operation": operation,
+            "version": version,
+            "benchmark": benchmark.name,
+            "threshold_ms": threshold_ms,
+            "summary": summary,
+        })
+    );
+    if !passed {
+        bail!("benchmark failed");
+    }
+    Ok(())
+}
+
+fn cmd_benchmark_report(cli: &Cli) -> Result<()> {
+    let ws = Workspace::open(&cli.workspace)?;
+    let store = open_store(&ws.root)?;
+    let connection = store.connection();
+    let mut statement = connection.prepare_cached(
+        "
+        SELECT
+            operation,
+            version,
+            COUNT(*) AS runs,
+            SUM(passed) AS passed,
+            ROUND(AVG(duration_ms), 3) AS avg_ms,
+            MAX(duration_ms) AS max_ms
+        FROM benchmark_results
+        GROUP BY operation, version
+        ORDER BY operation, version
+        ",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, f64>(4)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    println!(
+        "{:<28} {:<10} {:>6} {:>8} {:>12} {:>10}",
+        "OPERATION", "VERSION", "RUNS", "PASSED", "AVG MS", "MAX MS"
+    );
+    for (operation, version, runs, passed, average, maximum) in rows {
+        println!(
+            "{:<28} {:<10} {:>6} {:>8} {:>12.3} {:>10}",
+            operation, version, runs, passed, average, maximum
+        );
+    }
+    Ok(())
+}
+
 fn open_store(root: &PathBuf) -> Result<SqliteStore> {
     let database_path = root.join(".proof/storage/storage.db");
     if let Some(parent) = database_path.parent() {
@@ -941,6 +1118,7 @@ fn delegation_from_row(
         recipient: PrincipalId::new(uuid::Uuid::parse_str(&recipient)?),
         allowed_actions: parse_json("allowed_actions", &allowed_actions)?,
         resource_scope: parse_json("resource_scope", &resource_scope)?,
+        scope: Default::default(),
         valid_from: chrono::DateTime::parse_from_rfc3339(&valid_from)?.with_timezone(&chrono::Utc),
         valid_until: chrono::DateTime::parse_from_rfc3339(&valid_until)?
             .with_timezone(&chrono::Utc),
@@ -1156,6 +1334,7 @@ fn cmd_delegation_grant(cli: &Cli, agent_id: &str, scope_json: &str) -> Result<(
         recipient: PrincipalId::new(agent_uuid),
         allowed_actions,
         resource_scope,
+        scope: Default::default(),
         valid_from: chrono::Utc::now(),
         valid_until: chrono::Utc::now() + chrono::Duration::hours(24),
         revoked: false,
@@ -1376,9 +1555,8 @@ fn load_exported_blobs(store: &proof_storage::ContentAddressedStore) -> Result<V
     let mut blobs = Vec::new();
     let rows: Vec<(String, u64, String)> = {
         let connection = store.connection();
-        let mut statement = connection.prepare(
-            "SELECT digest, size_bytes, created_at FROM content_blobs ORDER BY digest",
-        )?;
+        let mut statement = connection
+            .prepare("SELECT digest, size_bytes, created_at FROM content_blobs ORDER BY digest")?;
         let rows = statement.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -1477,10 +1655,7 @@ fn import_workspace_files(root: &Path, files: Vec<(String, String, Value)>) -> R
     for (subdirectory, id, value) in files {
         let directory = root.join(".proof/data").join(subdirectory);
         std::fs::create_dir_all(&directory)?;
-        std::fs::write(
-            directory.join(id),
-            serde_json::to_string_pretty(&value)?,
-        )?;
+        std::fs::write(directory.join(id), serde_json::to_string_pretty(&value)?)?;
     }
     Ok(())
 }
@@ -1524,8 +1699,8 @@ fn cmd_export(cli: &Cli, output: &Path) -> Result<()> {
 
     let principal_rows = {
         let principal_connection = store.connection();
-        let mut principal_statement =
-            principal_connection.prepare("SELECT id, kind, public_key FROM principals ORDER BY id")?;
+        let mut principal_statement = principal_connection
+            .prepare("SELECT id, kind, public_key FROM principals ORDER BY id")?;
         let rows = principal_statement
             .query_map([], |row| {
                 Ok((
@@ -1691,8 +1866,6 @@ fn open_content_store(root: &Path) -> Result<proof_storage::ContentAddressedStor
 mod tests {
     use super::*;
     use assert_fs::prelude::*;
-    use base64::engine::general_purpose::STANDARD as BASE64;
-    use predicates::str::contains;
 
     #[test]
     fn exports_and_imports_workspace_round_trip() {
@@ -1790,13 +1963,73 @@ mod tests {
     }
 
     #[test]
+    fn benchmark_run_persists_and_report_reads_results() {
+        let workspace = assert_fs::TempDir::new().unwrap();
+        let init_args =
+            Cli::parse_from(["proof", "-w", workspace.path().to_str().unwrap(), "init"]);
+        cmd_init(&init_args).unwrap();
+        let registry_dir = workspace.path().join(".proof/registry/content");
+        std::fs::create_dir_all(&registry_dir).unwrap();
+        std::fs::write(
+            registry_dir.join("schema-create.json"),
+            r#"{"operation":"schema.create","domain":"content","version":"v1","action":"content:schema_create","description":"Create a content Schema definition","input_schema":"content/schema-create.input.json","output_schema":"content/schema-create.output.json","required_authority":"delegation-grant","governance":"agent-executable","idempotency":"required-uuidv7","consequence":"content-mutation","evidence_contract":"operation-effect-v1","benchmark":"B1"}"#,
+        )
+        .unwrap();
+
+        let run_args = Cli::parse_from([
+            "proof",
+            "-w",
+            workspace.path().to_str().unwrap(),
+            "benchmark",
+            "run",
+            "schema.create",
+            "v1",
+            "--threshold-ms",
+            "1000",
+            "--runs",
+            "2",
+            "--input",
+            r#"{"name":"test","version":1,"fields":[{"name":"title","field_type":"text","required":true,"localized":false}]}"#,
+        ]);
+        cmd_benchmark_run(
+            &run_args,
+            "schema.create",
+            "v1",
+            1000,
+            2,
+            r#"{"name":"test","version":1,"fields":[{"name":"title","field_type":"text","required":true,"localized":false}]}"#,
+        )
+        .unwrap();
+
+        let report_args = Cli::parse_from([
+            "proof",
+            "-w",
+            workspace.path().to_str().unwrap(),
+            "benchmark",
+            "report",
+        ]);
+        cmd_benchmark_report(&report_args).unwrap();
+
+        let store = open_store(&workspace.path().to_path_buf()).unwrap();
+        assert_eq!(
+            store
+                .list_benchmark_results("schema.create", "v1")
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
+    #[test]
     fn import_rejects_invalid_proof_signature() {
         let source = assert_fs::TempDir::new().unwrap();
         let target = assert_fs::TempDir::new().unwrap();
         let archive = source.child("invalid.tar.gz");
         let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
         cmd_init(&source_args).unwrap();
-        let workspace_keypair = Workspace::open(&source.path().to_path_buf()).unwrap().keypair;
+        let workspace_keypair = Workspace::open(&source.path().to_path_buf())
+            .unwrap()
+            .keypair;
         let mut workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
         let proof = workspace
             .make_proof(

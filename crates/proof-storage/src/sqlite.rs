@@ -19,10 +19,11 @@ pub struct Migration {
 }
 
 /// All ordered schema migrations.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    description: "create initial proof storage schema",
-    up: "
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        description: "create initial proof storage schema",
+        up: "
             CREATE TABLE IF NOT EXISTS schemas (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -130,7 +131,7 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
             CREATE INDEX IF NOT EXISTS idx_execution_contexts_timestamp
                 ON execution_contexts(timestamp);
             ",
-    down: "
+        down: "
             DROP INDEX IF EXISTS idx_execution_contexts_timestamp;
             DROP INDEX IF EXISTS idx_proofs_actor;
             DROP INDEX IF EXISTS idx_proofs_operation_version;
@@ -150,12 +151,56 @@ pub const MIGRATIONS: &[Migration] = &[Migration {
             DROP TABLE IF EXISTS changesets;
             DROP TABLE IF EXISTS objects;
             DROP TABLE IF EXISTS schemas;
+    ",
+    },
+    Migration {
+        version: 2,
+        description: "create benchmark results schema",
+        up: "
+            CREATE TABLE IF NOT EXISTS benchmark_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                benchmark TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                version TEXT NOT NULL,
+                passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
+                duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+                failure TEXT,
+                recorded_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_benchmark_results_operation_version
+                ON benchmark_results(operation, version, recorded_at);
             ",
-}];
+        down: "
+            DROP INDEX IF EXISTS idx_benchmark_results_operation_version;
+            DROP TABLE IF EXISTS benchmark_results;
+            ",
+    },
+    Migration {
+        version: 3,
+        description: "track proof expiration",
+        up: "
+            ALTER TABLE proofs ADD COLUMN expires_at TEXT;
+            CREATE INDEX IF NOT EXISTS idx_proofs_expiration ON proofs(expires_at);
+        ",
+        down: "
+            DROP INDEX IF EXISTS idx_proofs_expiration;
+            ALTER TABLE proofs DROP COLUMN expires_at;
+        ",
+    },
+];
 
 /// A SQLite-backed store for Proof data.
 pub struct SqliteStore {
     conn: Mutex<Connection>,
+}
+
+/// Filters used by proof listing and counting queries.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct ProofFilter {
+    pub operation: Option<String>,
+    pub version: Option<String>,
+    pub actor: Option<String>,
 }
 
 impl ExecutionStore for SqliteStore {
@@ -166,6 +211,16 @@ impl ExecutionStore for SqliteStore {
     fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String> {
         SqliteStore::save_execution_context(self, context)
             .map(|context_id| context_id.to_string())
+            .map_err(|error| error.to_string())
+    }
+
+    fn latest_proof_for_operation(
+        &self,
+        operation: &str,
+        version: &str,
+    ) -> Result<Option<Proof>, String> {
+        self.list_proofs_for_operation_with_options(operation, Some(version), true)
+            .map(|mut proofs| proofs.pop())
             .map_err(|error| error.to_string())
     }
 }
@@ -222,6 +277,42 @@ impl SqliteStore {
                 .unwrap()
                 .query_row("SELECT COUNT(*) FROM proofs", [], |row| row.get(0))?;
         Ok(count)
+    }
+
+    /// Returns the count of proofs matching the supplied filter.
+    pub fn count_proofs(&self, filter: &ProofFilter) -> Result<u64, StorageError> {
+        let sql = "
+            SELECT COUNT(*)
+            FROM proofs
+            WHERE (?1 IS NULL OR operation LIKE ?1 || '::%')
+              AND (?2 IS NULL OR version = ?2)
+              AND (?3 IS NULL OR actor = ?3)
+        ";
+        let count: u64 = self.conn.lock().unwrap().query_row(
+            sql,
+            rusqlite::params![filter.operation, filter.version, filter.actor],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_raw_proof_row(
+        &self,
+        id: &Uuid,
+        actor: &str,
+        version: &str,
+        operation: &str,
+        timestamp: &str,
+    ) -> Result<(), StorageError> {
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO proofs (
+                id, actor, version, delegation_id, operation, input_digest, output_digest,
+                timestamp, signature
+            ) VALUES (?1, ?2, ?3, NULL, ?4, '', '', ?5, '')",
+            rusqlite::params![id.to_string(), actor, version, operation, timestamp],
+        )?;
+        Ok(())
     }
 
     /// Returns the count of audit contexts in the store.
@@ -312,21 +403,26 @@ impl SqliteStore {
         let input_digest = proof.body.input_digest.hex();
         let output_digest = proof.body.output_digest.hex();
         let timestamp = proof.body.timestamp.to_rfc3339();
+        let expires_at = proof
+            .body
+            .expires_at
+            .map(|expires_at| expires_at.to_rfc3339());
         self.conn.lock().unwrap().execute(
             "
                 INSERT INTO proofs (
                     id, actor, version, delegation_id, operation, input_digest, output_digest,
-                    timestamp, signature
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                    timestamp, expires_at, signature
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                 ON CONFLICT(id) DO UPDATE SET
                     actor = excluded.actor,
                     version = excluded.version,
                     delegation_id = excluded.delegation_id,
                 operation = excluded.operation,
                 input_digest = excluded.input_digest,
-                output_digest = excluded.output_digest,
-                timestamp = excluded.timestamp,
-                signature = excluded.signature
+                    output_digest = excluded.output_digest,
+                    timestamp = excluded.timestamp,
+                    expires_at = excluded.expires_at,
+                    signature = excluded.signature
             ",
             rusqlite::params![
                 id,
@@ -337,21 +433,37 @@ impl SqliteStore {
                 input_digest,
                 output_digest,
                 timestamp,
+                expires_at,
                 serialized,
             ],
         )?;
         Ok(())
     }
 
-    /// Loads a proof by ID.
+    /// Loads a proof by ID, excluding expired proofs by default.
     pub fn load_proof(&self, proof_id: &Uuid) -> Result<Proof, StorageError> {
+        self.load_proof_with_options(proof_id, false)
+    }
+
+    /// Loads a proof by ID, optionally including expired proofs.
+    pub fn load_proof_with_options(
+        &self,
+        proof_id: &Uuid,
+        include_expired: bool,
+    ) -> Result<Proof, StorageError> {
         let serialized: String = self
             .conn
             .lock()
             .unwrap()
             .query_row(
-                "SELECT signature FROM proofs WHERE id = ?1",
-                [proof_id.to_string()],
+                "SELECT signature FROM proofs
+                 WHERE id = ?1
+                   AND (?2 OR expires_at IS NULL OR expires_at > ?3)",
+                rusqlite::params![
+                    proof_id.to_string(),
+                    include_expired,
+                    Utc::now().to_rfc3339()
+                ],
                 |row| row.get(0),
             )
             .map_err(|error| match error {
@@ -363,11 +475,21 @@ impl SqliteStore {
         Ok(serde_json::from_str(&serialized)?)
     }
 
-    /// Loads all proofs for an operation in ascending proof timestamp order.
+    /// Loads all non-expired proofs for an operation in ascending timestamp order.
     pub fn list_proofs_for_operation(
         &self,
         operation: &str,
         version: Option<&str>,
+    ) -> Result<Vec<Proof>, StorageError> {
+        self.list_proofs_for_operation_with_options(operation, version, false)
+    }
+
+    /// Loads all proofs for an operation, optionally including expired proofs.
+    pub fn list_proofs_for_operation_with_options(
+        &self,
+        operation: &str,
+        version: Option<&str>,
+        include_expired: bool,
     ) -> Result<Vec<Proof>, StorageError> {
         let connection = self.conn.lock().unwrap();
         let serialized_proofs;
@@ -375,20 +497,32 @@ impl SqliteStore {
             let mut statement = connection.prepare_cached(
                 "SELECT signature FROM proofs
                  WHERE operation = ?1 AND version = ?2
+                   AND (?3 OR expires_at IS NULL OR expires_at > ?4)
                  ORDER BY timestamp, id",
             )?;
             serialized_proofs = statement
                 .query_map(
-                    rusqlite::params![format!("{operation}::{version}"), version],
+                    rusqlite::params![
+                        format!("{operation}::{version}"),
+                        version,
+                        include_expired,
+                        Utc::now().to_rfc3339()
+                    ],
                     |row| row.get::<_, String>(0),
                 )?
                 .collect::<Result<Vec<_>, _>>()?;
         } else {
             let mut statement = connection.prepare_cached(
-                "SELECT signature FROM proofs WHERE operation LIKE ?1 || '::%' ORDER BY timestamp, id",
+                "SELECT signature FROM proofs
+                 WHERE operation LIKE ?1 || '::%'
+                   AND (?2 OR expires_at IS NULL OR expires_at > ?3)
+                 ORDER BY timestamp, id",
             )?;
             serialized_proofs = statement
-                .query_map([operation], |row| row.get::<_, String>(0))?
+                .query_map(
+                    rusqlite::params![operation, include_expired, Utc::now().to_rfc3339()],
+                    |row| row.get::<_, String>(0),
+                )?
                 .collect::<Result<Vec<_>, _>>()?;
         }
         Ok(serialized_proofs
@@ -397,19 +531,36 @@ impl SqliteStore {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Loads all proofs signed by an actor in ascending proof timestamp order.
+    /// Loads all non-expired proofs signed by an actor in ascending timestamp order.
     pub fn list_proofs_for_actor(
         &self,
         actor_id: &proof_kernel::PrincipalId,
     ) -> Result<Vec<Proof>, StorageError> {
+        self.list_proofs_for_actor_with_options(actor_id, false)
+    }
+
+    /// Loads all proofs signed by an actor, optionally including expired proofs.
+    pub fn list_proofs_for_actor_with_options(
+        &self,
+        actor_id: &proof_kernel::PrincipalId,
+        include_expired: bool,
+    ) -> Result<Vec<Proof>, StorageError> {
         let connection = self.conn.lock().unwrap();
         let mut statement = connection.prepare_cached(
-            "SELECT signature FROM proofs WHERE actor = ?1 ORDER BY timestamp, id",
+            "SELECT signature FROM proofs
+             WHERE actor = ?1
+               AND (?2 OR expires_at IS NULL OR expires_at > ?3)
+             ORDER BY timestamp, id",
         )?;
         let serialized_proofs = statement
-            .query_map([actor_id.as_uuid().to_string()], |row| {
-                row.get::<_, String>(0)
-            })?
+            .query_map(
+                rusqlite::params![
+                    actor_id.as_uuid().to_string(),
+                    include_expired,
+                    Utc::now().to_rfc3339()
+                ],
+                |row| row.get::<_, String>(0),
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         serialized_proofs
             .iter()
@@ -453,6 +604,15 @@ impl SqliteStore {
         let deleted = self.conn.lock().unwrap().execute(
             "DELETE FROM execution_contexts WHERE timestamp < ?1",
             [before.to_rfc3339()],
+        )?;
+        Ok(deleted as u64)
+    }
+
+    /// Deletes proofs expired at or before the supplied timestamp.
+    pub fn purge_expired_proofs(&self, now: DateTime<Utc>) -> Result<u64, StorageError> {
+        let deleted = self.conn.lock().unwrap().execute(
+            "DELETE FROM proofs WHERE expires_at IS NOT NULL AND expires_at <= ?1",
+            [now.to_rfc3339()],
         )?;
         Ok(deleted as u64)
     }
@@ -514,6 +674,81 @@ impl SqliteStore {
             ],
         )?;
         Ok(context_id)
+    }
+
+    /// Persists one benchmark iteration result.
+    pub fn save_benchmark_result(
+        &self,
+        result: &proof_kernel::BenchmarkResult,
+    ) -> Result<(), StorageError> {
+        self.conn.lock().unwrap().execute(
+            "
+            INSERT INTO benchmark_results (
+                benchmark, operation, version, passed, duration_ms, failure, recorded_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ",
+            rusqlite::params![
+                result.benchmark,
+                result.operation,
+                result.version,
+                result.passed,
+                i64::try_from(result.duration_ms).map_err(|_| StorageError::Conflict(
+                    "benchmark duration exceeds SQLite's integer range".to_string()
+                ))?,
+                result.failure.as_deref(),
+                result.timestamp.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Loads benchmark results for an operation/version in recorded order.
+    pub fn list_benchmark_results(
+        &self,
+        operation: &str,
+        version: &str,
+    ) -> Result<Vec<proof_kernel::BenchmarkResult>, StorageError> {
+        let connection = self.conn.lock().unwrap();
+        let mut statement = connection.prepare_cached(
+            "
+            SELECT benchmark, operation, version, passed, duration_ms, failure, recorded_at
+            FROM benchmark_results
+            WHERE operation = ?1 AND version = ?2
+            ORDER BY id
+            ",
+        )?;
+        let results = statement
+            .query_map(rusqlite::params![operation, version], |row| {
+                let passed: bool = row.get(3)?;
+                let duration_ms: i64 = row.get(4)?;
+                let timestamp: DateTime<Utc> =
+                    DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                6,
+                                rusqlite::types::Type::Text,
+                                error.into(),
+                            )
+                        })?
+                        .with_timezone(&Utc);
+                Ok(proof_kernel::BenchmarkResult {
+                    benchmark: row.get(0)?,
+                    operation: row.get(1)?,
+                    version: row.get(2)?,
+                    passed,
+                    duration_ms: u64::try_from(duration_ms).map_err(|_| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            4,
+                            rusqlite::types::Type::Integer,
+                            "benchmark duration is negative".into(),
+                        )
+                    })?,
+                    timestamp,
+                    failure: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(results)
     }
 }
 
@@ -645,6 +880,33 @@ mod tests {
     ) -> proof_kernel::ContentDigest {
         let canonical = proof_kernel::canonicalize(&value).unwrap();
         proof_kernel::digest(kind, &canonical)
+    }
+
+    fn expired_proof(
+        keypair: &proof_kernel::Keypair,
+        operation: &str,
+        timestamp: chrono::DateTime<Utc>,
+        expires_at: chrono::DateTime<Utc>,
+    ) -> Proof {
+        let input = json_digest(
+            proof_kernel::ArtifactKind::OperationInput,
+            json!({"expired": timestamp.to_rfc3339()}),
+        );
+        let output = json_digest(
+            proof_kernel::ArtifactKind::OperationOutput,
+            json!({"expired": expires_at.to_rfc3339()}),
+        );
+        let mut proof = Proof::new(
+            Uuid::now_v7(),
+            keypair.principal_id,
+            None,
+            operation,
+            input,
+            output,
+            timestamp,
+        );
+        proof.body.expires_at = Some(expires_at);
+        proof.sign(keypair).unwrap()
     }
 
     fn test_registry_entry(operation: &str) -> RegistryEntry {
@@ -962,5 +1224,108 @@ mod tests {
             .unwrap();
         assert_eq!(remaining, vec![keep_id.to_string()]);
         assert_ne!(expired_id, keep_id);
+    }
+
+    #[test]
+    fn load_and_list_exclude_expired_proofs_by_default() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        let principal = proof_kernel::principal_from_keypair(&keypair);
+        store.save_principal(&principal).unwrap();
+
+        let expired = expired_proof(
+            &keypair,
+            "expiry.operation::v1",
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+            Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap(),
+        );
+        let active = expired_proof(
+            &keypair,
+            "expiry.operation::v1",
+            Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 1).unwrap(),
+            Utc::now() + chrono::Duration::hours(1),
+        );
+        store.save_proof(&expired).unwrap();
+        store.save_proof(&active).unwrap();
+
+        assert!(matches!(
+            store.load_proof(&expired.body.id),
+            Err(StorageError::NotFound(_))
+        ));
+        assert_eq!(
+            store
+                .load_proof_with_options(&expired.body.id, true)
+                .unwrap()
+                .body
+                .id,
+            expired.body.id
+        );
+        assert_eq!(
+            store
+                .list_proofs_for_operation("expiry.operation", Some("v1"))
+                .unwrap(),
+            vec![active.clone()]
+        );
+        assert_eq!(
+            store
+                .list_proofs_for_operation_with_options("expiry.operation", Some("v1"), true)
+                .unwrap(),
+            vec![expired.clone(), active.clone()]
+        );
+        assert_eq!(
+            store.list_proofs_for_actor(&keypair.principal_id).unwrap(),
+            vec![active.clone()]
+        );
+        assert_eq!(
+            store
+                .list_proofs_for_actor_with_options(&keypair.principal_id, true)
+                .unwrap(),
+            vec![expired, active]
+        );
+    }
+
+    #[test]
+    fn purges_only_proofs_expired_at_or_before_now() {
+        let store = SqliteStore::in_memory().unwrap();
+        let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+        let principal = proof_kernel::principal_from_keypair(&keypair);
+        store.save_principal(&principal).unwrap();
+
+        let past = expired_proof(
+            &keypair,
+            "purge.operation::v1",
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+            Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 0).unwrap(),
+        );
+        let boundary = expired_proof(
+            &keypair,
+            "purge.operation::v1",
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 1).unwrap(),
+            Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 1).unwrap(),
+        );
+        let future = expired_proof(
+            &keypair,
+            "purge.operation::v1",
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 2).unwrap(),
+            Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 2).unwrap(),
+        );
+        store.save_proof(&past).unwrap();
+        store.save_proof(&boundary).unwrap();
+        store.save_proof(&future).unwrap();
+
+        let deleted = store
+            .purge_expired_proofs(Utc.with_ymd_and_hms(2026, 1, 2, 0, 0, 1).unwrap())
+            .unwrap();
+
+        assert_eq!(deleted, 2);
+        assert_eq!(store.proof_count().unwrap(), 1);
+        assert_eq!(
+            store
+                .load_proof_with_options(&future.body.id, true)
+                .unwrap()
+                .body
+                .id,
+            future.body.id
+        );
     }
 }

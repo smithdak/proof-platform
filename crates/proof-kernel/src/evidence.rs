@@ -19,6 +19,8 @@ pub struct ProofBody {
     pub input_digest: ContentDigest,
     pub output_digest: ContentDigest,
     pub timestamp: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +46,13 @@ impl From<IdentityError> for ProofError {
 }
 
 impl Proof {
+    /// Returns whether the proof was expired at the supplied instant.
+    pub fn is_expired(&self, now: DateTime<Utc>) -> bool {
+        self.body
+            .expires_at
+            .is_some_and(|expires_at| expires_at <= now)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Uuid,
@@ -63,6 +72,7 @@ impl Proof {
                 input_digest,
                 output_digest,
                 timestamp,
+                expires_at: None,
             },
             signature: Signature::from_bytes(&[0; 64]),
         }

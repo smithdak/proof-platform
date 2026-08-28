@@ -355,7 +355,7 @@ async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
     let matching = create_proof(
         keypair.principal_id,
         None,
-        "object.create",
+        "object.create::v1",
         &input,
         &output,
         chrono::Utc::now(),
@@ -381,21 +381,21 @@ async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
     let app = router(state.clone());
     let (status, body) = response_json(app, "GET", "/proofs", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["proofs"].as_array().unwrap().len(), 2);
+    assert_eq!(body["items"].as_array().unwrap().len(), 2);
+    assert_eq!(body["total"], 2);
+    assert_eq!(body["limit"], 20);
+    assert_eq!(body["offset"], 0);
 
     let app = router(state.clone());
     let (_, body) = response_json(
         app,
         "GET",
-        &format!("/proofs?operation={}", matching.body.operation),
+        &format!("/proofs?operation={}", "object.create"),
         None,
     )
     .await;
-    assert_eq!(body["proofs"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        body["proofs"][0]["body"]["id"],
-        matching.body.id.to_string()
-    );
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+    assert_eq!(body["items"][0]["body"]["id"], matching.body.id.to_string());
 
     let app = router(state.clone());
     let (_, body) = response_json(
@@ -405,7 +405,7 @@ async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
         None,
     )
     .await;
-    assert_eq!(body["proofs"].as_array().unwrap().len(), 1);
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
 
     let app = router(state.clone());
     let (status, body) =
@@ -424,6 +424,144 @@ async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["valid"], true);
+}
+
+#[tokio::test]
+async fn proof_listing_supports_combined_filters_pagination_and_sort() {
+    let store = SqliteStore::in_memory().unwrap();
+    let state = Arc::new(AppState::with_registry_and_store(
+        "/tmp/proof-http-test",
+        registry(),
+        store,
+    ));
+    let keypair = generate_keypair_for(PrincipalKind::Agent);
+    let other_keypair = generate_keypair_for(PrincipalKind::Human);
+    let base = chrono::Utc::now();
+
+    let proofs = vec![
+        create_proof(
+            keypair.principal_id,
+            None,
+            "object.create::v1",
+            &json!({"id": "first"}),
+            &json!({"actor": "first"}),
+            base,
+            &keypair,
+        )
+        .unwrap(),
+        create_proof(
+            keypair.principal_id,
+            None,
+            "object.create::v2",
+            &json!({"id": "second"}),
+            &json!({"actor": "second"}),
+            base + chrono::Duration::milliseconds(1),
+            &keypair,
+        )
+        .unwrap(),
+        create_proof(
+            other_keypair.principal_id,
+            None,
+            "object.create::v1",
+            &json!({"id": "third"}),
+            &json!({"actor": "third"}),
+            base + chrono::Duration::milliseconds(2),
+            &other_keypair,
+        )
+        .unwrap(),
+        create_proof(
+            keypair.principal_id,
+            None,
+            "other.operation::v1",
+            &json!({"id": "excluded"}),
+            &json!({}),
+            base + chrono::Duration::milliseconds(3),
+            &keypair,
+        )
+        .unwrap(),
+    ];
+    for proof in &proofs {
+        state.store.save_proof(proof).unwrap();
+    }
+
+    let query = format!(
+        "/proofs?operation={}&version={}&actor={}",
+        "object.create", "v1", keypair.principal_id
+    );
+    let (_, body) = response_json(router(state.clone()), "GET", &query, None).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(
+        body["items"][0]["body"]["id"],
+        proofs[0].body.id.to_string()
+    );
+
+    let (_, body) = response_json(
+        router(state.clone()),
+        "GET",
+        "/proofs?limit=2&offset=1&sort=timestamp&order=desc",
+        None,
+    )
+    .await;
+    assert_eq!(body["total"], 4);
+    assert_eq!(body["limit"], 2);
+    assert_eq!(body["offset"], 1);
+    let ids: Vec<String> = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|proof| proof["body"]["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        ids,
+        vec![proofs[2].body.id, proofs[1].body.id]
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+    );
+
+    let (_, body) = response_json(
+        router(state.clone()),
+        "GET",
+        "/proofs?sort=id&order=asc",
+        None,
+    )
+    .await;
+    let mut expected: Vec<String> = proofs
+        .iter()
+        .map(|proof| proof.body.id.to_string())
+        .collect();
+    expected.sort();
+    let ids: Vec<String> = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|proof| proof["body"]["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(ids, expected);
+
+    let (_, body) = response_json(
+        router(state.clone()),
+        "GET",
+        "/proofs?limit=250&offset=10",
+        None,
+    )
+    .await;
+    assert_eq!(body["limit"], 100);
+    assert_eq!(body["offset"], 10);
+    assert_eq!(body["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn proof_listing_rejects_invalid_sort_and_order() {
+    let state = Arc::new(AppState::with_registry("/tmp/proof-http-test", registry()));
+    let (status, body) =
+        response_json(router(state.clone()), "GET", "/proofs?sort=actor", None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "sort must be timestamp or id");
+
+    let (status, body) = response_json(router(state), "GET", "/proofs?order=down", None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "order must be asc or desc");
 }
 
 #[tokio::test]

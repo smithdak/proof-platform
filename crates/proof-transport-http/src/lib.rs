@@ -403,6 +403,10 @@ struct ProofFilters {
     operation: Option<String>,
     version: Option<String>,
     actor: Option<Uuid>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    sort: Option<String>,
+    order: Option<String>,
 }
 
 async fn list_proofs(
@@ -422,38 +426,76 @@ async fn list_proofs_inner(
     state: &SharedState,
     filters: ProofFilters,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let connection = state.store.connection();
+    let limit = filters.limit.unwrap_or(20).min(100);
+    let offset = filters.offset.unwrap_or(0);
+    let sort = match filters.sort.as_deref() {
+        None | Some("timestamp") => "timestamp",
+        Some("id") => "id",
+        Some(_) => {
+            return Err(bad_request("sort must be timestamp or id"));
+        }
+    };
+    let order = match filters.order.as_deref() {
+        None | Some("desc") => "DESC",
+        Some("asc") => "ASC",
+        Some(_) => {
+            return Err(bad_request("order must be asc or desc"));
+        }
+    };
+    let total = {
+        let filter = proof_storage::ProofFilter {
+            operation: filters.operation.clone(),
+            version: filters.version.clone(),
+            actor: filters.actor.map(|actor| actor.to_string()),
+        };
+        state
+            .store
+            .count_proofs(&filter)
+            .map_err(|error| internal_error(error.to_string()))?
+    };
     let mut sql = "
         SELECT signature, operation, actor
         FROM proofs
-        WHERE (?1 IS NULL OR operation = ?1)
-          AND (?2 IS NULL OR actor = ?2)
-        ORDER BY timestamp DESC
+        WHERE (?1 IS NULL OR operation LIKE ?1 || '::%')
+          AND (?2 IS NULL OR version = ?2)
+          AND (?3 IS NULL OR actor = ?3)
+        ORDER BY {sort} {order}, id
+        LIMIT ?4 OFFSET ?5
     "
     .to_string();
-    if filters.operation.is_some() && filters.version.is_some() {
-        sql.push_str(" LIMIT 0");
-    }
-    let mut statement = connection
-        .prepare(&sql)
-        .map_err(|error| internal_error(error.to_string()))?;
-    let serialized_proofs = statement
-        .query_map(
-            rusqlite::params![
-                filters.operation,
-                filters.actor.map(|actor| actor.to_string()),
-            ],
-            |row| row.get::<_, String>(0),
-        )
-        .map_err(|error| internal_error(error.to_string()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| internal_error(error.to_string()))?;
+    sql = sql.replace("{sort}", sort).replace("{order}", order);
+    let serialized_proofs = {
+        let connection = state.store.connection();
+        let mut statement = connection
+            .prepare(&sql)
+            .map_err(|error| internal_error(error.to_string()))?;
+        let serialized_proofs = statement
+            .query_map(
+                rusqlite::params![
+                    filters.operation,
+                    filters.version,
+                    filters.actor.map(|actor| actor.to_string()),
+                    limit,
+                    offset,
+                ],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|error| internal_error(error.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| internal_error(error.to_string()))?;
+        serialized_proofs
+    };
     let proofs = serialized_proofs
         .iter()
         .map(|serialized| serde_json::from_str::<Proof>(serialized))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| internal_error(error.to_string()))?;
-    Ok(Json(json!({ "proofs": proofs })))
+    Ok(Json(json!({
+        "items": proofs,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })))
 }
 
 async fn get_proof(
@@ -521,25 +563,28 @@ async fn list_audit(
     State(state): State<SharedState>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let connection = state.store.connection();
-    let mut statement = connection
-        .prepare(
-            "SELECT id, actor, workspace_path, timestamp
-             FROM execution_contexts
-             ORDER BY timestamp DESC",
-        )
-        .map_err(|error| internal_error(error.to_string()))?;
-    let audit = statement
-        .query_map([], |row| {
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "actor": row.get::<_, String>(1)?,
-                "workspace_path": row.get::<_, String>(2)?,
-                "timestamp": row.get::<_, String>(3)?,
-            }))
-        })
-        .map_err(|error| internal_error(error.to_string()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| internal_error(error.to_string()))?;
+    let audit = {
+        let mut statement = connection
+            .prepare(
+                "SELECT id, actor, workspace_path, timestamp
+                 FROM execution_contexts
+                 ORDER BY timestamp DESC",
+            )
+            .map_err(|error| internal_error(error.to_string()))?;
+        let audit = statement
+            .query_map([], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "actor": row.get::<_, String>(1)?,
+                    "workspace_path": row.get::<_, String>(2)?,
+                    "timestamp": row.get::<_, String>(3)?,
+                }))
+            })
+            .map_err(|error| internal_error(error.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| internal_error(error.to_string()))?;
+        audit
+    };
     Ok(Json(json!({ "contexts": audit })))
 }
 
@@ -601,12 +646,14 @@ fn execution_error_response(error: &ExecutionError) -> (StatusCode, Json<Value>)
     let status = match error {
         ExecutionError::OperationNotFound { .. } => StatusCode::NOT_FOUND,
         ExecutionError::HumanOnly => StatusCode::FORBIDDEN,
+        ExecutionError::ScopeViolation => StatusCode::FORBIDDEN,
         ExecutionError::Sunset => StatusCode::GONE,
         ExecutionError::NoHandler(_)
         | ExecutionError::HandlerFailed(_)
         | ExecutionError::EvidenceFailed(_)
         | ExecutionError::Delegation(_)
-        | ExecutionError::StorageFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        | ExecutionError::StorageFailed(_)
+        | ExecutionError::BenchmarkExpired { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (status, Json(json!({"error": error.to_string()})))
 }
@@ -616,4 +663,8 @@ fn internal_error(error: String) -> (StatusCode, Json<Value>) {
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({ "error": error })),
     )
+}
+
+fn bad_request(error: &str) -> (StatusCode, Json<Value>) {
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": error })))
 }

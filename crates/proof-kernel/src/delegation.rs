@@ -7,6 +7,42 @@ use uuid::Uuid;
 
 use crate::identity::PrincipalId;
 
+/// Operation-level execution boundary for a delegation grant.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DelegationScope {
+    /// Operations allowed by this grant. `None` allows every operation in
+    /// the grant's permitted domains.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_operations: Option<Vec<String>>,
+    /// Domains allowed by this grant. `None` allows every domain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_domains: Option<Vec<String>>,
+    /// Optional free-form resource boundary beyond the legacy resource scopes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_scope: Option<String>,
+}
+
+impl DelegationScope {
+    pub fn scope_allows_operation(&self, operation: &str, domain: &str) -> bool {
+        if let Some(domains) = &self.allowed_domains {
+            if !domains.iter().any(|allowed| allowed == domain) {
+                return false;
+            }
+        }
+
+        if let Some(operations) = &self.allowed_operations {
+            if !operations
+                .iter()
+                .any(|allowed| allowed == operation || wildcard(allowed, operation))
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum DelegationError {
     #[error("delegation chain cannot be empty")]
@@ -34,9 +70,15 @@ pub struct Delegation {
     pub recipient: PrincipalId,
     pub allowed_actions: Vec<String>,
     pub resource_scope: Vec<String>,
+    #[serde(default = "default_scope")]
+    pub scope: DelegationScope,
     pub valid_from: DateTime<Utc>,
     pub valid_until: DateTime<Utc>,
     pub revoked: bool,
+}
+
+fn default_scope() -> DelegationScope {
+    DelegationScope::default()
 }
 
 impl Delegation {
@@ -192,6 +234,7 @@ mod tests {
             recipient: PrincipalId::now(),
             allowed_actions: actions.iter().map(ToString::to_string).collect(),
             resource_scope: scopes.iter().map(ToString::to_string).collect(),
+            scope: DelegationScope::default(),
             valid_from: Utc::now() - Duration::minutes(1),
             valid_until: Utc::now() + Duration::minutes(1),
             revoked: false,
@@ -210,6 +253,7 @@ mod tests {
             recipient,
             allowed_actions: actions.iter().map(ToString::to_string).collect(),
             resource_scope: scopes.iter().map(ToString::to_string).collect(),
+            scope: DelegationScope::default(),
             valid_from: Utc::now() - Duration::minutes(1),
             valid_until: Utc::now() + Duration::minutes(1),
             revoked: false,
