@@ -1,8 +1,10 @@
 //! SQLite and PostgreSQL storage adapters for the Proof platform.
 
+pub mod cas;
 pub mod sqlite;
 
-pub use sqlite::SqliteStore;
+pub use cas::{BlobReference, ContentAddressedStore, GarbageCollectionResult};
+pub use sqlite::{Migration, SqliteStore, MIGRATIONS};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
@@ -14,4 +16,6 @@ pub enum StorageError {
     NotFound(String),
     #[error("conflict: {0}")]
     Conflict(String),
+    #[error("filesystem error: {0}")]
+    Io(#[from] std::io::Error),
 }

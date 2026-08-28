@@ -16,6 +16,8 @@ base64.workspace = true
 chrono.workspace = true
 jsonschema.workspace = true
 tempfile = "3"
+proof-observability = { path = "../proof-observability", optional = true }
 
 [features]
 test-util = []
+tracing = ["dep:proof-observability"]

@@ -1,8 +1,9 @@
 # Proof Platform
 
-Proof Platform is a governed, agent-native Rust platform in which autonomous software discovers and executes operations through a data-driven registry, bounded delegation, and domain handlers, while every successful governed transition produces a signed cryptographic proof of execution. Its kernel binds the actor, authority, operation, input digest, output digest, and timestamp into independently verifiable evidence, while content governance provides the first domain implementation.
+Proof Platform is a governed, agent-native Rust platform in which autonomous software discovers and executes operations through a data-driven registry, bounded delegation, and domain handlers, while successful governed transitions produce signed cryptographic proof of execution. Its kernel binds the actor, authority, operation, input digest, output digest, and timestamp into independently verifiable evidence, while content governance provides the first domain implementation.
 
 - **Full architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **Rust version:** 1.75 or newer
 - **License:** MIT
 
@@ -20,28 +21,31 @@ Proof Platform is a governed, agent-native Rust platform in which autonomous sof
                │                  │                   │
 ┌──────────────▼──────────────────▼───────────────────▼──────────────┐
 │                    Execution Engine (proof-kernel)                 │
-│   registry lookup → governance → delegation → handler dispatch     │
-│   canonical input/output → proof generation → execution audit      │
+│  registry → governance → delegation → handler dispatch → evidence   │
+│   benchmarks · canonical JSON · digests · optional operation spans   │
 └──────────────┬──────────────────┬───────────────────┬──────────────┘
                │                  │                   │
 ┌──────────────▼──────┐ ┌─────────▼─────────┐ ┌───────▼────────────┐
 │ Operation Registry  │ │  Content Domain   │ │      Storage       │
-│ versioned JSON rows │ │  handlers/models  │ │  SQLite adapter    │
+│ versioned JSON rows │ │ lifecycle handlers │ │  SQLite + blobs   │
 └─────────────────────┘ └───────────────────┘ └────────────────────┘
+
+Observability supplies structured JSON operation spans and HTTP request metrics.
 ```
 
-The transports are intentionally thin. The registry is the source of capability metadata and governance policy; the engine is the authority for execution and evidence; storage adapters persist proofs, execution contexts, and domain records.
+The transports are intentionally thin. The registry is the source of capability metadata and governance policy; the engine is the authority for execution and evidence; storage adapters persist proofs, execution contexts, and domain records. Optional observability records the same operations and HTTP requests without changing authorization or evidence semantics.
 
 ## Crates
 
 | Crate | Purpose |
 |---|---|
-| `proof-kernel` | Registry, execution engine, delegation, canonical JSON, Ed25519 identity, proofs |
-| `proof-content` | Content models and governed content operation handlers |
-| `proof-storage` | SQLite storage for proofs, execution contexts, principals, and domain records |
+| `proof-kernel` | Registry, execution engine, benchmarks, delegation, canonical JSON, Ed25519 identity, proofs |
+| `proof-content` | Content models, lifecycle handlers, and release pipeline |
+| `proof-storage` | SQLite migrations and storage for proofs, contexts, principals, delegations, registry entries, and domain records; content-addressed blobs |
 | `proof-transport-cli` | Developer-oriented `proof` binary |
 | `proof-transport-http` | Axum HTTP API on `0.0.0.0:3000` |
 | `proof-transport-mcp` | Registry-derived MCP tool schemas and governed tool-call execution |
+| `proof-observability` | Structured JSON tracing, operation spans, and HTTP request middleware |
 
 ## Quickstart
 
@@ -51,7 +55,7 @@ Build and install the CLI from the repository root:
 cargo install --path crates/proof-transport-cli
 ```
 
-Initialize a workspace. The command creates `.proof/`, a local Ed25519 workspace keypair, and workspace data directories:
+Initialize a workspace. The command creates `.proof/`, a local Ed25519 workspace keypair, SQLite storage, and workspace data directories:
 
 ```bash
 proof init
@@ -64,7 +68,7 @@ mkdir -p .proof/registry
 cp -R registry/. .proof/registry/
 ```
 
-Run the lifecycle:
+Run the content lifecycle:
 
 ```bash
 SCHEMA_ID="$(
@@ -90,15 +94,31 @@ proof edition-create --changeset-id "$CHANGESET_ID"
 proof release-publish --edition-id "$EDITION_ID" --environment preview
 ```
 
-The repository registry currently declares these operations:
+Execute a registry operation directly through the governed engine:
 
-| Operation | Version | Action | Governance | Required authority |
-|---|---|---|---|---|
-| `changeset.commit` | `v1` | `content:changeset_commit` | `agent-executable` | `delegation-grant` |
-| `object.create` | `v1` | `content:object_create` | `agent-executable` | `delegation-grant` |
-| `schema.create` | `v1` | `content:schema_create` | `agent-executable` | `delegation-grant` |
+```bash
+proof execute schema.create v1 --input '{
+  "name": "Article",
+  "version": 1,
+  "fields": [
+    { "name": "title", "field_type": "text", "required": true }
+  ]
+}'
+```
 
-The engine currently exposes handlers for `schema.create`, `object.create`, and `changeset.create`; registry-only entries require the handler noted below before they can execute.
+The repository registry currently declares these operations. The library content-handler set covers the first six; the CLI’s legacy direct path also handles `changeset.create`:
+
+| Operation | Version | Library handler |
+|---|---|---|
+| `schema.create` | `v1` | Yes |
+| `object.create` | `v1` | Yes |
+| `object.edit` | `v1` | Yes |
+| `content.approve` | `v1` | Yes |
+| `content.release` | `v1` | Yes |
+| `release.publish` | `v1` | Yes |
+| `changeset.commit` | `v1` | No |
+
+Registry entries without a registered handler will fail with `NoHandler`. Register a handler for the exact logical operation before executing it through the engine.
 
 ### Run the HTTP server
 
@@ -109,7 +129,7 @@ cargo build --release -p proof-transport-http
 ./target/release/proof-transport-http
 ```
 
-Set `PROOF_WORKSPACE` to an initialized workspace directory; it defaults to `.`. The server listens on port `3000` and uses `<workspace>/.proof/data/proofs/proofs.sqlite3` for evidence persistence.
+Set `PROOF_WORKSPACE` to an initialized workspace directory; it defaults to `.`. The server listens on port `3000` and uses `<workspace>/.proof/data/proofs/proofs.sqlite3` for evidence, audit, principal, and registry persistence.
 
 ```bash
 export PROOF_WORKSPACE="$PWD"
@@ -156,11 +176,58 @@ let call = proof_transport_mcp::McpToolCall {
 let result = handle_tool_call(&call, &engine, context.actor, PathBuf::from("."));
 ```
 
+MCP tools expose input/output schemas and annotations derived from the registry’s governance and consequence fields. Tool calls are validated, routed through `ExecutionEngine`, and return structured result content with a signed proof.
+
 MCP tool names use this form:
 
 ```text
 proof_<domain>_<version>_<operation.with.dots.encoded.as.underscores>
 ```
+
+## Platform Capabilities
+
+### Governance and execution
+
+- Versioned JSON operations are discovered from `.proof/registry`.
+- `ExecutionEngine` enforces registry governance, validates optional delegation chains, dispatches handlers, and returns typed kernel errors.
+- Successful engine executions persist the execution context and signed proof when an `ExecutionStore` is configured.
+- Operation inputs and outputs use canonical JSON and BLAKE3 content digests.
+- Benchmark contracts measure duration and validate operation output against JSON Schema success criteria.
+
+### Content management
+
+- The content domain provides schema, object, changeset, edition, release, and principal models.
+- Governed handlers cover schema creation, object creation and editing, approval, content release, and release publication.
+- `ReleasePipeline` applies create/edit changes, invokes the governed release operation, creates a release manifest, and emits proofs for both content changes and the release.
+- `verify_release` validates a canonical manifest against the supplied objects.
+
+### Evidence and identity
+
+- Ed25519 identities represent humans, agents, and services.
+- Proofs bind actor, delegation, operation, input digest, output digest, and timestamp.
+- Proofs can be signed, independently signature-verified, and verified as ordered digest chains.
+- Persisted principals allow verification of proofs not signed by the current transport identity.
+
+### Delegation
+
+- Delegations bound action authority, resource scope, validity interval, and revocation state.
+- Ordered delegation chains are validated from a trusted root to the executing agent.
+- Child grants must preserve or narrow parent action and resource-scope patterns.
+- Exact, universal (`*`), and trailing-wildcard patterns are supported.
+
+### Storage
+
+- SQLite persists proofs, execution contexts, principals, delegations, registry entries, and content records.
+- Schema migrations are versioned, idempotent, and support rollback helpers.
+- Proof-chain queries and context expiration helpers are available on `SqliteStore`.
+- The content-addressed store persists blobs on the filesystem with SQLite metadata, references, and garbage collection.
+
+### Observability
+
+- `proof-observability` provides structured JSON logging to stderr and four verbosity levels.
+- Operation spans record start/completion, actor, proof ID, duration, and success state.
+- HTTP middleware emits request ID, path, status, and duration metrics.
+- Kernel operation spans are optional and enabled with the `proof-kernel/tracing` feature.
 
 ## HTTP API
 
@@ -303,7 +370,15 @@ The default workspace is `.`.
 | `proof registry list` | none | List operation, version, domain, action, and governance |
 | `proof registry inspect <operation>` | operation name | Print matching registry entries |
 | `proof verify <proof-id>` | proof ID | Verify a saved proof with the workspace keypair |
-| `proof execute <operation> <version>` | `--input <json>` | Execute through the engine, sign, and persist a proof |
+| `proof execute <operation> <version>` | `--input <json>` | Execute through the engine with a local content handler, sign, and persist a proof |
+| `proof workspace init <path>` | workspace path | Initialize an additional workspace |
+| `proof workspace status` | none | Report registry, proof, and principal counts for the selected workspace |
+| `proof keypair export` | none | Print the principal ID and public key |
+| `proof keypair rotate` | none | Archive the current keypair and generate a new workspace identity |
+| `proof delegation grant <agent-id>` | `--scope <json>` | Persist a bounded delegation grant |
+| `proof delegation list` | none | List persisted delegations |
+| `proof delegation revoke <delegation-id>` | none | Revoke a grant issued by the workspace identity |
+| `proof delegation validate <delegation-id>` | none | Validate a grant as a delegation chain |
 
 `schema-create` field objects accept:
 
@@ -391,6 +466,10 @@ fn register(engine: &mut proof_kernel::ExecutionEngine) {
 
 MCP tool discovery updates automatically from the registry. HTTP `capabilities` is currently a static list and should be updated alongside the registry until it is derived directly from `ExecutionEngine`.
 
+### Benchmarks
+
+Benchmark definitions are caller-supplied contracts tied to a registry entry’s optional `benchmark` ID. `BenchmarkRunner::run` measures execution, validates output against `success_criteria`, compares elapsed time with `max_duration_ms`, and returns a structured `BenchmarkResult`. Use `ExecutionEngine::verify_benchmark` to reject contracts that do not match the operation’s declared benchmark ID.
+
 ## Delegation Chains
 
 Every principal has an Ed25519 identity represented by `PrincipalId`. A `Delegation` grants authority from an issuer to a recipient and includes:
@@ -423,9 +502,12 @@ cargo test --workspace
 
 ### Current status
 
-- Kernel registry, engine, canonical JSON, Ed25519 identities, delegation validation, and proofs are implemented.
-- SQLite stores proofs, execution contexts, principals, delegations, and domain records.
-- CLI, HTTP, and MCP transports execute registry operations through the governed engine.
-- Workspace is in active development. The repository has unreconciled changes around kernel test storage exports and content-handler feature wiring, so `cargo check --workspace` may fail until those changes are integrated.
+- Kernel registry, execution engine, benchmarks, canonical JSON, Ed25519 identities, delegation validation, and proofs are implemented.
+- SQLite stores proofs, execution contexts, principals, delegations, registry entries, and domain records.
+- CLI, HTTP, and MCP transports route supported operations through the governed engine.
+- The content domain and release pipeline are implemented and tested.
 - `GET /proofs?version=...` and the `/capabilities` static list are known compatibility gaps.
 - `GET /proofs/:id` currently reports `unverified`; use the verification endpoint.
+- HTTP does not yet expose readiness/metrics routes; use `GET /health`, `GET /audit`, and the observability crate for current monitoring surfaces.
+- Proof envelopes do not yet support rotation/expiry links; workspace keypair rotation is available in the CLI.
+- Full multi-workspace management is not yet implemented; the CLI supports initializing and inspecting additional workspaces with `--workspace`.

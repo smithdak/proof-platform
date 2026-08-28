@@ -140,6 +140,29 @@ impl ExecutionEngine {
         input: &Value,
         context: &ExecutionContext,
     ) -> Result<Value, ExecutionError> {
+        #[cfg(feature = "tracing")]
+        let mut operation_span =
+            proof_observability::OperationSpan::new(operation, version, context.actor.to_string());
+        #[cfg(feature = "tracing")]
+        let result = self.execute_inner(operation, version, input, context, &mut operation_span);
+        #[cfg(not(feature = "tracing"))]
+        let result = self.execute_inner(operation, version, input, context);
+        #[cfg(feature = "tracing")]
+        match &result {
+            Ok(_) => operation_span.record_success(),
+            Err(_) => operation_span.record_failure(),
+        }
+        result
+    }
+
+    fn execute_inner(
+        &self,
+        operation: &str,
+        version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+        #[cfg(feature = "tracing")] operation_span: &mut proof_observability::OperationSpan,
+    ) -> Result<Value, ExecutionError> {
         let entry = self.registry.find(operation, version).ok_or_else(|| {
             ExecutionError::OperationNotFound {
                 operation: operation.to_string(),
@@ -169,6 +192,8 @@ impl ExecutionEngine {
             let proof = self
                 .create_operation_proof(operation, input, &result, context)
                 .map_err(|error| ExecutionError::EvidenceFailed(error.to_string()))?;
+            #[cfg(feature = "tracing")]
+            operation_span.set_proof_id(proof.body.id.to_string());
             storage
                 .save_proof(&proof)
                 .map_err(ExecutionError::StorageFailed)?;

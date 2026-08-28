@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/proof-kernel",
+    "crates/proof-observability",
     "crates/proof-content",
     "crates/proof-storage",
     "crates/proof-transport-http",

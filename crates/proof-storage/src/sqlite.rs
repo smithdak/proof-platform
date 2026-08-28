@@ -9,45 +9,20 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 
-/// A SQLite-backed store for Proof data.
-pub struct SqliteStore {
-    conn: Mutex<Connection>,
+/// A single schema migration and its reverse transformation.
+#[derive(Debug, Clone)]
+pub struct Migration {
+    pub version: u32,
+    pub description: &'static str,
+    pub up: &'static str,
+    pub down: &'static str,
 }
 
-impl ExecutionStore for SqliteStore {
-    fn save_proof(&self, proof: &Proof) -> Result<(), String> {
-        SqliteStore::save_proof(self, proof).map_err(|error| error.to_string())
-    }
-
-    fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String> {
-        SqliteStore::save_execution_context(self, context)
-            .map(|context_id| context_id.to_string())
-            .map_err(|error| error.to_string())
-    }
-}
-
-impl SqliteStore {
-    /// Opens (or creates) a SQLite database at the given path and initializes the schema.
-    pub fn open(path: &Path) -> Result<Self, StorageError> {
-        let conn = Connection::open(path)?;
-        Self::initialize(&conn)?;
-        Ok(Self {
-            conn: Mutex::new(conn),
-        })
-    }
-
-    /// Opens an in-memory database (for testing).
-    pub fn in_memory() -> Result<Self, StorageError> {
-        let conn = Connection::open_in_memory()?;
-        Self::initialize(&conn)?;
-        Ok(Self {
-            conn: Mutex::new(conn),
-        })
-    }
-
-    fn initialize(conn: &Connection) -> Result<(), StorageError> {
-        conn.execute_batch(
-            "
+/// All ordered schema migrations.
+pub const MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    description: "create initial proof storage schema",
+    up: "
             CREATE TABLE IF NOT EXISTS schemas (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -155,8 +130,63 @@ impl SqliteStore {
             CREATE INDEX IF NOT EXISTS idx_execution_contexts_timestamp
                 ON execution_contexts(timestamp);
             ",
-        )?;
-        Ok(())
+    down: "
+            DROP INDEX IF EXISTS idx_execution_contexts_timestamp;
+            DROP INDEX IF EXISTS idx_proofs_actor;
+            DROP INDEX IF EXISTS idx_proofs_operation_version;
+            DROP INDEX IF EXISTS idx_proofs_operation;
+            DROP INDEX IF EXISTS idx_releases_env;
+            DROP INDEX IF EXISTS idx_releases_edition;
+            DROP INDEX IF EXISTS idx_changesets_status;
+            DROP INDEX IF EXISTS idx_objects_schema;
+            DROP TABLE IF EXISTS delegations;
+            DROP TABLE IF EXISTS principals;
+            DROP TABLE IF EXISTS execution_contexts;
+            DROP TABLE IF EXISTS registry_entries;
+            DROP TABLE IF EXISTS proofs;
+            DROP TABLE IF EXISTS releases;
+            DROP TABLE IF EXISTS editions;
+            DROP TABLE IF EXISTS changeset_edits;
+            DROP TABLE IF EXISTS changesets;
+            DROP TABLE IF EXISTS objects;
+            DROP TABLE IF EXISTS schemas;
+            ",
+}];
+
+/// A SQLite-backed store for Proof data.
+pub struct SqliteStore {
+    conn: Mutex<Connection>,
+}
+
+impl ExecutionStore for SqliteStore {
+    fn save_proof(&self, proof: &Proof) -> Result<(), String> {
+        SqliteStore::save_proof(self, proof).map_err(|error| error.to_string())
+    }
+
+    fn save_execution_context(&self, context: &ExecutionContext) -> Result<String, String> {
+        SqliteStore::save_execution_context(self, context)
+            .map(|context_id| context_id.to_string())
+            .map_err(|error| error.to_string())
+    }
+}
+
+impl SqliteStore {
+    /// Opens (or creates) a SQLite database at the given path and initializes the schema.
+    pub fn open(path: &Path) -> Result<Self, StorageError> {
+        let conn = Connection::open(path)?;
+        run_migrations(&conn)?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
+    }
+
+    /// Opens an in-memory database (for testing).
+    pub fn in_memory() -> Result<Self, StorageError> {
+        let conn = Connection::open_in_memory()?;
+        run_migrations(&conn)?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Returns the underlying connection for queries not covered by higher-level APIs.
@@ -340,7 +370,7 @@ impl SqliteStore {
         version: Option<&str>,
     ) -> Result<Vec<Proof>, StorageError> {
         let connection = self.conn.lock().unwrap();
-        let mut serialized_proofs;
+        let serialized_proofs;
         if let Some(version) = version {
             let mut statement = connection.prepare_cached(
                 "SELECT signature FROM proofs
@@ -485,6 +515,81 @@ impl SqliteStore {
         )?;
         Ok(context_id)
     }
+}
+
+/// Returns the schema version recorded by the migration history.
+pub fn schema_version(conn: &Connection) -> Result<u32, StorageError> {
+    ensure_migration_table(conn)?;
+    conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(StorageError::from)
+}
+
+/// Applies every pending migration in ascending version order.
+pub fn run_migrations(conn: &Connection) -> Result<(), StorageError> {
+    ensure_migration_table(conn)?;
+    let applied = schema_version(conn)?;
+    for migration in MIGRATIONS {
+        if migration.version <= applied {
+            continue;
+        }
+        conn.execute_batch(migration.up)?;
+        conn.execute(
+            "INSERT INTO schema_migrations (version, description, applied_at)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![
+                migration.version,
+                migration.description,
+                Utc::now().to_rfc3339()
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+/// Rolls back migrations greater than `target_version`.
+pub fn rollback_to(conn: &Connection, target_version: u32) -> Result<(), StorageError> {
+    ensure_migration_table(conn)?;
+    let current_version = schema_version(conn)?;
+    if target_version >= current_version {
+        return Ok(());
+    }
+    if target_version != 0
+        && !MIGRATIONS
+            .iter()
+            .any(|migration| migration.version == target_version)
+    {
+        return Err(StorageError::Conflict(format!(
+            "unknown migration target version: {target_version}"
+        )));
+    }
+    for migration in MIGRATIONS.iter().rev() {
+        if migration.version <= target_version || migration.version > current_version {
+            continue;
+        }
+        conn.execute_batch(migration.down)?;
+        conn.execute(
+            "DELETE FROM schema_migrations WHERE version = ?1",
+            [migration.version],
+        )?;
+    }
+    Ok(())
+}
+
+fn ensure_migration_table(conn: &Connection) -> Result<(), StorageError> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            description TEXT NOT NULL,
+            applied_at TEXT NOT NULL
+        );
+        ",
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
