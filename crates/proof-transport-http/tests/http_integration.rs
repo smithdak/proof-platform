@@ -412,7 +412,7 @@ async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
         response_json(app, "GET", &format!("/proofs/{}", matching.body.id), None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["proof"]["body"]["id"], matching.body.id.to_string());
-    assert_eq!(body["verification"], "unverified");
+    assert_eq!(body["verification"], "verified");
 
     let app = router(state.clone());
     let (status, body) = response_json(
@@ -562,6 +562,130 @@ async fn proof_listing_rejects_invalid_sort_and_order() {
     let (status, body) = response_json(router(state), "GET", "/proofs?order=down", None).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"], "order must be asc or desc");
+}
+
+#[tokio::test]
+async fn capabilities_lists_registry_operations() {
+    let state = app_state();
+    let (_, body) = response_json(router(state.clone()), "GET", "/capabilities", None).await;
+
+    assert_eq!(
+        body,
+        json!({
+            "operations": [
+                {"name": "test.echo", "version": "v1", "domain": "test", "governance": "agent-executable"},
+                {"name": "test.failing", "version": "v1", "domain": "test", "governance": "agent-executable"},
+                {"name": "test.human_only", "version": "v1", "domain": "test", "governance": "human-only"},
+                {"name": "test.unhandled", "version": "v1", "domain": "test", "governance": "agent-executable"},
+            ]
+        })
+    );
+}
+
+#[tokio::test]
+async fn proof_version_filter_applies_with_operation_filter() {
+    let store = SqliteStore::in_memory().unwrap();
+    let state = Arc::new(AppState::with_registry_and_store(
+        "/tmp/proof-http-test",
+        registry(),
+        store,
+    ));
+    let keypair = generate_keypair_for(PrincipalKind::Agent);
+    let version_one = create_proof(
+        keypair.principal_id,
+        None,
+        "object.create::v1",
+        &json!({"id": "one"}),
+        &json!({}),
+        chrono::Utc::now(),
+        &keypair,
+    )
+    .unwrap();
+    let version_two = create_proof(
+        keypair.principal_id,
+        None,
+        "object.create::v2",
+        &json!({"id": "two"}),
+        &json!({}),
+        chrono::Utc::now() + chrono::Duration::milliseconds(1),
+        &keypair,
+    )
+    .unwrap();
+    state.store.save_proof(&version_one).unwrap();
+    state.store.save_proof(&version_two).unwrap();
+
+    let (_, body) = response_json(
+        router(state.clone()),
+        "GET",
+        "/proofs?operation=object.create&version=v1",
+        None,
+    )
+    .await;
+
+    assert_eq!(body["total"], 1);
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["body"]["id"], version_one.body.id.to_string());
+}
+
+#[tokio::test]
+async fn get_proof_returns_signature_verification_status() {
+    let store = SqliteStore::in_memory().unwrap();
+    let state = Arc::new(AppState::with_registry_and_store(
+        "/tmp/proof-http-test",
+        registry(),
+        store,
+    ));
+    let keypair = generate_keypair_for(PrincipalKind::Agent);
+    let proof = create_proof(
+        keypair.principal_id,
+        None,
+        "object.create::v1",
+        &json!({"id": "signed"}),
+        &json!({}),
+        chrono::Utc::now(),
+        &keypair,
+    )
+    .unwrap();
+    let mut tampered = proof.clone();
+    tampered.body.output_digest = proof_kernel::digest(
+        proof_kernel::ArtifactKind::OperationOutput,
+        &proof_kernel::canonicalize(&json!({"tampered": true})).unwrap(),
+    );
+    state.store.save_proof(&proof).unwrap();
+    state
+        .store
+        .save_principal(&proof_kernel::principal_from_keypair(&keypair))
+        .unwrap();
+
+    let (_, body) = response_json(
+        router(state.clone()),
+        "GET",
+        &format!("/proofs/{}", proof.body.id),
+        None,
+    )
+    .await;
+    assert_eq!(body["verification"], "verified");
+
+    // Overwrite via the raw connection path (same ID, newer timestamp is required
+    // by replay protection — the test tampers the digest, not the timestamp).
+    let serialized = serde_json::to_string(&tampered).unwrap();
+    state
+        .store
+        .connection()
+        .execute(
+            "UPDATE proofs SET signature = ?2 WHERE id = ?1",
+            rusqlite::params![tampered.body.id.to_string(), serialized],
+        )
+        .unwrap();
+    let (_, body) = response_json(
+        router(state.clone()),
+        "GET",
+        &format!("/proofs/{}", proof.body.id),
+        None,
+    )
+    .await;
+    assert_eq!(body["verification"], "invalid");
 }
 
 #[tokio::test]

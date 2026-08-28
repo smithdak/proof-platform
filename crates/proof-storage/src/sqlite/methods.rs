@@ -4,8 +4,7 @@ use super::store::{ProofFilter, SqliteStore};
 use crate::StorageError;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
-use proof_kernel::{AuditFilter, ExecutionContext, Proof, RegistryEntry};
-use rusqlite::params;
+use proof_kernel::{ExecutionContext, Proof, RegistryEntry};
 use uuid::Uuid;
 
 impl SqliteStore {
@@ -149,7 +148,7 @@ impl SqliteStore {
         })
     }
 
-    /// Persists a serialized proof, replacing any prior proof with the same ID.
+    /// Persists a serialized proof, replacing a prior proof only when newer.
     pub fn save_proof(&self, proof: &Proof) -> Result<(), StorageError> {
         let serialized = serde_json::to_string(proof)?;
         let version = proof.body.operation.rsplit("::").next().map(str::to_string);
@@ -167,7 +166,29 @@ impl SqliteStore {
             .body
             .expires_at
             .map(|expires_at| expires_at.to_rfc3339());
-        self.conn.lock().unwrap().execute(
+        let mut connection = self.conn.lock().unwrap();
+        let transaction = connection.transaction()?;
+        let existing_timestamp: Option<String> = match transaction.query_row(
+            "SELECT timestamp FROM proofs WHERE id = ?1",
+            [&id],
+            |row| row.get(0),
+        ) {
+            Ok(timestamp) => Some(timestamp),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(error) => return Err(error.into()),
+        };
+        if let Some(existing_timestamp) = existing_timestamp {
+            let existing_timestamp: DateTime<Utc> =
+                existing_timestamp.parse().map_err(|error| {
+                    StorageError::Conflict(format!("invalid proof timestamp: {error}"))
+                })?;
+            if proof.body.timestamp <= existing_timestamp {
+                return Err(StorageError::Conflict(format!(
+                    "replayed or stale proof: {id}"
+                )));
+            }
+        }
+        transaction.execute(
             "
                 INSERT INTO proofs (
                     id, actor, version, delegation_id, operation, input_digest, output_digest,
@@ -197,6 +218,7 @@ impl SqliteStore {
                 serialized,
             ],
         )?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -242,6 +264,16 @@ impl SqliteStore {
         version: Option<&str>,
     ) -> Result<Vec<Proof>, StorageError> {
         self.list_proofs_for_operation_with_options(operation, version, false)
+    }
+
+    /// Loads the complete history for one operation version, including expired proofs.
+    pub fn get_operation_history(
+        &self,
+        operation: &str,
+        version: &str,
+        include_expired: bool,
+    ) -> Result<Vec<Proof>, StorageError> {
+        self.list_proofs_for_operation_with_options(operation, Some(version), include_expired)
     }
 
     /// Loads all proofs for an operation, optionally including expired proofs.

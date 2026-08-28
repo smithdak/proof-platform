@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "content.release"},
+    "data": {
+      "type": "object",
+      "required": ["release", "object"],
+      "properties": {
+        "release": {"$ref": "#/definitions/release"},
+        "object": {"$ref": "#/definitions/object"}
+      }
+    }
+  },
+  "definitions": {
+    "release": {
+      "type": "object",
+      "required": ["id", "edition_id", "environment", "published_at", "published_by"],
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "edition_id": {"type": "string", "format": "uuid"},
+        "environment": {"type": "string"},
+        "published_at": {"type": "string"},
+        "published_by": {"type": "string"}
+      }
+    },
+    "object": {
+      "type": "object",
+      "required": ["id", "schema_id", "schema_version", "locale", "content", "revision", "created_at", "updated_at", "status"],
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "schema_id": {"type": "string", "format": "uuid"},
+        "schema_version": {"type": "integer"},
+        "locale": {"type": "string"},
+        "content": {},
+        "revision": {"type": "integer", "minimum": 1},
+        "created_at": {"type": "string"},
+        "updated_at": {"type": "string"},
+        "status": {"type": "string", "enum": ["draft", "submitted", "approved", "committed", "published"]}
+      }
+    }
+  }
+}

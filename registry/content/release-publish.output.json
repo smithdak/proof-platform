@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "release.publish"},
+    "data": {
+      "type": "object",
+      "required": ["release", "version_label"],
+      "properties": {
+        "release": {
+          "type": "object",
+          "required": ["id", "edition_id", "environment", "published_at", "published_by"],
+          "properties": {
+            "id": {"type": "string", "format": "uuid"},
+            "edition_id": {"type": "string", "format": "uuid"},
+            "environment": {"type": "string"},
+            "published_at": {"type": "string"},
+            "published_by": {"type": "string"}
+          }
+        },
+        "version_label": {"type": "string"}
+      }
+    }
+  }
+}

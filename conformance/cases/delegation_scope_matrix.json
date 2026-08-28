@@ -80,6 +80,56 @@
       "domain": "content",
       "resource": "site/a",
       "expected_allowed": false
+    },
+    {
+      "name": "unscoped grant allows object.edit",
+      "allowed_operations": null,
+      "allowed_domains": null,
+      "resource_scope": null,
+      "operation": "object.edit",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "content-only scope allows content.approve",
+      "allowed_operations": null,
+      "allowed_domains": ["content"],
+      "resource_scope": null,
+      "operation": "content.approve",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "exact operation scope allows content.release",
+      "allowed_operations": ["content.release"],
+      "allowed_domains": ["content"],
+      "resource_scope": "site/a",
+      "operation": "content.release",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "release.publish denied when scope limits to object.edit",
+      "allowed_operations": ["object.edit"],
+      "allowed_domains": ["content"],
+      "resource_scope": "site/a",
+      "operation": "release.publish",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": false
+    },
+    {
+      "name": "changeset.commit denied when scope limits to content prefix",
+      "allowed_operations": ["content.*"],
+      "allowed_domains": ["content"],
+      "resource_scope": null,
+      "operation": "changeset.commit",
+      "domain": "content",
+      "resource": "site/a",
+      "expected_allowed": false
     }
   ]
 }

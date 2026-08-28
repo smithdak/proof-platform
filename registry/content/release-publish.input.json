@@ -1,12 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["object_id", "edition_id", "environment"],
+  "required": ["environment", "version_label"],
   "properties": {
-    "object_id": {"type": "string"},
-    "edition_id": {"type": "string"},
     "environment": {"type": "string", "minLength": 1},
-    "notes": {"type": "string"}
+    "version_label": {"type": "string", "minLength": 1}
   },
   "additionalProperties": false
 }

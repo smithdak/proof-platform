@@ -2,6 +2,7 @@
 
 use super::super::state::SharedState;
 use super::errors::{bad_request, internal_error};
+use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -128,10 +129,37 @@ pub(crate) async fn get_proof(
             ),
             error => internal_error(error.to_string()),
         })?;
+    let verification = proof_verification_status(&state, &proof)?;
     Ok(Json(json!({
         "proof": proof,
-        "verification": verification_status(&proof),
+        "verification": verification,
     })))
+}
+
+fn proof_verification_status(
+    state: &AppState,
+    proof: &Proof,
+) -> Result<&'static str, (StatusCode, Json<Value>)> {
+    let verification = if proof.body.actor == state.keypair.principal_id {
+        Ok(proof.verify(&principal_from_keypair(&state.keypair).public_key))
+    } else {
+        state
+            .store
+            .load_principal(&proof.body.actor)
+            .map(|principal| proof.verify(&principal.public_key))
+            .map_err(|error| match error {
+                proof_storage::StorageError::NotFound(_) => (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({"error": "signing principal not found"})),
+                ),
+                error => internal_error(error.to_string()),
+            })
+    }?;
+    Ok(if verification.is_ok() {
+        "verified"
+    } else {
+        "invalid"
+    })
 }
 
 #[derive(serde::Deserialize)]
@@ -202,10 +230,4 @@ pub(crate) async fn list_audit(
         audit
     };
     Ok(Json(json!({ "contexts": audit })))
-}
-
-fn verification_status(proof: &Proof) -> &'static str {
-    match proof {
-        Proof { .. } => "unverified",
-    }
 }

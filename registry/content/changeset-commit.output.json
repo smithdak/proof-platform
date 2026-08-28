@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "changeset.commit"},
+    "data": {
+      "type": "object",
+      "required": ["changeset"],
+      "properties": {
+        "changeset": {
+          "type": "object",
+          "required": ["id", "intent", "base_state", "edits"],
+          "properties": {
+            "id": {"type": "string", "format": "uuid"},
+            "intent": {"type": "string"},
+            "base_state": {"type": "object"},
+            "edits": {"type": "array"}
+          }
+        }
+      }
+    }
+  }
+}

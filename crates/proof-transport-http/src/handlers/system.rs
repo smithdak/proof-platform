@@ -2,6 +2,7 @@
 
 use super::super::state::SharedState;
 use axum::{extract::State, response::IntoResponse, Json};
+use proof_kernel::VersionStatus;
 use serde_json::{json, Value};
 
 pub(crate) async fn root() -> impl IntoResponse {
@@ -16,16 +17,23 @@ pub(crate) async fn health() -> impl IntoResponse {
     Json(json!({"status": "ok"}))
 }
 
-pub(crate) async fn capabilities() -> impl IntoResponse {
-    Json(json!({
-        "operations": [
-            {"name": "object.create", "version": "v1", "domain": "content", "governance": "agent-executable"},
-            {"name": "schema.create", "version": "v1", "domain": "content", "governance": "agent-executable"},
-            {"name": "changeset.create", "version": "v1", "domain": "content", "governance": "agent-executable"},
-            {"name": "edition.create", "version": "v1", "domain": "content", "governance": "agent-executable"},
-            {"name": "release.publish", "version": "v1", "domain": "content", "governance": "agent-executable"}
-        ]
-    }))
+pub(crate) async fn capabilities(State(state): State<SharedState>) -> impl IntoResponse {
+    let engine = state.engine.read().unwrap();
+    let operations: Vec<Value> = engine
+        .operations()
+        .iter()
+        .filter(|entry| entry.status == VersionStatus::Active)
+        .into_iter()
+        .map(|entry| {
+            json!({
+                "name": entry.operation,
+                "version": entry.version,
+                "domain": entry.domain,
+                "governance": entry.governance,
+            })
+        })
+        .collect();
+    Json(json!({ "operations": operations }))
 }
 
 pub(crate) async fn list_schemas(State(state): State<SharedState>) -> impl IntoResponse {

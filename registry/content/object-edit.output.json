@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "object.edit"},
+    "data": {
+      "type": "object",
+      "required": ["object", "previous_revision", "content_digest"],
+      "properties": {
+        "object": {"$ref": "#/definitions/object"},
+        "previous_revision": {"type": "integer", "minimum": 0},
+        "content_digest": {"type": "string"}
+      }
+    }
+  },
+  "definitions": {
+    "object": {
+      "type": "object",
+      "required": ["id", "schema_id", "schema_version", "locale", "content", "revision", "created_at", "updated_at", "status"],
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "schema_id": {"type": "string", "format": "uuid"},
+        "schema_version": {"type": "integer"},
+        "locale": {"type": "string"},
+        "content": {},
+        "revision": {"type": "integer", "minimum": 1},
+        "created_at": {"type": "string"},
+        "updated_at": {"type": "string"},
+        "status": {"type": "string", "enum": ["draft", "submitted", "approved", "committed", "published"]}
+      }
+    }
+  }
+}

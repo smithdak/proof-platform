@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["changeset_id"],
+  "properties": {
+    "changeset_id": {"type": "string"},
+    "notes": {"type": "string"}
+  },
+  "additionalProperties": false
+}

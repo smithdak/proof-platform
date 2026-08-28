@@ -121,6 +121,111 @@ fn proof_round_trips() {
 }
 
 #[test]
+fn rejects_replayed_proof() {
+    let store = SqliteStore::in_memory().unwrap();
+    let proof = test_proof();
+    store.save_proof(&proof).unwrap();
+
+    let result = store.save_proof(&proof);
+
+    assert!(matches!(result, Err(StorageError::Conflict(_))));
+}
+
+#[test]
+fn replaces_proof_with_strictly_newer_timestamp() {
+    let store = SqliteStore::in_memory().unwrap();
+    let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+    store
+        .save_principal(&proof_kernel::principal_from_keypair(&keypair))
+        .unwrap();
+    let id = Uuid::now_v7();
+    let make_proof = |timestamp: chrono::DateTime<Utc>| {
+        let input = json_digest(
+            proof_kernel::ArtifactKind::OperationInput,
+            json!({"replace": true}),
+        );
+        let output = json_digest(
+            proof_kernel::ArtifactKind::OperationOutput,
+            json!({"replace": timestamp.to_rfc3339()}),
+        );
+        let mut proof = Proof::new(
+            id,
+            keypair.principal_id,
+            None,
+            "history.operation::v1",
+            input,
+            output,
+            timestamp,
+        );
+        proof.sign(&keypair).unwrap()
+    };
+
+    let original = make_proof(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap());
+    let newer = make_proof(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 1).unwrap());
+    store.save_proof(&original).unwrap();
+    store.save_proof(&newer).unwrap();
+
+    assert_eq!(store.load_proof(&id).unwrap(), newer);
+}
+
+#[test]
+fn operation_history_orders_proofs_and_controls_expired_inclusion() {
+    let store = SqliteStore::in_memory().unwrap();
+    let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+    store
+        .save_principal(&proof_kernel::principal_from_keypair(&keypair))
+        .unwrap();
+    let expired = expired_proof(
+        &keypair,
+        "history.operation::v1",
+        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 1).unwrap(),
+    );
+    let first = signed_proof(
+        &keypair,
+        "history.operation::v1",
+        json_digest(
+            proof_kernel::ArtifactKind::OperationInput,
+            json!({"step": 1}),
+        ),
+        json_digest(
+            proof_kernel::ArtifactKind::OperationOutput,
+            json!({"step": 2}),
+        ),
+        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 2).unwrap(),
+    );
+    let second = signed_proof(
+        &keypair,
+        "history.operation::v1",
+        json_digest(
+            proof_kernel::ArtifactKind::OperationInput,
+            json!({"step": 3}),
+        ),
+        json_digest(
+            proof_kernel::ArtifactKind::OperationOutput,
+            json!({"step": 4}),
+        ),
+        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 3).unwrap(),
+    );
+    for proof in [&expired, &second, &first] {
+        store.save_proof(proof).unwrap();
+    }
+
+    assert_eq!(
+        store
+            .get_operation_history("history.operation", "v1", true)
+            .unwrap(),
+        vec![expired, first.clone(), second.clone()]
+    );
+    assert_eq!(
+        store
+            .get_operation_history("history.operation", "v1", false)
+            .unwrap(),
+        vec![first, second]
+    );
+}
+
+#[test]
 fn registry_entries_round_trip() {
     let store = SqliteStore::in_memory().unwrap();
     let entries = vec![

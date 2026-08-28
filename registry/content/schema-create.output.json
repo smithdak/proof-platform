@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "schema.create"},
+    "data": {
+      "type": "object",
+      "required": ["schema_id", "name", "version", "fields", "created_at", "content_digest"],
+      "properties": {
+        "schema_id": {"type": "string", "format": "uuid"},
+        "name": {"type": "string"},
+        "version": {"type": "integer", "minimum": 1},
+        "fields": {"type": "array", "items": {"type": "object"}},
+        "created_at": {"type": "string"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}
