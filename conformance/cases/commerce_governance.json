@@ -1,0 +1,68 @@
+{
+  "name": "commerce-governance-and-lifecycle",
+  "cases": [
+    {
+      "name": "order.approve is human-only and rejects agent execution",
+      "operation": "order.approve",
+      "version": "v1",
+      "domain": "commerce",
+      "governance": "human-only",
+      "actor": "agent",
+      "input": {"order_id": "$order.create:data.order_id"},
+      "expected_rejection": {
+        "error": "HumanOnly",
+        "message_contains": "human-only"
+      }
+    },
+    {
+      "name": "commerce fulfillment requires exact create approve fulfill sequence",
+      "operation": "order.fulfill",
+      "version": "v1",
+      "domain": "commerce",
+      "governance": "agent-executable",
+      "actor": "agent",
+      "sequence": ["order.create", "order.approve", "order.fulfill"],
+      "before_sequence": {
+        "operation": "order.fulfill",
+        "input": {"order_id": "$order.create:data.order_id"},
+        "expected_rejection": {
+          "error": "HandlerFailed",
+          "message_contains": "only pending orders can be approved"
+        }
+      },
+      "after_sequence": {
+        "operation": "order.fulfill",
+        "input": {"order_id": "$order.create:data.order_id"},
+        "expected_status": "fulfilled"
+      }
+    },
+    {
+      "name": "commerce catalog and order operations require UUIDv7 idempotency keys",
+      "operation": "order.create",
+      "version": "v1",
+      "domain": "commerce",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "input": {
+        "lines": [
+          {"catalog_id": "$catalog.create:data.catalog_id", "name": "Widget", "quantity": 1}
+        ]
+      },
+      "without_key": {
+        "expected_rejection": {
+          "error": "InvalidInput",
+          "message_contains": "idempotency_key"
+        }
+      },
+      "duplicate_with_same_key": {
+        "expected_rejection": {
+          "error": "IdempotencyKeyReused",
+          "message_contains": "already used"
+        }
+      },
+      "with_new_key": {
+        "expected_allowed": true
+      }
+    }
+  ]
+}

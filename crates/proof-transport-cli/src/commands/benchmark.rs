@@ -26,6 +26,7 @@ pub fn cmd_benchmark_run(
     let engine = build_engine(registry)?;
     let context = ExecutionContext {
         actor: ws.actor,
+        principal_kind: Some(proof_kernel::PrincipalKind::Agent),
         delegation_id: None,
         delegation_chain: None,
         workspace_path: ws.root.clone(),

@@ -1,7 +1,7 @@
 //! Execution context and audit filtering types.
 
 use crate::delegation::DelegationChain;
-use crate::identity::PrincipalId;
+use crate::identity::{PrincipalId, PrincipalKind};
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -10,6 +10,10 @@ use uuid::Uuid;
 pub struct ExecutionContext {
     /// The Principal executing the operation.
     pub actor: PrincipalId,
+    /// The kind of principal executing the operation. `None` is treated as an
+    /// agent so that transports without principal-kind information remain
+    /// conservative for human-only operations.
+    pub principal_kind: Option<PrincipalKind>,
     /// The delegation under which this operation is authorized (if any).
     pub delegation_id: Option<Uuid>,
     /// The delegation chain validating the actor's authority (if any).

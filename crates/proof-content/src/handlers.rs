@@ -467,6 +467,7 @@ mod tests {
     fn context() -> ExecutionContext {
         ExecutionContext {
             actor: PrincipalId::now(),
+            principal_kind: Some(proof_kernel::PrincipalKind::Agent),
             delegation_id: None,
             delegation_chain: None,
             workspace_path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -503,6 +504,7 @@ mod tests {
         }
         let ctx = ExecutionContext {
             actor: PrincipalId::now(),
+            principal_kind: Some(proof_kernel::PrincipalKind::Agent),
             delegation_id: None,
             delegation_chain: None,
             workspace_path: dir.path().to_path_buf(),

@@ -156,8 +156,8 @@ pub fn tools_from_registry(registry: &Registry) -> McpToolsList {
                 entry.operation.replace('.', "_")
             ),
             description: entry.description.clone(),
-            input_schema: schema_value(&entry.input_schema),
-            output_schema: schema_value(&entry.output_schema),
+            input_schema: schema_value(entry, &entry.input_schema),
+            output_schema: schema_value(entry, &entry.output_schema),
             annotations: Some(tool_annotations(entry)),
         })
         .collect();
@@ -185,8 +185,8 @@ pub fn list_tools(
         .map(|entry| McpTool {
             name: tool_name(entry),
             description: entry.description.clone(),
-            input_schema: schema_value(&entry.input_schema),
-            output_schema: schema_value(&entry.output_schema),
+            input_schema: schema_value(entry, &entry.input_schema),
+            output_schema: schema_value(entry, &entry.output_schema),
             annotations: Some(tool_annotations(entry)),
         })
         .collect();
@@ -234,12 +234,13 @@ pub fn handle_tool_call(
         return McpToolResult::error(format!("Unknown operation: {}", call.name));
     };
 
-    if let Err(error) = validate_value(&schema_value(&entry.input_schema), &call.arguments) {
+    if let Err(error) = validate_value(&schema_value(entry, &entry.input_schema), &call.arguments) {
         return McpToolResult::error(format!("Invalid input for {}: {}", entry.operation, error));
     }
 
     let context = proof_kernel::ExecutionContext {
         actor,
+        principal_kind: Some(proof_kernel::PrincipalKind::Agent),
         delegation_id: None,
         delegation_chain: None,
         workspace_path,
@@ -248,7 +249,8 @@ pub fn handle_tool_call(
 
     match engine.execute(&entry.operation, &entry.version, &call.arguments, &context) {
         Ok(output) => {
-            if let Err(error) = validate_value(&schema_value(&entry.output_schema), &output) {
+            if let Err(error) = validate_value(&schema_value(entry, &entry.output_schema), &output)
+            {
                 return McpToolResult::error(format!(
                     "Invalid output from {}: {}",
                     entry.operation, error
@@ -346,12 +348,35 @@ fn tool_name(entry: &proof_kernel::RegistryEntry) -> String {
     )
 }
 
-fn schema_value(schema: &str) -> Value {
+fn schema_value(entry: &proof_kernel::RegistryEntry, schema: &str) -> Value {
     if schema.trim_start().starts_with('{') {
         serde_json::from_str(schema).unwrap_or_else(|_| Value::String(schema.to_string()))
     } else {
-        Value::String(schema.to_string())
+        schema_reference_value(entry, schema)
     }
+}
+
+fn schema_reference_value(entry: &proof_kernel::RegistryEntry, schema: &str) -> Value {
+    let file_name = schema.rsplit('/').next().unwrap_or(schema);
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let registry_dir = manifest_dir
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("registry");
+    let candidates = [
+        registry_dir.join(&entry.domain).join(file_name),
+        registry_dir.join(file_name),
+    ];
+    for candidate in candidates {
+        if let Ok(contents) = std::fs::read_to_string(candidate) {
+            if let Ok(value) = serde_json::from_str(&contents) {
+                return value;
+            }
+        }
+    }
+    Value::String(schema.to_string())
 }
 
 fn validate_value(schema: &Value, value: &Value) -> Result<(), String> {

@@ -335,6 +335,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let context = ExecutionContext {
             actor: PrincipalId::now(),
+            principal_kind: Some(proof_kernel::PrincipalKind::Agent),
             delegation_id: None,
             delegation_chain: None,
             workspace_path: dir.path().to_path_buf(),

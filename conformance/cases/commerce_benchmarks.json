@@ -1,0 +1,213 @@
+{
+  "name": "commerce-benchmark-golden",
+  "description": "Golden contracts for all five commerce operations",
+  "cases": [
+    {
+      "name": "catalog.create benchmark",
+      "operation": "catalog.create",
+      "version": "v1",
+      "governance": "agent-executable",
+      "consequence": "catalog-mutation",
+      "idempotency": "required-uuidv7",
+      "max_duration_ms": 100,
+      "input": {
+        "name": "Conformance Catalog",
+        "description": "Golden benchmark catalog"
+      },
+      "output_success_criteria": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["operation", "data"],
+        "properties": {
+          "operation": {"type": "string", "const": "catalog.create"},
+          "data": {
+            "type": "object",
+            "required": ["catalog_id", "name", "description", "created_at", "content_digest"],
+            "properties": {
+              "catalog_id": {"type": "string", "format": "uuid"},
+              "name": {"type": "string", "const": "Conformance Catalog"},
+              "description": {"type": "string", "const": "Golden benchmark catalog"},
+              "created_at": {"type": "string", "minLength": 1},
+              "content_digest": {"type": "string", "minLength": 64}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "invalid_inputs": [
+        {"name": "missing name", "input": {"description": "No name"}, "error": "missing required field: name"},
+        {"name": "unknown field", "input": {"name": "Main", "extra": true}, "error": "unknown field: extra"}
+      ]
+    },
+    {
+      "name": "catalog.update benchmark",
+      "operation": "catalog.update",
+      "version": "v1",
+      "governance": "agent-executable",
+      "consequence": "catalog-mutation",
+      "idempotency": "required-uuidv7",
+      "max_duration_ms": 100,
+      "input": {
+        "catalog_id": "$catalog.create:data.catalog_id",
+        "name": "Updated Catalog"
+      },
+      "output_success_criteria": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["operation", "data"],
+        "properties": {
+          "operation": {"type": "string", "const": "catalog.update"},
+          "data": {
+            "type": "object",
+            "required": ["catalog_id", "name", "description", "updated_at", "content_digest"],
+            "properties": {
+              "catalog_id": {"type": "string", "format": "uuid"},
+              "name": {"type": "string", "const": "Updated Catalog"},
+              "description": {"type": "string"},
+              "updated_at": {"type": "string", "minLength": 1},
+              "content_digest": {"type": "string", "minLength": 64}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "invalid_inputs": [
+        {"name": "missing catalog id", "input": {"name": "Updated"}, "error": "missing required field: catalog_id"},
+        {"name": "unknown field", "input": {"catalog_id": "$catalog.create:data.catalog_id", "name": "Updated", "extra": 1}, "error": "unknown field: extra"}
+      ]
+    },
+    {
+      "name": "order.create benchmark",
+      "operation": "order.create",
+      "version": "v1",
+      "governance": "agent-executable",
+      "consequence": "order-mutation",
+      "idempotency": "required-uuidv7",
+      "max_duration_ms": 100,
+      "input": {
+        "lines": [
+          {"catalog_id": "$catalog.create:data.catalog_id", "name": "Conformance Widget", "quantity": 2}
+        ]
+      },
+      "output_success_criteria": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["operation", "data"],
+        "properties": {
+          "operation": {"type": "string", "const": "order.create"},
+          "data": {
+            "type": "object",
+            "required": ["order_id", "lines", "status", "created_at", "content_digest"],
+            "properties": {
+              "order_id": {"type": "string", "format": "uuid"},
+              "lines": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["catalog_id", "name", "quantity"],
+                  "properties": {
+                    "catalog_id": {"type": "string", "format": "uuid"},
+                    "name": {"type": "string", "const": "Conformance Widget"},
+                    "quantity": {"type": "integer", "const": 2}
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "status": {"type": "string", "const": "pending"},
+              "created_at": {"type": "string", "minLength": 1},
+              "content_digest": {"type": "string", "minLength": 64}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "invalid_inputs": [
+        {"name": "missing lines", "input": {}, "error": "missing required field: lines"},
+        {"name": "empty lines", "input": {"lines": []}, "error": "empty lines"},
+        {"name": "zero quantity", "input": {"lines": [{"catalog_id": "$catalog.create:data.catalog_id", "name": "Widget", "quantity": 0}]}, "error": "quantity must be at least 1"}
+      ]
+    },
+    {
+      "name": "order.approve benchmark",
+      "operation": "order.approve",
+      "version": "v1",
+      "governance": "human-only",
+      "consequence": "order-approval",
+      "idempotency": "required-uuidv7",
+      "max_duration_ms": 100,
+      "input": {
+        "order_id": "$order.create:data.order_id"
+      },
+      "expected_rejection": {
+        "reason": "human-only",
+        "message": "operation is human-only"
+      },
+      "output_success_criteria": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["operation", "data"],
+        "properties": {
+          "operation": {"type": "string", "const": "order.approve"},
+          "data": {
+            "type": "object",
+            "required": ["order_id", "status", "approved_at", "content_digest"],
+            "properties": {
+              "order_id": {"type": "string", "format": "uuid"},
+              "status": {"type": "string", "const": "approved"},
+              "approved_at": {"type": "string", "minLength": 1},
+              "content_digest": {"type": "string", "minLength": 64}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "invalid_inputs": [
+        {"name": "missing order id", "input": {}, "error": "missing required field: order_id"},
+        {"name": "invalid order id", "input": {"order_id": "not-a-uuid"}, "error": "not a valid uuid"}
+      ],
+      "validate_format": true
+    },
+    {
+      "name": "order.fulfill benchmark",
+      "operation": "order.fulfill",
+      "version": "v1",
+      "governance": "agent-executable",
+      "consequence": "order-mutation",
+      "idempotency": "required-uuidv7",
+      "max_duration_ms": 100,
+      "input": {
+        "order_id": "$order.create:data.order_id"
+      },
+      "output_success_criteria": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["operation", "data"],
+        "properties": {
+          "operation": {"type": "string", "const": "order.fulfill"},
+          "data": {
+            "type": "object",
+            "required": ["order_id", "status", "fulfilled_at", "content_digest"],
+            "properties": {
+              "order_id": {"type": "string", "format": "uuid"},
+              "status": {"type": "string", "const": "fulfilled"},
+              "fulfilled_at": {"type": "string", "minLength": 1},
+              "content_digest": {"type": "string", "minLength": 64}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "invalid_inputs": [
+        {"name": "missing order id", "input": {}, "error": "missing required field: order_id"},
+        {"name": "invalid order id", "input": {"order_id": "not-a-uuid"}, "error": "not a valid uuid"}
+      ],
+      "validate_format": true
+    }
+  ]
+}

@@ -85,8 +85,46 @@ pub struct Order {
 }
 
 impl SqliteStore {
+    fn reject_stale_commerce_timestamp(
+        transaction: &rusqlite::Transaction<'_>,
+        table: &str,
+        id: &Uuid,
+        timestamp_column: &str,
+        timestamp: &DateTime<Utc>,
+    ) -> Result<(), StorageError> {
+        let existing_timestamp: Option<String> = match transaction.query_row(
+            &format!("SELECT {timestamp_column} FROM {table} WHERE id = ?1"),
+            [id.to_string()],
+            |row| row.get(0),
+        ) {
+            Ok(timestamp) => Some(timestamp),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(error) => return Err(error.into()),
+        };
+
+        if let Some(existing_timestamp) = existing_timestamp {
+            let existing_timestamp = parse_timestamp(&existing_timestamp)?;
+            if *timestamp <= existing_timestamp {
+                return Err(StorageError::Conflict(format!(
+                    "replayed or stale commerce record: {id}"
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn save_catalog(&self, catalog: &Catalog) -> Result<(), StorageError> {
-        self.conn.lock().unwrap().execute(
+        let mut connection = self.conn.lock().unwrap();
+        let transaction = connection.transaction()?;
+        Self::reject_stale_commerce_timestamp(
+            &transaction,
+            "catalog",
+            &catalog.id,
+            "updated_at",
+            &catalog.updated_at,
+        )?;
+        transaction.execute(
             "
             INSERT INTO catalog (id, name, description, created_at, updated_at)
             VALUES (?1, ?2, ?3, ?4, ?5)
@@ -103,6 +141,7 @@ impl SqliteStore {
                 catalog.updated_at.to_rfc3339(),
             ],
         )?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -286,6 +325,13 @@ impl SqliteStore {
     pub fn save_order(&self, order: &Order) -> Result<(), StorageError> {
         let mut connection = self.conn.lock().unwrap();
         let transaction = connection.transaction()?;
+        Self::reject_stale_commerce_timestamp(
+            &transaction,
+            "\"order\"",
+            &order.id,
+            "created_at",
+            &order.created_at,
+        )?;
         transaction.execute(
             "
             INSERT INTO \"order\" (id, status, created_at, approved_at, fulfilled_at)
@@ -323,6 +369,32 @@ impl SqliteStore {
         }
         transaction.commit()?;
         Ok(())
+    }
+
+    pub fn get_commerce_history(
+        &self,
+        operation: &str,
+        version: &str,
+    ) -> Result<Vec<proof_kernel::Proof>, StorageError> {
+        let operation_key = format!("{operation}::{version}");
+        let serialized_proofs = self
+            .conn
+            .lock()
+            .unwrap()
+            .prepare_cached(
+                "SELECT signature FROM proofs
+             WHERE operation = ?1 AND version = ?2
+             ORDER BY timestamp, id",
+            )?
+            .query_map(params![operation_key, version], |row| {
+                row.get::<_, String>(0)
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(serialized_proofs
+            .iter()
+            .map(|serialized| serde_json::from_str(serialized))
+            .collect::<Result<Vec<_>, serde_json::Error>>()?)
     }
 
     pub fn load_order(&self, id: &Uuid) -> Result<Order, StorageError> {

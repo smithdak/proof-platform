@@ -7,8 +7,33 @@ use proof_transport_mcp::{
     McpToolAnnotations, McpToolCall,
 };
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+fn workspace_registry_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("registry")
+}
+
+fn registry_schema_properties(operation: &str) -> Value {
+    let file_name = format!(
+        "{}/{}.input.json",
+        workspace_registry_path().join("commerce").display(),
+        operation.replace('.', "-")
+    );
+    let contents = std::fs::read_to_string(file_name).unwrap();
+    serde_json::from_str::<Value>(&contents).unwrap()["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|key| (key.clone(), Value::Bool(true)))
+        .collect::<serde_json::Map<String, Value>>()
+        .into()
+}
 
 const AGENT_INPUT_SCHEMA: &str = r#"{
   "type": "object",
@@ -40,6 +65,86 @@ const HUMAN_INPUT_SCHEMA: &str = r#"{
 
 struct EchoHandler {
     operation: String,
+}
+
+#[derive(Clone, Copy)]
+struct CatalogCreateHandler;
+
+impl proof_kernel::OperationHandler for CatalogCreateHandler {
+    fn operation(&self) -> &str {
+        "catalog.create"
+    }
+
+    fn execute(&self, input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError> {
+        let workspace = context.workspace_path.join(".proof/data/commerce/catalogs");
+        std::fs::create_dir_all(&workspace).map_err(|error| {
+            ExecutionError::HandlerFailed(format!("failed to create catalog store: {error}"))
+        })?;
+        let catalog_id = uuid::Uuid::now_v7();
+        Ok(json!({
+            "operation": "catalog.create",
+            "data": {
+                "catalog_id": catalog_id.to_string(),
+                "name": input["name"],
+                "description": input["description"].as_str().unwrap_or("").to_string(),
+                "created_at": chrono::Utc::now().to_rfc3339(),
+                "content_digest": format!("sha256:{catalog_id}"),
+            }
+        }))
+    }
+}
+
+struct OrderCreateHandler {
+    catalog_id: String,
+}
+
+impl proof_kernel::OperationHandler for OrderCreateHandler {
+    fn operation(&self) -> &str {
+        "order.create"
+    }
+
+    fn execute(&self, _input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError> {
+        let workspace = context.workspace_path.join(".proof/data/commerce/orders");
+        std::fs::create_dir_all(&workspace).map_err(|error| {
+            ExecutionError::HandlerFailed(format!("failed to create order store: {error}"))
+        })?;
+        let order_id = uuid::Uuid::now_v7();
+        Ok(json!({
+            "operation": "order.create",
+            "data": {
+                "order_id": order_id.to_string(),
+                "lines": [{"catalog_id": self.catalog_id, "name": "catalog", "quantity": 1}],
+                "status": "pending",
+                "created_at": chrono::Utc::now().to_rfc3339(),
+                "content_digest": format!("sha256:{order_id}"),
+            }
+        }))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct OrderApproveHandler;
+
+impl proof_kernel::OperationHandler for OrderApproveHandler {
+    fn operation(&self) -> &str {
+        "order.approve"
+    }
+
+    fn execute(
+        &self,
+        _input: &Value,
+        _context: &ExecutionContext,
+    ) -> Result<Value, ExecutionError> {
+        Ok(json!({
+            "operation": "order.approve",
+            "data": {
+                "order_id": "not-called",
+                "status": "approved",
+                "approved_at": chrono::Utc::now().to_rfc3339(),
+                "content_digest": "sha256:approved",
+            }
+        }))
+    }
 }
 
 impl proof_kernel::OperationHandler for EchoHandler {
@@ -94,11 +199,87 @@ fn registry_entries() -> Vec<RegistryEntry> {
 
 fn engine() -> ExecutionEngine {
     let registry = Registry::new(registry_entries()).unwrap();
-    let mut engine = ExecutionEngine::new(registry);
+    let mut engine = ExecutionEngine::new(registry.clone());
     engine.register_handler(Arc::new(EchoHandler {
         operation: "test.echo".to_string(),
     }));
     engine
+}
+
+fn commerce_engine(workspace_path: &Path) -> (ExecutionEngine, Registry, String, String) {
+    let mut entries = registry_entries();
+    entries.extend(commerce_registry_entries());
+    let registry = Registry::new(entries).unwrap();
+    let mut engine = ExecutionEngine::new(registry.clone());
+    engine.register_handler(Arc::new(EchoHandler {
+        operation: "test.echo".to_string(),
+    }));
+    engine.register_handler(Arc::new(CatalogCreateHandler));
+    let catalog = handle_tool_call(
+        &call(
+            "proof_commerce_v1_catalog_create",
+            json!({"name": "Default catalog"}),
+        ),
+        &engine,
+        PrincipalId::now(),
+        workspace_path.to_path_buf(),
+    );
+    assert!(!catalog.is_error, "{}", catalog.content[0].text);
+    let catalog_id = catalog.structured_content.unwrap()["result"]["data"]["catalog_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    engine.register_handler(Arc::new(OrderCreateHandler {
+        catalog_id: catalog_id.clone(),
+    }));
+    let order = handle_tool_call(
+        &call(
+            "proof_commerce_v1_order_create",
+            json!({"lines": [{"catalog_id": catalog_id, "name": "catalog", "quantity": 1}]}),
+        ),
+        &engine,
+        PrincipalId::now(),
+        workspace_path.to_path_buf(),
+    );
+    assert!(!order.is_error, "{}", order.content[0].text);
+    let order_id = order.structured_content.unwrap()["result"]["data"]["order_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    engine.register_handler(Arc::new(OrderApproveHandler));
+    (engine, registry, catalog_id, order_id)
+}
+
+fn commerce_registry_entries() -> Vec<RegistryEntry> {
+    let registry_directory = workspace_registry_path().join("commerce");
+    std::fs::read_dir(registry_directory)
+        .expect("commerce registry directory should exist")
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                == Some("json")
+        })
+        .map(|entry| entry.path())
+        .filter(|path| {
+            !path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains("input")
+                && !path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .contains("output")
+        })
+        .map(|path| {
+            let contents = std::fs::read_to_string(path).unwrap();
+            serde_json::from_str(&contents).unwrap()
+        })
+        .collect()
 }
 
 fn call(name: &str, arguments: Value) -> McpToolCall {
@@ -223,6 +404,111 @@ fn destructive_operations_are_annotated() {
             read_only: Some(false),
         }
     );
+}
+
+#[test]
+fn commerce_registry_tools_have_commerce_schema_and_governance() {
+    let registry = Registry::new(commerce_registry_entries()).unwrap();
+    let tools = tools_from_registry(&registry);
+    let expected = [
+        (
+            "proof_commerce_v1_catalog_create",
+            "catalog.create",
+            Some(false),
+            Some(true),
+        ),
+        (
+            "proof_commerce_v1_catalog_update",
+            "catalog.update",
+            Some(false),
+            Some(true),
+        ),
+        (
+            "proof_commerce_v1_order_create",
+            "order.create",
+            Some(false),
+            Some(true),
+        ),
+        (
+            "proof_commerce_v1_order_approve",
+            "order.approve",
+            Some(true),
+            Some(true),
+        ),
+        (
+            "proof_commerce_v1_order_fulfill",
+            "order.fulfill",
+            Some(false),
+            Some(true),
+        ),
+    ];
+
+    for (tool_name, operation, read_only, idempotent) in expected {
+        let tool = tools
+            .tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .unwrap_or_else(|| panic!("missing commerce tool {tool_name}"));
+        assert_eq!(tool.input_schema["type"], "object");
+        assert_eq!(tool.output_schema["type"], "object");
+        assert_eq!(tool.annotations.unwrap().read_only, read_only);
+        assert_eq!(tool.annotations.unwrap().idempotent, idempotent);
+        assert_eq!(
+            tool.input_schema["properties"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
+            registry_schema_properties(operation)
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>()
+        );
+        let human_only = operation == "order.approve";
+        assert_eq!(
+            registry.find(operation, "v1").unwrap().governance,
+            if human_only {
+                Governance::HumanOnly
+            } else {
+                Governance::AgentExecutable
+            }
+        );
+    }
+}
+
+#[test]
+fn commerce_lifecycle_is_executable_and_approval_is_human_only() {
+    let workspace_path = std::env::temp_dir().join(format!(
+        "proof-mcp-commerce-{}",
+        uuid::Uuid::now_v7().simple()
+    ));
+    let (engine, registry, _catalog_id, order_id) = commerce_engine(&workspace_path);
+
+    let approval = handle_tool_call(
+        &call(
+            "proof_commerce_v1_order_approve",
+            json!({"order_id": order_id}),
+        ),
+        &engine,
+        PrincipalId::now(),
+        workspace_path.clone(),
+    );
+    assert!(approval.is_error);
+    assert_eq!(
+        approval.content[0].text,
+        "Operation order.approve is human-only and cannot be executed by an agent"
+    );
+    let commerce_tools = tools_from_registry(&registry);
+    let approval_tool = commerce_tools
+        .tools
+        .iter()
+        .find(|tool| tool.name == "proof_commerce_v1_order_approve")
+        .unwrap();
+    assert_eq!(approval_tool.annotations.unwrap().read_only, Some(true));
+    assert_eq!(approval_tool.annotations.unwrap().idempotent, Some(true));
+    assert_eq!(approval_tool.annotations.unwrap().destructive, Some(false));
+    std::fs::remove_dir_all(workspace_path).ok();
 }
 
 #[test]

@@ -191,6 +191,7 @@ pub fn cmd_execute(cli: &Cli, operation: &str, version: &str, input: &str) -> Re
     let input_value: Value = serde_json::from_str(input).context("invalid input JSON")?;
     let context = ExecutionContext {
         actor: ws.actor,
+        principal_kind: Some(proof_kernel::PrincipalKind::Agent),
         delegation_id: None,
         delegation_chain: None,
         workspace_path: ws.root.clone(),

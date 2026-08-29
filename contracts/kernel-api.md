@@ -40,6 +40,7 @@ Located in `crates/proof-kernel/src/executor.rs`.
 | Field | Type | Notes |
 |---|---|---|
 | `actor` | `PrincipalId` | |
+| `principal_kind` | `Option<PrincipalKind>` | `None` treated as agent; `Some(Human)` allows human-only operations |
 | `delegation_id` | `Option<Uuid>` | |
 | `delegation_chain` | `Option<DelegationChain>` | |
 | `workspace_path` | `PathBuf` | |

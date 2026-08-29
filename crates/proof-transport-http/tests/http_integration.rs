@@ -870,6 +870,7 @@ async fn audit_endpoint_returns_saved_execution_contexts() {
         .store
         .save_execution_context(&ExecutionContext {
             actor: state.keypair.principal_id,
+            principal_kind: Some(proof_kernel::PrincipalKind::Agent),
             delegation_id: None,
             delegation_chain: None,
             workspace_path: "/tmp/proof-http-test".into(),

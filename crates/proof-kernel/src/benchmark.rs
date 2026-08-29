@@ -285,6 +285,7 @@ mod tests {
     fn context() -> ExecutionContext {
         ExecutionContext {
             actor: PrincipalId::now(),
+            principal_kind: Some(crate::identity::PrincipalKind::Agent),
             delegation_id: None,
             delegation_chain: None,
             workspace_path: PathBuf::from("/tmp"),

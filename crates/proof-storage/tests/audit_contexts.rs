@@ -28,6 +28,7 @@ fn context(
 ) -> ExecutionContext {
     ExecutionContext {
         actor,
+        principal_kind: None,
         delegation_id,
         delegation_chain: None,
         workspace_path: PathBuf::from("/tmp/audit-workspace"),

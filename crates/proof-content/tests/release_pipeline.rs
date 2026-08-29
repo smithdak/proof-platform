@@ -28,6 +28,7 @@ fn context() -> (proof_kernel::Keypair, ExecutionContext) {
     let keypair = proof_kernel::generate_keypair();
     let execution_context = ExecutionContext {
         actor: keypair.principal_id,
+        principal_kind: Some(proof_kernel::PrincipalKind::Agent),
         delegation_id: None,
         delegation_chain: None,
         workspace_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")),

@@ -102,6 +102,7 @@ impl ExecutionStore for SqliteStore {
             let timestamp: String = row.get("timestamp").map_err(|e| e.to_string())?;
             contexts.push(ExecutionContext {
                 actor: proof_kernel::PrincipalId::new(actor_uuid),
+                principal_kind: None,
                 delegation_id: delegation_id
                     .map(|id| Uuid::parse_str(&id))
                     .transpose()

@@ -243,6 +243,7 @@ fn execution_context_is_persisted() {
     let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Human);
     let context = ExecutionContext {
         actor: keypair.principal_id,
+        principal_kind: Some(proof_kernel::PrincipalKind::Human),
         delegation_id: None,
         delegation_chain: None,
         workspace_path: PathBuf::from("/tmp/workspace"),
@@ -476,6 +477,7 @@ fn deletes_expired_contexts() {
     let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Human);
     let make_context = |timestamp| ExecutionContext {
         actor: keypair.principal_id,
+        principal_kind: Some(proof_kernel::PrincipalKind::Human),
         delegation_id: None,
         delegation_chain: None,
         workspace_path: PathBuf::from("/tmp/workspace"),

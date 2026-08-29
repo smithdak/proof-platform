@@ -5,7 +5,7 @@ use super::error::ExecutionError;
 use super::store::{ExecutionStore, OperationHandler};
 use crate::delegation::DelegationError;
 use crate::evidence::{Proof, ProofError};
-use crate::identity::PrincipalId;
+use crate::identity::{PrincipalId, PrincipalKind};
 use crate::registry::{Governance, Registry, RegistryEntry, VersionStatus};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -98,7 +98,9 @@ impl ExecutionEngine {
             }
         })?;
 
-        if entry.governance == Governance::HumanOnly {
+        if entry.governance == Governance::HumanOnly
+            && context.principal_kind != Some(PrincipalKind::Human)
+        {
             return Err(ExecutionError::HumanOnly);
         }
 
@@ -470,6 +472,7 @@ mod tests {
     fn test_context() -> ExecutionContext {
         ExecutionContext {
             actor: PrincipalId::now(),
+            principal_kind: Some(PrincipalKind::Agent),
             delegation_id: None,
             delegation_chain: None,
             workspace_path: PathBuf::from("/tmp/test"),
@@ -644,6 +647,26 @@ mod tests {
         let context = test_context();
         let result = engine.execute("test.human_only", "v1", &json!({}), &context);
         assert!(matches!(result, Err(ExecutionError::HumanOnly)));
+    }
+
+    #[test]
+    fn allows_human_only_for_human_principals() {
+        let store = Arc::new(RecordingStore::default());
+        let entry = test_registry_entry("test.human_only", Governance::HumanOnly);
+        let registry = Registry::new(vec![entry]).unwrap();
+        let human_keypair = crate::identity::generate_keypair_for(PrincipalKind::Human);
+        let mut engine = ExecutionEngine::new_with_keypair(registry, human_keypair.clone())
+            .with_storage(store.clone());
+        engine.register_handler(Arc::new(TestHandler {
+            operation: "test.human_only".to_string(),
+        }));
+        let mut context = test_context();
+        context.actor = human_keypair.principal_id;
+        context.principal_kind = Some(PrincipalKind::Human);
+        let result = engine
+            .execute("test.human_only", "v1", &json!({}), &context)
+            .unwrap();
+        assert_eq!(result["handled_by"], "test.human_only");
     }
 
     #[test]

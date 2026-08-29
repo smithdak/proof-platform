@@ -48,6 +48,7 @@ fn context() -> (proof_kernel::Keypair, ExecutionContext) {
         keypair.clone(),
         ExecutionContext {
             actor: keypair.principal_id,
+            principal_kind: Some(proof_kernel::PrincipalKind::Agent),
             delegation_id: None,
             delegation_chain: None,
             workspace_path: PathBuf::from("/tmp/test"),
