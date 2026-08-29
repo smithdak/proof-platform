@@ -112,6 +112,30 @@ fn workflow_entry(operation: &str, governance: Governance) -> RegistryEntry {
     }
 }
 
+fn analytics_entry(operation: &str, governance: Governance) -> RegistryEntry {
+    RegistryEntry {
+        operation: operation.to_string(),
+        domain: "analytics".to_string(),
+        version: "v1".to_string(),
+        action: format!("analytics:{}", operation.replace('.', "_")),
+        description: format!("Analytics operation {operation}"),
+        input_schema: format!(
+            "registry/analytics/{}.input.json",
+            operation.replace('.', "-")
+        ),
+        output_schema: r#"{"type":"object"}"#.to_string(),
+        required_authority: "delegation-grant".to_string(),
+        governance,
+        idempotency: "required-uuidv7".to_string(),
+        consequence: "analytics-mutation".to_string(),
+        evidence_contract: "operation-effect-v1".to_string(),
+        benchmark: None,
+        status: VersionStatus::Active,
+        deprecated_since: None,
+        replacement_operation: None,
+    }
+}
+
 fn app_state() -> Arc<AppState> {
     let registry = Registry::new(vec![
         registry_entry("test.echo", Governance::AgentExecutable),
@@ -201,6 +225,46 @@ fn workflow_state() -> (Arc<AppState>, tempfile::TempDir) {
         workflow_entry("workflow.trigger", Governance::AgentExecutable),
         workflow_entry("workflow.step.complete", Governance::AgentExecutable),
         workflow_entry("workflow.approve", Governance::HumanOnly),
+    ])
+    .unwrap();
+    (
+        Arc::new(AppState::with_registry(
+            temp.path().to_str().unwrap(),
+            registry,
+        )),
+        temp,
+    )
+}
+
+fn analytics_state() -> (Arc<AppState>, tempfile::TempDir) {
+    let temp = tempfile::TempDir::new().unwrap();
+    let schemas = temp.path().join(".proof/registry/analytics");
+    std::fs::create_dir_all(&schemas).unwrap();
+    std::fs::write(
+        schemas.join("analytics-snapshot-create.input.json"),
+        r#"{"type":"object","required":["metrics"],"properties":{"metrics":{"type":"array"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("analytics-query-create.input.json"),
+        r#"{"type":"object","required":["snapshot_id","sql"],"properties":{"snapshot_id":{"type":"string"},"sql":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("analytics-query-execute.input.json"),
+        r#"{"type":"object","required":["query_id"],"properties":{"query_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("analytics-insight-approve.input.json"),
+        r#"{"type":"object","required":["result_id"],"properties":{"result_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    let registry = Registry::new(vec![
+        analytics_entry("analytics.snapshot.create", Governance::AgentExecutable),
+        analytics_entry("analytics.query.create", Governance::AgentExecutable),
+        analytics_entry("analytics.query.execute", Governance::AgentExecutable),
+        analytics_entry("analytics.insight.approve", Governance::HumanOnly),
     ])
     .unwrap();
     (
@@ -951,6 +1015,113 @@ async fn workflow_approval_is_human_only_and_requires_completed_steps() {
         "POST",
         "/v1/operations/workflow.approve/v1",
         Some(json!({"run_id": run_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        body["error"],
+        "operation is human-only, agents cannot execute"
+    );
+}
+
+#[tokio::test]
+async fn analytics_operations_execute_through_full_lifecycle_and_list_endpoints() {
+    let (state, _workspace) = analytics_state();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.snapshot.create/v1",
+        Some(json!({"metrics": [{"name": "signups", "value": 42}]})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "executed");
+    assert_eq!(body["result"]["operation"], "analytics.snapshot.create");
+    let snapshot_id = body["result"]["data"]["snapshot_id"].as_str().unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.query.create/v1",
+        Some(json!({"snapshot_id": snapshot_id, "sql": "SELECT * FROM metrics"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["result"]["operation"], "analytics.query.create");
+    let query_id = body["result"]["data"]["query_id"].as_str().unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.query.execute/v1",
+        Some(json!({"query_id": query_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["result"]["operation"], "analytics.query.execute");
+    let result_id = body["result"]["data"]["result_id"].as_str().unwrap();
+    assert_eq!(body["result"]["data"]["result"]["status"], "completed");
+    assert_eq!(body["result"]["data"]["result"]["row_count"], 1);
+
+    let (status, _) =
+        response_json(router(state.clone()), "GET", "/analytics-snapshots", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, body) = response_json(router(state.clone()), "GET", "/analytics-snapshots", None).await;
+    assert_eq!(body["snapshots"].as_array().unwrap().len(), 1);
+    assert_eq!(body["snapshots"][0]["id"], snapshot_id);
+
+    let (_, body) = response_json(router(state.clone()), "GET", "/analytics-queries", None).await;
+    assert_eq!(body["queries"].as_array().unwrap().len(), 1);
+    assert_eq!(body["queries"][0]["id"], query_id);
+    assert_eq!(body["queries"][0]["status"], "completed");
+
+    let (status, _) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.insight.approve/v1",
+        Some(json!({"result_id": result_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn analytics_insight_approval_is_human_only() {
+    let (state, _workspace) = analytics_state();
+
+    let (_, snapshot) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.snapshot.create/v1",
+        Some(json!({"metrics": []})),
+    )
+    .await;
+    let snapshot_id = snapshot["result"]["data"]["snapshot_id"].as_str().unwrap();
+
+    let (_, query) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.query.create/v1",
+        Some(json!({"snapshot_id": snapshot_id, "sql": "SELECT 1"})),
+    )
+    .await;
+    let query_id = query["result"]["data"]["query_id"].as_str().unwrap();
+
+    let (_, result) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.query.execute/v1",
+        Some(json!({"query_id": query_id})),
+    )
+    .await;
+    let result_id = result["result"]["data"]["result_id"].as_str().unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.insight.approve/v1",
+        Some(json!({"result_id": result_id})),
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);

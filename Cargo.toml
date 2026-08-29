@@ -7,6 +7,7 @@ members = [
     "crates/proof-content",
     "crates/proof-commerce",
     "crates/proof-workflow",
+    "crates/proof-analytics",
     "crates/proof-storage",
     "crates/proof-transport-http",
     "crates/proof-transport-ws",

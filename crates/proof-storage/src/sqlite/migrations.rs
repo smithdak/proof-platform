@@ -281,6 +281,53 @@ pub const MIGRATIONS: &[Migration] = &[
             DROP TABLE IF EXISTS workflow_definition;
             ",
     },
+    Migration {
+        version: 6,
+        description: "create analytics snapshot, query, and insight tables",
+        up: "
+            CREATE TABLE IF NOT EXISTS analytics_snapshot (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                digest TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS analytics_query (
+                id TEXT PRIMARY KEY,
+                snapshot_id TEXT NOT NULL REFERENCES analytics_snapshot(id),
+                name TEXT NOT NULL,
+                filter TEXT NOT NULL DEFAULT '{}',
+                aggregation TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS analytics_insight (
+                id TEXT PRIMARY KEY,
+                query_id TEXT NOT NULL REFERENCES analytics_query(id),
+                result_digest TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
+                approved_at TEXT,
+                approved_by TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_analytics_query_snapshot
+                ON analytics_query(snapshot_id);
+            CREATE INDEX IF NOT EXISTS idx_analytics_insight_query
+                ON analytics_insight(query_id);
+            CREATE INDEX IF NOT EXISTS idx_analytics_insight_status
+                ON analytics_insight(status);
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_analytics_insight_status;
+            DROP INDEX IF EXISTS idx_analytics_insight_query;
+            DROP INDEX IF EXISTS idx_analytics_query_snapshot;
+            DROP TABLE IF EXISTS analytics_insight;
+            DROP TABLE IF EXISTS analytics_query;
+            DROP TABLE IF EXISTS analytics_snapshot;
+            ",
+    },
 ];
 
 /// A SQLite-backed store for Proof data.

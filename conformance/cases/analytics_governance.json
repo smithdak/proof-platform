@@ -1,0 +1,69 @@
+{
+  "name": "analytics-governance-lifecycle-and-idempotency",
+  "cases": [
+    {
+      "name": "analytics.insight.approve is human-only and rejects agent execution",
+      "operation": "analytics.insight.approve",
+      "version": "v1",
+      "domain": "analytics",
+      "governance": "human-only",
+      "actor": "agent",
+      "input": {"insight_id": "$analytics.query.execute:data.insight_id"},
+      "expected_rejection": {
+        "error": "HumanOnly",
+        "message_contains": "human-only"
+      }
+    },
+    {
+      "name": "analytics operations require snapshot query execute approve sequence",
+      "operation": "analytics.query.execute",
+      "version": "v1",
+      "domain": "analytics",
+      "governance": "agent-executable",
+      "actor": "agent",
+      "sequence": [
+        "analytics.snapshot.create",
+        "analytics.query.create",
+        "analytics.query.execute",
+        "analytics.insight.approve"
+      ],
+      "before_sequence": {
+        "operation": "analytics.query.execute",
+        "input": {"query_id": "$analytics.query.create:data.query_id"},
+        "expected_rejection": {
+          "error": "HandlerFailed",
+          "message_contains": "not found"
+        }
+      },
+      "after_sequence": {
+        "operation": "analytics.query.execute",
+        "input": {"query_id": "$analytics.query.create:data.query_id"},
+        "expected_status": "pending"
+      }
+    },
+    {
+      "name": "analytics operations require UUIDv7 idempotency keys",
+      "operation": "analytics.snapshot.create",
+      "version": "v1",
+      "domain": "analytics",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "input": {"name": "Q3 revenue", "digest": "blake3-dataset-digest"},
+      "without_key": {
+        "expected_rejection": {
+          "error": "InvalidInput",
+          "message_contains": "idempotency_key"
+        }
+      },
+      "duplicate_with_same_key": {
+        "expected_rejection": {
+          "error": "IdempotencyKeyReused",
+          "message_contains": "already used"
+        }
+      },
+      "with_new_key": {
+        "expected_allowed": true
+      }
+    }
+  ]
+}

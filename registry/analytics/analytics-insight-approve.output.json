@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "analytics.insight.approve"},
+    "data": {
+      "type": "object",
+      "required": ["insight_id", "query_id", "result_digest", "status", "approved_at", "approved_by", "content_digest"],
+      "properties": {
+        "insight_id": {"type": "string", "format": "uuid"},
+        "query_id": {"type": "string", "format": "uuid"},
+        "result_digest": {"type": "string"},
+        "status": {"type": "string", "enum": ["pending", "approved"]},
+        "approved_at": {"type": ["string", "null"], "format": "date-time"},
+        "approved_by": {"type": ["string", "null"], "format": "uuid"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}

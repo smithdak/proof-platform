@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "analytics.snapshot.create"},
+    "data": {
+      "type": "object",
+      "required": ["snapshot_id", "name", "description", "digest", "created_at", "content_digest"],
+      "properties": {
+        "snapshot_id": {"type": "string", "format": "uuid"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "digest": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}

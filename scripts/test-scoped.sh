@@ -9,6 +9,7 @@ case "$crate" in
   proof-content)       packages="-p proof-content -p proof-transport-http -p proof-transport-mcp -p proof-transport-cli" ;;
   proof-commerce)      packages="-p proof-commerce" ;;
   proof-workflow)      packages="-p proof-workflow" ;;
+  proof-analytics)     packages="-p proof-analytics" ;;
   proof-storage)       packages="-p proof-storage -p proof-kernel -p proof-transport-http -p proof-transport-cli" ;;
   proof-transport-http) packages="-p proof-transport-http" ;;
   proof-transport-mcp) packages="-p proof-transport-mcp" ;;

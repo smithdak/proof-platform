@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "analytics.query.create"},
+    "data": {
+      "type": "object",
+      "required": ["query_id", "snapshot_id", "name", "status", "created_at", "updated_at", "content_digest"],
+      "properties": {
+        "query_id": {"type": "string", "format": "uuid"},
+        "snapshot_id": {"type": "string", "format": "uuid"},
+        "name": {"type": "string"},
+        "filter": {"type": "object"},
+        "aggregation": {"type": "string"},
+        "status": {"type": "string", "enum": ["pending", "executed"]},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}

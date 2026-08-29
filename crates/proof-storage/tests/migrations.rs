@@ -8,7 +8,7 @@ fn fresh_database_applies_all_migrations() {
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 5);
+    assert_eq!(schema_version(&connection).unwrap(), 6);
     let history_count: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM schema_migrations WHERE version = 1",
@@ -33,6 +33,9 @@ fn fresh_database_applies_all_migrations() {
         "workflow_definition",
         "workflow_run",
         "workflow_step",
+        "analytics_snapshot",
+        "analytics_query",
+        "analytics_insight",
     ] {
         connection
             .prepare(&format!("SELECT 1 FROM {table}"))
@@ -47,7 +50,7 @@ fn migrations_are_idempotent() {
     run_migrations(&connection).unwrap();
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 5);
+    assert_eq!(schema_version(&connection).unwrap(), 6);
 }
 
 #[test]
@@ -57,8 +60,8 @@ fn open_and_in_memory_run_migrations_automatically() {
     let file_store = SqliteStore::open(&path).unwrap();
     let memory_store = SqliteStore::in_memory().unwrap();
 
-    assert_eq!(schema_version(&file_store.connection()).unwrap(), 5);
-    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 5);
+    assert_eq!(schema_version(&file_store.connection()).unwrap(), 6);
+    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 6);
 }
 
 #[test]
@@ -87,9 +90,9 @@ fn rollback_to_current_version_is_a_no_op() {
     let connection = Connection::open_in_memory().unwrap();
     run_migrations(&connection).unwrap();
 
-    rollback_to(&connection, 5).unwrap();
+    rollback_to(&connection, 6).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 5);
+    assert_eq!(schema_version(&connection).unwrap(), 6);
 }
 
 #[test]
@@ -97,10 +100,10 @@ fn rollback_rejects_unknown_target() {
     let connection = Connection::open_in_memory().unwrap();
     run_migrations(&connection).unwrap();
 
-    let result = rollback_to(&connection, 5);
+    let result = rollback_to(&connection, 6);
 
     assert!(result.is_ok());
-    assert_eq!(schema_version(&connection).unwrap(), 5);
+    assert_eq!(schema_version(&connection).unwrap(), 6);
 }
 
 #[test]
@@ -111,5 +114,5 @@ fn rolled_back_database_can_be_migrated_again() {
     rollback_to(&connection, 0).unwrap();
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 5);
+    assert_eq!(schema_version(&connection).unwrap(), 6);
 }

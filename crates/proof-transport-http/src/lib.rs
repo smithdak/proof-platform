@@ -21,6 +21,7 @@ use handlers::system::{
     capabilities, health, list_catalog, list_objects, list_orders, list_schemas,
     list_workflow_runs, list_workflows, root,
 };
+use handlers::system::{list_analytics_queries, list_analytics_snapshots};
 pub use limits::HttpMiddlewareState;
 pub use limits::{HttpLimits, RateLimitConfig};
 use limits::{RateLimiter, CONTENT_LENGTH, JSON_METHODS};
@@ -47,6 +48,8 @@ pub fn router_with_limits(state: SharedState, limits: HttpLimits) -> Router {
         .route("/orders", get(list_orders))
         .route("/workflows", get(list_workflows))
         .route("/workflow-runs", get(list_workflow_runs))
+        .route("/analytics-snapshots", get(list_analytics_snapshots))
+        .route("/analytics-queries", get(list_analytics_queries))
         .route("/v1/proofs", get(list_proofs))
         .route("/v1/proofs/:id", get(get_proof))
         .route("/proofs", get(list_proofs_filtered))

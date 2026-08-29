@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["query_id"],
+  "properties": {
+    "query_id": {"type": "string", "format": "uuid"},
+    "values": {"type": "array", "items": {"type": "number"}}
+  },
+  "additionalProperties": false
+}

@@ -51,6 +51,24 @@ fn workflow_registry_schema(
     })
 }
 
+fn analytics_registry_schema(
+    workspace_path: &str,
+    operation: &str,
+) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+    let file_name = operation.replace('.', "-");
+    let path = PathBuf::from(workspace_path)
+        .join(".proof/registry/analytics")
+        .join(format!("{file_name}.input.json"));
+    let contents = std::fs::read_to_string(path).map_err(|error| {
+        proof_kernel::ExecutionError::HandlerFailed(format!(
+            "failed to read registry schema: {error}"
+        ))
+    })?;
+    serde_json::from_str(&contents).map_err(|error| {
+        proof_kernel::ExecutionError::HandlerFailed(format!("invalid registry schema: {error}"))
+    })
+}
+
 fn validate_json_schema(
     schema: &serde_json::Value,
     input: &serde_json::Value,
@@ -325,6 +343,119 @@ fn execute_workflow_operation(
     }
 }
 
+fn execute_analytics_operation(
+    operation: &str,
+    input: &serde_json::Value,
+    context: &proof_kernel::ExecutionContext,
+) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+    let workspace = context.workspace_path.join(".proof/data/analytics");
+    std::fs::create_dir_all(&workspace).map_err(|error| {
+        proof_kernel::ExecutionError::HandlerFailed(format!(
+            "failed to create analytics store: {error}"
+        ))
+    })?;
+    let read = |id: &str, kind: &str| -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+        let path = workspace.join(format!("{kind}-{id}.json"));
+        let contents = std::fs::read_to_string(&path).map_err(|_| {
+            proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
+        })?;
+        serde_json::from_str(&contents).map_err(|error| {
+            proof_kernel::ExecutionError::HandlerFailed(format!("invalid {kind} {id}: {error}"))
+        })
+    };
+    let write = |id: &str,
+                 kind: &str,
+                 value: &serde_json::Value|
+     -> Result<(), proof_kernel::ExecutionError> {
+        let path = workspace.join(format!("{kind}-{id}.json"));
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(value).unwrap_or_default(),
+        )
+        .map_err(|error| {
+            proof_kernel::ExecutionError::HandlerFailed(format!("failed to save {kind}: {error}"))
+        })
+    };
+
+    match operation {
+        "analytics.snapshot.create" => {
+            let mut snapshot = input.clone();
+            let id = uuid::Uuid::now_v7().to_string();
+            snapshot["id"] = serde_json::json!(id);
+            snapshot["status"] = serde_json::json!("active");
+            snapshot["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
+            write(&id, "snapshot", &snapshot)?;
+            Ok(serde_json::json!({"operation": operation, "data": {"snapshot_id": id}}))
+        }
+        "analytics.query.create" => {
+            let snapshot_id = input["snapshot_id"].as_str().unwrap_or_default();
+            read(snapshot_id, "snapshot")?;
+            let mut query = input.clone();
+            let id = uuid::Uuid::now_v7().to_string();
+            query["id"] = serde_json::json!(id);
+            query["status"] = serde_json::json!("created");
+            query["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
+            write(&id, "query", &query)?;
+            Ok(serde_json::json!({"operation": operation, "data": {"query_id": id}}))
+        }
+        "analytics.query.execute" => {
+            let query_id = input["query_id"].as_str().unwrap_or_default();
+            let mut query = read(query_id, "query")?;
+            if query["status"] == "completed" {
+                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
+                    "query {query_id} is already completed"
+                )));
+            }
+            let snapshot_id = query["snapshot_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let snapshot = read(&snapshot_id, "snapshot")?;
+            query["status"] = serde_json::json!("completed");
+            query["executed_at"] = serde_json::json!(context.timestamp.to_rfc3339());
+            write(query_id, "query", &query)?;
+            let result = serde_json::json!({
+                "id": uuid::Uuid::now_v7().to_string(),
+                "query_id": query_id,
+                "snapshot_id": snapshot_id,
+                "status": "completed",
+                "row_count": snapshot["metrics"].as_array().map_or(0, Vec::len),
+                "executed_at": context.timestamp.to_rfc3339(),
+            });
+            let result_id = result["id"].as_str().unwrap().to_string();
+            write(&result_id, "result", &result)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"result_id": result_id, "result": result}}),
+            )
+        }
+        "analytics.insight.approve" => {
+            let result_id = input["result_id"].as_str().unwrap_or_default();
+            let mut result = read(result_id, "result")?;
+            if result["status"] == "approved" {
+                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
+                    "analytics result {result_id} is already approved"
+                )));
+            }
+            if result["status"] != "completed" {
+                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
+                    "analytics result {result_id} is {}; only completed results can be approved",
+                    result["status"]
+                )));
+            }
+            result["status"] = serde_json::json!("approved");
+            result["approved_by"] = serde_json::json!(context.actor.to_string());
+            result["approved_at"] = serde_json::json!(context.timestamp.to_rfc3339());
+            write(result_id, "result", &result)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"result_id": result_id, "status": "approved"}}),
+            )
+        }
+        _ => Err(proof_kernel::ExecutionError::NoHandler(
+            operation.to_string(),
+        )),
+    }
+}
+
 struct CommerceHandler {
     operation: &'static str,
 }
@@ -364,6 +495,27 @@ impl proof_kernel::OperationHandler for WorkflowHandler {
             workflow_registry_schema(&context.workspace_path.to_string_lossy(), self.operation)?;
         validate_json_schema(&schema, input)?;
         execute_workflow_operation(self.operation, input, context)
+    }
+}
+
+struct AnalyticsHandler {
+    operation: &'static str,
+}
+
+impl proof_kernel::OperationHandler for AnalyticsHandler {
+    fn operation(&self) -> &str {
+        self.operation
+    }
+
+    fn execute(
+        &self,
+        input: &serde_json::Value,
+        context: &proof_kernel::ExecutionContext,
+    ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+        let schema =
+            analytics_registry_schema(&context.workspace_path.to_string_lossy(), self.operation)?;
+        validate_json_schema(&schema, input)?;
+        execute_analytics_operation(self.operation, input, context)
     }
 }
 
@@ -417,6 +569,14 @@ impl AppState {
             "workflow.approve",
         ] {
             engine.register_handler(Arc::new(WorkflowHandler { operation }));
+        }
+        for operation in [
+            "analytics.snapshot.create",
+            "analytics.query.create",
+            "analytics.query.execute",
+            "analytics.insight.approve",
+        ] {
+            engine.register_handler(Arc::new(AnalyticsHandler { operation }));
         }
         Self {
             workspace_path: workspace_path.into(),
