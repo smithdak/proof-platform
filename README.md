@@ -1,6 +1,6 @@
 # Proof Platform
 
-Proof Platform is a governed, agent-native Rust platform in which autonomous software discovers and executes operations through a data-driven registry, bounded delegation, and domain handlers, while successful governed transitions produce signed cryptographic proof of execution. Its kernel binds the actor, authority, operation, input digest, output digest, and timestamp into independently verifiable evidence, while content governance provides the first domain implementation.
+Proof Platform is a governed, agent-native Rust platform in which autonomous software discovers and executes operations through a data-driven registry, bounded delegation, and domain handlers, while successful governed transitions produce signed cryptographic proof of execution. Its kernel binds the actor, authority, operation, input digest, output digest, and timestamp into independently verifiable evidence. Three domains — content governance, commerce, and workflow — are fully implemented and conformance-tested.
 
 - **Full architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
@@ -11,7 +11,7 @@ Proof Platform is a governed, agent-native Rust platform in which autonomous sof
 
 ```text
 ┌────────────────────────────────────────────────────────────────────┐
-│                             Clients                                │
+│                           Humnan/Agents                            │
 └──────────────┬──────────────────┬───────────────────┬──────────────┘
                │                  │                   │
 ┌──────────────▼──────┐ ┌─────────▼─────────┐ ┌───────▼────────────┐
@@ -37,15 +37,15 @@ The transports are intentionally thin. The registry is the source of capability 
 
 ## Crates
 
-| Crate | Purpose |
-|---|---|
-| `proof-kernel` | Registry, execution engine, benchmarks, delegation, canonical JSON, Ed25519 identity, proofs |
-| `proof-content` | Content models, lifecycle handlers, and release pipeline |
-| `proof-storage` | SQLite migrations and storage for proofs, contexts, principals, delegations, registry entries, and domain records; content-addressed blobs |
-| `proof-transport-cli` | Developer-oriented `proof` binary |
-| `proof-transport-http` | Axum HTTP API on `0.0.0.0:3000` |
-| `proof-transport-mcp` | Registry-derived MCP tool schemas and governed tool-call execution |
-| `proof-observability` | Structured JSON tracing, operation spans, and HTTP request middleware |
+| Crate                  | Purpose                                                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `proof-kernel`         | Registry, execution engine, benchmarks, delegation, canonical JSON, Ed25519 identity, proofs                                               |
+| `proof-content`        | Content models, lifecycle handlers, and release pipeline                                                                                   |
+| `proof-storage`        | SQLite migrations and storage for proofs, contexts, principals, delegations, registry entries, and domain records; content-addressed blobs |
+| `proof-transport-cli`  | Developer-oriented `proof` binary                                                                                                          |
+| `proof-transport-http` | Axum HTTP API on `0.0.0.0:3000`                                                                                                            |
+| `proof-transport-mcp`  | Registry-derived MCP tool schemas and governed tool-call execution                                                                         |
+| `proof-observability`  | Structured JSON tracing, operation spans, and HTTP request middleware                                                                      |
 
 ## Quickstart
 
@@ -108,15 +108,15 @@ proof execute schema.create v1 --input '{
 
 The repository registry currently declares these operations. The library content-handler set covers the first six; the CLI’s legacy direct path also handles `changeset.create`:
 
-| Operation | Version | Library handler |
-|---|---|---|
-| `schema.create` | `v1` | Yes |
-| `object.create` | `v1` | Yes |
-| `object.edit` | `v1` | Yes |
-| `content.approve` | `v1` | Yes |
-| `content.release` | `v1` | Yes |
-| `release.publish` | `v1` | Yes |
-| `changeset.commit` | `v1` | No |
+| Operation          | Version | Library handler |
+| ------------------ | ------- | --------------- |
+| `schema.create`    | `v1`    | Yes             |
+| `object.create`    | `v1`    | Yes             |
+| `object.edit`      | `v1`    | Yes             |
+| `content.approve`  | `v1`    | Yes             |
+| `content.release`  | `v1`    | Yes             |
+| `release.publish`  | `v1`    | Yes             |
+| `changeset.commit` | `v1`    | No              |
 
 Registry entries without a registered handler will fail with `NoHandler`. Register a handler for the exact logical operation before executing it through the engine.
 
@@ -249,7 +249,7 @@ Returns `{"status":"ok"}`.
 
 ### `GET /capabilities`
 
-Returns a static capability list with operation name, version, domain, and governance level.
+Returns registry-derived capabilities with operation name, version, domain, and governance level.
 
 ### `POST /v1/operations/:name/:version`
 
@@ -291,11 +291,11 @@ Successful response shape:
 
 Error responses:
 
-| Status | Meaning |
-|---|---|
-| `404` | Operation/version is not in the registry |
-| `403` | Operation is `human-only` |
-| `500` | No handler, handler failure, invalid delegation, evidence, or storage failure |
+| Status | Meaning                                                                       |
+| ------ | ----------------------------------------------------------------------------- |
+| `404`  | Operation/version is not in the registry                                      |
+| `403`  | Operation is `human-only`                                                     |
+| `500`  | No handler, handler failure, invalid delegation, evidence, or storage failure |
 
 ### `GET /v1/schemas` and `GET /v1/objects`
 
@@ -309,11 +309,11 @@ Returns the full proofs collection from storage.
 
 Returns proofs with these optional query parameters:
 
-| Parameter | Type | Meaning |
-|---|---|---|
-| `operation` | String | Exact proof operation filter |
-| `actor` | UUID string | Exact actor filter |
-| `version` | String | Acceptable parameter; combining it with `operation` currently returns an empty result |
+| Parameter   | Type        | Meaning                                                                               |
+| ----------- | ----------- | ------------------------------------------------------------------------------------- |
+| `operation` | String      | Exact proof operation filter                                                          |
+| `actor`     | UUID string | Exact actor filter                                                                    |
+| `version`   | String      | Acceptable parameter; combining it with `operation` currently returns an empty result |
 
 Example:
 
@@ -323,7 +323,7 @@ curl 'http://localhost:3000/proofs?operation=object.create&actor=<uuid>'
 
 ### `GET /proofs/:id`
 
-Returns a proof and its local verification marker. The implementation currently reports `"verification":"unverified"`; use `POST /proofs/verify` for signature verification.
+Returns a proof and its verification status (`"verified"` or `"invalid"`), checked against the workspace keypair or a stored signing principal.
 
 ### `POST /proofs/verify`
 
@@ -338,7 +338,7 @@ curl -X POST http://localhost:3000/proofs/verify \
 Response:
 
 ```json
-{"proof_id":"<uuid>","valid":true}
+{ "proof_id": "<uuid>", "valid": true }
 ```
 
 ### `GET /audit`
@@ -357,38 +357,38 @@ proof --verbose <COMMAND>
 
 The default workspace is `.`.
 
-| Command | Arguments | Purpose |
-|---|---|---|
-| `proof init` | none | Initialize `.proof`, create workspace keypair and data directories |
-| `proof schema-create` | `--name <name>`, `--fields <json>` | Validate, save, and prove a schema creation |
-| `proof object-create` | `--schema-id <uuid>`, `--locale <locale>` (default `en-US`), `--data <json>` | Validate against schema, save, and prove object creation |
-| `proof changeset-create` | `--intent <text>` | Create a changeset and signed proof |
-| `proof edition-create` | `--changeset-id <uuid>` | Snapshot current objects into an edition |
-| `proof release-publish` | `--edition-id <uuid>`, `--environment <name>` | Publish an edition to an environment |
-| `proof status` | none | Count saved schemas, objects, changesets, editions, releases, and proofs |
-| `proof capabilities` | none | Print registry operations and governance levels |
-| `proof registry list` | none | List operation, version, domain, action, and governance |
-| `proof registry inspect <operation>` | operation name | Print matching registry entries |
-| `proof verify <proof-id>` | proof ID | Verify a saved proof with the workspace keypair |
-| `proof execute <operation> <version>` | `--input <json>` | Execute through the engine with a local content handler, sign, and persist a proof |
-| `proof workspace init <path>` | workspace path | Initialize an additional workspace |
-| `proof workspace status` | none | Report registry, proof, and principal counts for the selected workspace |
-| `proof keypair export` | none | Print the principal ID and public key |
-| `proof keypair rotate` | none | Archive the current keypair and generate a new workspace identity |
-| `proof delegation grant <agent-id>` | `--scope <json>` | Persist a bounded delegation grant |
-| `proof delegation list` | none | List persisted delegations |
-| `proof delegation revoke <delegation-id>` | none | Revoke a grant issued by the workspace identity |
-| `proof delegation validate <delegation-id>` | none | Validate a grant as a delegation chain |
+| Command                                     | Arguments                                                                    | Purpose                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `proof init`                                | none                                                                         | Initialize `.proof`, create workspace keypair and data directories                 |
+| `proof schema-create`                       | `--name <name>`, `--fields <json>`                                           | Validate, save, and prove a schema creation                                        |
+| `proof object-create`                       | `--schema-id <uuid>`, `--locale <locale>` (default `en-US`), `--data <json>` | Validate against schema, save, and prove object creation                           |
+| `proof changeset-create`                    | `--intent <text>`                                                            | Create a changeset and signed proof                                                |
+| `proof edition-create`                      | `--changeset-id <uuid>`                                                      | Snapshot current objects into an edition                                           |
+| `proof release-publish`                     | `--edition-id <uuid>`, `--environment <name>`                                | Publish an edition to an environment                                               |
+| `proof status`                              | none                                                                         | Count saved schemas, objects, changesets, editions, releases, and proofs           |
+| `proof capabilities`                        | none                                                                         | Print registry operations and governance levels                                    |
+| `proof registry list`                       | none                                                                         | List operation, version, domain, action, and governance                            |
+| `proof registry inspect <operation>`        | operation name                                                               | Print matching registry entries                                                    |
+| `proof verify <proof-id>`                   | proof ID                                                                     | Verify a saved proof with the workspace keypair                                    |
+| `proof execute <operation> <version>`       | `--input <json>`                                                             | Execute through the engine with a local content handler, sign, and persist a proof |
+| `proof workspace init <path>`               | workspace path                                                               | Initialize an additional workspace                                                 |
+| `proof workspace status`                    | none                                                                         | Report registry, proof, and principal counts for the selected workspace            |
+| `proof keypair export`                      | none                                                                         | Print the principal ID and public key                                              |
+| `proof keypair rotate`                      | none                                                                         | Archive the current keypair and generate a new workspace identity                  |
+| `proof delegation grant <agent-id>`         | `--scope <json>`                                                             | Persist a bounded delegation grant                                                 |
+| `proof delegation list`                     | none                                                                         | List persisted delegations                                                         |
+| `proof delegation revoke <delegation-id>`   | none                                                                         | Revoke a grant issued by the workspace identity                                    |
+| `proof delegation validate <delegation-id>` | none                                                                         | Validate a grant as a delegation chain                                             |
 
 `schema-create` field objects accept:
 
-| Field | Type | Required |
-|---|---|---|
-| `name` | string | Yes |
+| Field        | Type                                                                               | Required               |
+| ------------ | ---------------------------------------------------------------------------------- | ---------------------- |
+| `name`       | string                                                                             | Yes                    |
 | `field_type` | `text`, `rich_text`, `number`, `boolean`, `date`, `date_time`, `json`, `reference` | No; defaults to `text` |
-| `required` | boolean | No |
-| `localized` | boolean | No |
-| `default` | JSON value | No |
+| `required`   | boolean                                                                            | No                     |
+| `localized`  | boolean                                                                            | No                     |
+| `default`    | JSON value                                                                         | No                     |
 
 CLI outputs are JSON.
 
@@ -418,21 +418,21 @@ Create `registry/content/object-edit.json`:
 
 Field contract:
 
-| Field | Meaning |
-|---|---|
-| `operation` | Stable logical name, such as `object.edit` |
-| `domain` | Domain namespace used by MCP tool names and discovery |
-| `version` | Registry/API version, such as `v1` |
-| `action` | Delegation authority token, such as `content:object_edit` |
-| `description` | Human- and agent-readable description |
-| `input_schema` | Inline JSON Schema document or referenced JSON Schema string |
-| `output_schema` | Inline JSON Schema document or referenced JSON Schema string |
+| Field                | Meaning                                                              |
+| -------------------- | -------------------------------------------------------------------- |
+| `operation`          | Stable logical name, such as `object.edit`                           |
+| `domain`             | Domain namespace used by MCP tool names and discovery                |
+| `version`            | Registry/API version, such as `v1`                                   |
+| `action`             | Delegation authority token, such as `content:object_edit`            |
+| `description`        | Human- and agent-readable description                                |
+| `input_schema`       | Inline JSON Schema document or referenced JSON Schema string         |
+| `output_schema`      | Inline JSON Schema document or referenced JSON Schema string         |
 | `required_authority` | Authority policy token; use `delegation-grant` for bounded authority |
-| `governance` | `agent-executable` or `human-only` |
-| `idempotency` | Idempotency policy string |
-| `consequence` | Consequence classification string |
-| `evidence_contract` | Proof/evidence contract identifier |
-| `benchmark` | Optional performance or conformance benchmark ID |
+| `governance`         | `agent-executable` or `human-only`                                   |
+| `idempotency`        | Idempotency policy string                                            |
+| `consequence`        | Consequence classification string                                    |
+| `evidence_contract`  | Proof/evidence contract identifier                                   |
+| `benchmark`          | Optional performance or conformance benchmark ID                     |
 
 Then register an `OperationHandler` for the exact logical operation. A minimal Rust handler:
 
@@ -464,7 +464,7 @@ fn register(engine: &mut proof_kernel::ExecutionEngine) {
 }
 ```
 
-MCP tool discovery updates automatically from the registry. HTTP `capabilities` is currently a static list and should be updated alongside the registry until it is derived directly from `ExecutionEngine`.
+MCP tool discovery updates automatically from the registry. HTTP `capabilities` is also registry-derived via `ExecutionEngine`.
 
 ### Benchmarks
 
@@ -505,9 +505,7 @@ cargo test --workspace
 - Kernel registry, execution engine, benchmarks, canonical JSON, Ed25519 identities, delegation validation, and proofs are implemented.
 - SQLite stores proofs, execution contexts, principals, delegations, registry entries, and domain records.
 - CLI, HTTP, and MCP transports route supported operations through the governed engine.
-- The content domain and release pipeline are implemented and tested.
-- `GET /proofs?version=...` and the `/capabilities` static list are known compatibility gaps.
-- `GET /proofs/:id` currently reports `unverified`; use the verification endpoint.
-- HTTP does not yet expose readiness/metrics routes; use `GET /health`, `GET /audit`, and the observability crate for current monitoring surfaces.
+- The content, commerce, and workflow domains are implemented and tested.
+- WebSocket transport is functional but has no dedicated tests yet.
 - Proof envelopes do not yet support rotation/expiry links; workspace keypair rotation is available in the CLI.
 - Full multi-workspace management is not yet implemented; the CLI supports initializing and inspecting additional workspaces with `--workspace`.

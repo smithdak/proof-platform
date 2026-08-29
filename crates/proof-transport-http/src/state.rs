@@ -33,6 +33,24 @@ fn commerce_registry_schema(
     })
 }
 
+fn workflow_registry_schema(
+    workspace_path: &str,
+    operation: &str,
+) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+    let file_name = operation.replace('.', "-");
+    let path = PathBuf::from(workspace_path)
+        .join(".proof/registry/workflow")
+        .join(format!("{file_name}.input.json"));
+    let contents = std::fs::read_to_string(path).map_err(|error| {
+        proof_kernel::ExecutionError::HandlerFailed(format!(
+            "failed to read registry schema: {error}"
+        ))
+    })?;
+    serde_json::from_str(&contents).map_err(|error| {
+        proof_kernel::ExecutionError::HandlerFailed(format!("invalid registry schema: {error}"))
+    })
+}
+
 fn validate_json_schema(
     schema: &serde_json::Value,
     input: &serde_json::Value,
@@ -177,6 +195,136 @@ fn execute_commerce_operation(
     }
 }
 
+fn execute_workflow_operation(
+    operation: &str,
+    input: &serde_json::Value,
+    context: &proof_kernel::ExecutionContext,
+) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+    let workspace = context.workspace_path.join(".proof/data/workflow");
+    std::fs::create_dir_all(&workspace).map_err(|error| {
+        proof_kernel::ExecutionError::HandlerFailed(format!(
+            "failed to create workflow store: {error}"
+        ))
+    })?;
+    let read = |id: &str, kind: &str| -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+        let path = workspace.join(format!("{kind}-{id}.json"));
+        let contents = std::fs::read_to_string(&path).map_err(|_| {
+            proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
+        })?;
+        serde_json::from_str(&contents).map_err(|error| {
+            proof_kernel::ExecutionError::HandlerFailed(format!("invalid {kind} {id}: {error}"))
+        })
+    };
+    let write = |id: &str,
+                 kind: &str,
+                 value: &serde_json::Value|
+     -> Result<(), proof_kernel::ExecutionError> {
+        let path = workspace.join(format!("{kind}-{id}.json"));
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(value).unwrap_or_default(),
+        )
+        .map_err(|error| {
+            proof_kernel::ExecutionError::HandlerFailed(format!("failed to save {kind}: {error}"))
+        })
+    };
+
+    match operation {
+        "workflow.define" => {
+            let mut definition = input.clone();
+            let id = uuid::Uuid::now_v7().to_string();
+            definition["id"] = serde_json::json!(id);
+            definition["status"] = serde_json::json!("active");
+            definition["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
+            write(&id, "workflow", &definition)?;
+            Ok(serde_json::json!({"operation": operation, "data": {"workflow_id": id}}))
+        }
+        "workflow.trigger" => {
+            let workflow_id = input["workflow_id"].as_str().unwrap_or_default();
+            let definition = read(workflow_id, "workflow")?;
+            let id = uuid::Uuid::now_v7().to_string();
+            let mut run = serde_json::json!({
+                "id": id,
+                "workflow_id": workflow_id,
+                "name": definition["name"],
+                "status": "running",
+                "steps": definition["steps"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|mut step| {
+                        step["status"] = serde_json::json!("pending");
+                        step
+                    })
+                    .collect::<Vec<_>>(),
+                "created_at": context.timestamp.to_rfc3339(),
+            });
+            write(&id, "run", &run)?;
+            if let Some(object) = run.as_object_mut() {
+                object.remove("id");
+            }
+            Ok(serde_json::json!({"operation": operation, "data": {"run_id": id, "run": run}}))
+        }
+        "workflow.step.complete" => {
+            let run_id = input["run_id"].as_str().unwrap_or_default();
+            let mut run = read(run_id, "run")?;
+            let steps = run["steps"].as_array_mut().ok_or_else(|| {
+                proof_kernel::ExecutionError::HandlerFailed(format!(
+                    "workflow run {run_id} has no steps"
+                ))
+            })?;
+            let Some(step) = steps.iter_mut().find(|step| step["status"] == "pending") else {
+                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
+                    "workflow run {run_id} has no pending steps"
+                )));
+            };
+            let step_name = step["name"].clone();
+            step["status"] = serde_json::json!("complete");
+            step["completed_at"] = serde_json::json!(context.timestamp.to_rfc3339());
+            let all_complete = steps.iter().all(|step| step["status"] == "complete");
+            if all_complete {
+                run["status"] = serde_json::json!("pending_approval");
+            }
+            write(run_id, "run", &run)?;
+            Ok(serde_json::json!({
+                "operation": operation,
+                "data": {
+                    "run_id": run_id,
+                    "completed_step": step_name,
+                    "status": run["status"],
+                }
+            }))
+        }
+        "workflow.approve" => {
+            let run_id = input["run_id"].as_str().unwrap_or_default();
+            let mut run = read(run_id, "run")?;
+            if run["status"] == "approved" {
+                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
+                    "workflow run {run_id} is already approved"
+                )));
+            }
+            if run["status"] != "pending_approval" {
+                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
+                    "workflow run {run_id} is {}; only pending_approval runs can be approved",
+                    run["status"]
+                )));
+            }
+            run["status"] = serde_json::json!("approved");
+            run["approved_by"] = serde_json::json!(context.actor.to_string());
+            run["approved_at"] = serde_json::json!(context.timestamp.to_rfc3339());
+            write(run_id, "run", &run)?;
+            Ok(serde_json::json!({
+                "operation": operation,
+                "data": {"run_id": run_id, "status": "approved"}
+            }))
+        }
+        _ => Err(proof_kernel::ExecutionError::NoHandler(
+            operation.to_string(),
+        )),
+    }
+}
+
 struct CommerceHandler {
     operation: &'static str,
 }
@@ -195,6 +343,27 @@ impl proof_kernel::OperationHandler for CommerceHandler {
             commerce_registry_schema(&context.workspace_path.to_string_lossy(), self.operation)?;
         validate_json_schema(&schema, input)?;
         execute_commerce_operation(self.operation, input, context)
+    }
+}
+
+struct WorkflowHandler {
+    operation: &'static str,
+}
+
+impl proof_kernel::OperationHandler for WorkflowHandler {
+    fn operation(&self) -> &str {
+        self.operation
+    }
+
+    fn execute(
+        &self,
+        input: &serde_json::Value,
+        context: &proof_kernel::ExecutionContext,
+    ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
+        let schema =
+            workflow_registry_schema(&context.workspace_path.to_string_lossy(), self.operation)?;
+        validate_json_schema(&schema, input)?;
+        execute_workflow_operation(self.operation, input, context)
     }
 }
 
@@ -240,6 +409,14 @@ impl AppState {
             "order.fulfill",
         ] {
             engine.register_handler(Arc::new(CommerceHandler { operation }));
+        }
+        for operation in [
+            "workflow.define",
+            "workflow.trigger",
+            "workflow.step.complete",
+            "workflow.approve",
+        ] {
+            engine.register_handler(Arc::new(WorkflowHandler { operation }));
         }
         Self {
             workspace_path: workspace_path.into(),

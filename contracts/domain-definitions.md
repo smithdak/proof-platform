@@ -85,14 +85,14 @@ Each domain has a definition block with:
 
 ---
 
-## Domain 3: Workflow (not started)
+## Domain 3: Workflow
 
 **Name:** `workflow`
 **Crate:** `proof-workflow`
-**Status:** draft
+**Status:** complete
 **Thesis:** Governed multi-step approval and orchestration chains with signed evidence at each step.
 
-### Operations (planned)
+### Operations
 
 | Operation | Governance | Consequence |
 |---|---|---|
@@ -111,5 +111,38 @@ Each domain has a definition block with:
 | # | Date | Decision | Rationale |
 |---|---|---|---|
 | 1 | 2026-08-28 | Domain 3 placeholder scoped as Workflow | Matches architecture doc layer diagram; no decisions made yet |
+| 2 | 2026-08-29 | Wave 13 completes Domain 3: WorkflowDefinition/Run/Step models, SQLite storage, HTTP wiring, governance conformance | All four operations (`workflow.define`, `workflow.trigger`, `workflow.step.complete`, `workflow.approve`) are registry-covered, storage-backed, HTTP-exposed, and conformance-tested; `workflow.approve` is human-only with UUIDv7 idempotency enforcement |
+
+---
+
+## Domain 4: Analytics
+
+**Name:** `analytics`
+**Crate:** `proof-analytics`
+**Status:** draft
+**Thesis:** Governed query and insight operations over workspace data, producing signed proof that a query was executed against a specific dataset snapshot and returned a specific result.
+
+### Operations (planned)
+
+| Operation | Governance | Consequence |
+|---|---|---|
+| `analytics.query.create` | agent-executable | analytics-query |
+| `analytics.query.execute` | agent-executable | analytics-query |
+| `analytics.snapshot.create` | agent-executable | analytics-mutation |
+| `analytics.insight.approve` | human-only | analytics-approval |
+
+### Non-goals
+
+- No general-purpose SQL or query-language engine
+- No external data-source connectors (import/export is a transport or CLI concern)
+- No real-time streaming or time-series ingestion
+- No dashboard or visualization UI
+
+### Decision log
+
+| # | Date | Decision | Rationale |
+|---|---|---|---|
+| 1 | 2026-08-28 | Domain 4 placeholder scoped as Analytics & Insight | Matches architecture doc layer diagram; no decisions made yet |
+| 2 | 2026-08-29 | Initial operation set: snapshot, query creation, query execution, human-only insight approval | Snapshot separates dataset versioning from live data; query create/execute separates definition from execution (mirroring content define/edit pattern); insight approval is the governance hook where a human signs off on derived conclusions |
 
 ---

@@ -88,6 +88,30 @@ fn commerce_entry(operation: &str, governance: Governance) -> RegistryEntry {
     }
 }
 
+fn workflow_entry(operation: &str, governance: Governance) -> RegistryEntry {
+    RegistryEntry {
+        operation: operation.to_string(),
+        domain: "workflow".to_string(),
+        version: "v1".to_string(),
+        action: format!("workflow:{}", operation.replace('.', "_")),
+        description: format!("Workflow operation {operation}"),
+        input_schema: format!(
+            "registry/workflow/{}.input.json",
+            operation.replace('.', "-")
+        ),
+        output_schema: r#"{"type":"object"}"#.to_string(),
+        required_authority: "delegation-grant".to_string(),
+        governance,
+        idempotency: "required-uuidv7".to_string(),
+        consequence: "workflow-mutation".to_string(),
+        evidence_contract: "operation-effect-v1".to_string(),
+        benchmark: None,
+        status: VersionStatus::Active,
+        deprecated_since: None,
+        replacement_operation: None,
+    }
+}
+
 fn app_state() -> Arc<AppState> {
     let registry = Registry::new(vec![
         registry_entry("test.echo", Governance::AgentExecutable),
@@ -137,6 +161,46 @@ fn commerce_state() -> (Arc<AppState>, tempfile::TempDir) {
         commerce_entry("order.create", Governance::AgentExecutable),
         commerce_entry("order.approve", Governance::HumanOnly),
         commerce_entry("order.fulfill", Governance::AgentExecutable),
+    ])
+    .unwrap();
+    (
+        Arc::new(AppState::with_registry(
+            temp.path().to_str().unwrap(),
+            registry,
+        )),
+        temp,
+    )
+}
+
+fn workflow_state() -> (Arc<AppState>, tempfile::TempDir) {
+    let temp = tempfile::TempDir::new().unwrap();
+    let schemas = temp.path().join(".proof/registry/workflow");
+    std::fs::create_dir_all(&schemas).unwrap();
+    std::fs::write(
+        schemas.join("workflow-define.input.json"),
+        r#"{"type":"object","required":["name","steps"],"properties":{"name":{"type":"string"},"steps":{"type":"array"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("workflow-trigger.input.json"),
+        r#"{"type":"object","required":["workflow_id"],"properties":{"workflow_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("workflow-step-complete.input.json"),
+        r#"{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("workflow-approve.input.json"),
+        r#"{"type":"object","required":["run_id"],"properties":{"run_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    let registry = Registry::new(vec![
+        workflow_entry("workflow.define", Governance::AgentExecutable),
+        workflow_entry("workflow.trigger", Governance::AgentExecutable),
+        workflow_entry("workflow.step.complete", Governance::AgentExecutable),
+        workflow_entry("workflow.approve", Governance::HumanOnly),
     ])
     .unwrap();
     (
@@ -750,6 +814,150 @@ async fn commerce_order_lifecycle_requires_human_approval_before_fulfillment() {
         .as_str()
         .unwrap()
         .contains("only approved orders can be fulfilled"));
+}
+
+#[tokio::test]
+async fn workflow_operations_execute_through_dispatch_and_list_endpoints() {
+    let (state, _workspace) = workflow_state();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.define/v1",
+        Some(json!({
+            "name": "Publication",
+            "steps": [
+                {"name": "Draft", "kind": "agent"},
+                {"name": "Review", "kind": "human"}
+            ]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "executed");
+    assert_eq!(body["result"]["operation"], "workflow.define");
+    let workflow_id = body["result"]["data"]["workflow_id"].as_str().unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.trigger/v1",
+        Some(json!({"workflow_id": workflow_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["result"]["operation"], "workflow.trigger");
+    let run_id = body["result"]["data"]["run_id"].as_str().unwrap();
+    assert_eq!(body["result"]["data"]["run"]["status"], "running");
+    assert_eq!(
+        body["result"]["data"]["run"]["steps"][0]["status"],
+        "pending"
+    );
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.step.complete/v1",
+        Some(json!({"run_id": run_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["result"]["operation"], "workflow.step.complete");
+    assert_eq!(body["result"]["data"]["completed_step"], "Draft");
+    assert_eq!(body["result"]["data"]["status"], "running");
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "GET",
+        "/v1/operations/workflow.step.complete/v1",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, Value::Null);
+
+    let (_, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.step.complete/v1",
+        Some(json!({"run_id": run_id})),
+    )
+    .await;
+    assert_eq!(body["result"]["data"]["completed_step"], "Review");
+    assert_eq!(body["result"]["data"]["status"], "pending_approval");
+
+    let (_, body) = response_json(router(state.clone()), "GET", "/workflows", None).await;
+    assert_eq!(body["workflows"].as_array().unwrap().len(), 1);
+    assert_eq!(body["workflows"][0]["id"], workflow_id);
+    assert_eq!(body["workflows"][0]["name"], "Publication");
+
+    let (_, body) = response_json(router(state.clone()), "GET", "/workflow-runs", None).await;
+    assert_eq!(body["workflow_runs"].as_array().unwrap().len(), 1);
+    assert_eq!(body["workflow_runs"][0]["id"], run_id);
+    assert_eq!(body["workflow_runs"][0]["status"], "pending_approval");
+}
+
+#[tokio::test]
+async fn workflow_approval_is_human_only_and_requires_completed_steps() {
+    let (state, _workspace) = workflow_state();
+
+    let (_, definition) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.define/v1",
+        Some(json!({
+            "name": "Governed change",
+            "steps": [{"name": "Implement", "kind": "agent"}]
+        })),
+    )
+    .await;
+    let workflow_id = definition["result"]["data"]["workflow_id"]
+        .as_str()
+        .unwrap();
+
+    let (_, triggered) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.trigger/v1",
+        Some(json!({"workflow_id": workflow_id})),
+    )
+    .await;
+    let run_id = triggered["result"]["data"]["run_id"].as_str().unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.approve/v1",
+        Some(json!({"run_id": run_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        body["error"],
+        "operation is human-only, agents cannot execute"
+    );
+
+    let (status, _) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.step.complete/v1",
+        Some(json!({"run_id": run_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/workflow.approve/v1",
+        Some(json!({"run_id": run_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        body["error"],
+        "operation is human-only, agents cannot execute"
+    );
 }
 
 #[tokio::test]

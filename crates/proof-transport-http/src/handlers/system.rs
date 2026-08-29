@@ -94,10 +94,47 @@ fn read_commerce_records(
     Ok(records)
 }
 
+fn read_workflow_records(
+    state: &SharedState,
+    kind: &str,
+) -> Result<Vec<Value>, (axum::http::StatusCode, Json<Value>)> {
+    let dir = std::path::Path::new(&state.workspace_path).join(".proof/data/workflow");
+    let mut records = vec![];
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with(&format!("{kind}-")) && name.ends_with(".json") {
+                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                        if let Ok(value) = serde_json::from_str::<Value>(&content) {
+                            records.push(value);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    records.sort_by(|left, right| {
+        left["id"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(right["id"].as_str().unwrap_or_default())
+    });
+    Ok(records)
+}
+
 pub(crate) async fn list_catalog(State(state): State<SharedState>) -> impl IntoResponse {
     read_commerce_records(&state, "catalog").map(|catalogs| Json(json!({ "catalogs": catalogs })))
 }
 
 pub(crate) async fn list_orders(State(state): State<SharedState>) -> impl IntoResponse {
     read_commerce_records(&state, "order").map(|orders| Json(json!({ "orders": orders })))
+}
+
+pub(crate) async fn list_workflows(State(state): State<SharedState>) -> impl IntoResponse {
+    read_workflow_records(&state, "workflow")
+        .map(|workflows| Json(json!({ "workflows": workflows })))
+}
+
+pub(crate) async fn list_workflow_runs(State(state): State<SharedState>) -> impl IntoResponse {
+    read_workflow_records(&state, "run").map(|runs| Json(json!({ "workflow_runs": runs })))
 }

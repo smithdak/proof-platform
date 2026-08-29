@@ -1,12 +1,13 @@
-use axum::http::{Request, StatusCode};
+use axum::Router;
+use futures_util::{SinkExt, StreamExt};
 use proof_kernel::{
     ExecutionContext, ExecutionError, Governance, OperationHandler, Registry, RegistryEntry,
     VersionStatus,
 };
-use proof_transport_ws::{ws_router, SharedWsState, WsAppState};
+use proof_transport_ws::{ws_router, WsAppState};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tower::ServiceExt;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 struct EchoHandler;
 
@@ -16,23 +17,7 @@ impl OperationHandler for EchoHandler {
     }
 
     fn execute(&self, input: &Value, _context: &ExecutionContext) -> Result<Value, ExecutionError> {
-        Ok(json!({"message": input["message"]}))
-    }
-}
-
-struct FailingHandler;
-
-impl OperationHandler for FailingHandler {
-    fn operation(&self) -> &str {
-        "test.failing"
-    }
-
-    fn execute(
-        &self,
-        _input: &Value,
-        _context: &ExecutionContext,
-    ) -> Result<Value, ExecutionError> {
-        Err(ExecutionError::HandlerFailed("handler failed".to_string()))
+        Ok(json!({"message": input["message"], "handled_by": "test.echo"}))
     }
 }
 
@@ -57,57 +42,181 @@ fn registry_entry(operation: &str, governance: Governance) -> RegistryEntry {
     }
 }
 
-fn state() -> SharedWsState {
-    let registry = Registry::new(vec![
-        registry_entry("test.echo", Governance::AgentExecutable),
-        registry_entry("test.failing", Governance::AgentExecutable),
-        registry_entry("test.human_only", Governance::HumanOnly),
-        registry_entry("test.unknown", Governance::AgentExecutable),
-    ])
-    .unwrap();
-    let state = Arc::new(WsAppState::with_registry("/tmp/proof-ws-test", registry));
-    state.register_handler(Arc::new(EchoHandler));
-    state.register_handler(Arc::new(FailingHandler));
-    state
+fn test_state() -> WsAppState {
+    let registry = Registry::new(vec![registry_entry(
+        "test.echo",
+        Governance::AgentExecutable,
+    )])
+    .expect("echo entry should build a valid registry");
+    WsAppState::with_registry("/tmp/proof-ws-test", registry)
 }
 
-fn request() -> Request<axum::body::Body> {
-    Request::builder()
-        .method("GET")
-        .uri("/ws")
-        .header("host", "localhost")
-        .header("connection", "Upgrade")
-        .header("upgrade", "websocket")
-        .header("sec-websocket-version", "13")
-        .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
-        .body(axum::body::Body::empty())
-        .unwrap()
+fn router(state: WsAppState) -> (Router, std::sync::Arc<WsAppState>) {
+    let shared = Arc::new(state);
+    shared.register_handler(Arc::new(EchoHandler));
+    (ws_router(shared.clone()), shared)
 }
 
-fn app(state: &SharedWsState) -> axum::Router {
-    ws_router(state.clone())
-}
-
-#[tokio::test]
-async fn websocket_upgrade_is_rejected_without_handshake_headers() {
-    let state = state();
-    let response = app(&state)
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/ws")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
+async fn connect(
+    router: Router,
+) -> (
+    futures_util::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        WsMessage,
+    >,
+    futures_util::stream::SplitStream<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    >,
+) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (socket, _response) = tokio_tungstenite::connect_async(format!("ws://{address}/ws"))
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    socket.split()
+}
+
+async fn send_json(socket: &mut (impl SinkExt<WsMessage> + std::marker::Unpin), value: &Value) {
+    let payload = serde_json::to_string(value).unwrap();
+    socket
+        .send(WsMessage::Text(payload))
+        .await
+        .unwrap_or_else(|_| panic!("websocket send should succeed"));
+}
+
+async fn read_json<T>(socket: &mut T) -> Value
+where
+    T: futures_util::Stream<Item = Result<WsMessage, tokio_tungstenite::tungstenite::Error>>
+        + Unpin,
+{
+    use futures_util::StreamExt;
+    let message = socket.next().await.unwrap().unwrap();
+    serde_json::from_str(&message.to_text().unwrap()).unwrap()
 }
 
 #[tokio::test]
-async fn websocket_handler_compiles_with_http_oneshot_request() {
-    let state = state();
-    let service = app(&state);
-    let response = service.oneshot(request()).await.unwrap();
-    assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+async fn executes_operation_and_returns_proof() {
+    let (router, _state) = router(test_state());
+    let (mut sender, mut receiver) = connect(router).await;
+
+    let request = json!({
+        "id": 1,
+        "method": "execute",
+        "params": {
+            "operation": "test.echo",
+            "version": "v1",
+            "input": {"message": "hello", "idempotency_key": "018f0d7a-bdea-7000-8000-0123456789ab"}
+        }
+    });
+    send_json(&mut sender, &request).await;
+    let response = read_json(&mut receiver).await;
+
+    assert_eq!(response["id"], 1);
+    assert_eq!(response["result"]["status"], "executed");
+    assert_eq!(response["result"]["result"]["message"], "hello");
+    assert!(response["result"]["proof"].is_object());
+}
+
+#[tokio::test]
+async fn returns_operation_not_found_error() {
+    let (router, _state) = router(test_state());
+    let (mut sender, mut receiver) = connect(router).await;
+
+    let request = json!({
+        "id": 2,
+        "method": "execute",
+        "params": {"operation": "test.missing", "version": "v1"}
+    });
+    send_json(&mut sender, &request).await;
+    let response = read_json(&mut receiver).await;
+
+    assert_eq!(response["error"]["code"], -32001);
+}
+
+#[tokio::test]
+async fn returns_missing_params_error() {
+    let (router, _state) = router(test_state());
+    let (mut sender, mut receiver) = connect(router).await;
+
+    let request = json!({"id": 3, "method": "execute", "params": {}});
+    send_json(&mut sender, &request).await;
+    let response = read_json(&mut receiver).await;
+
+    assert_eq!(response["error"]["code"], -32602);
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("operation and version are required"));
+}
+
+#[tokio::test]
+async fn returns_unknown_method_error() {
+    let (router, _state) = router(test_state());
+    let (mut sender, mut receiver) = connect(router).await;
+
+    let request = json!({"id": 4, "method": "bogus", "params": {}});
+    send_json(&mut sender, &request).await;
+    let response = read_json(&mut receiver).await;
+
+    assert_eq!(response["error"]["code"], -32601);
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("unknown method"));
+}
+
+#[tokio::test]
+async fn returns_invalid_json_error() {
+    let (router, _state) = router(test_state());
+    let (mut sender, mut receiver) = connect(router).await;
+
+    sender
+        .send(WsMessage::Text("not json".to_string()))
+        .await
+        .unwrap();
+    let response = read_json(&mut receiver).await;
+
+    assert_eq!(response["error"]["code"], -32700);
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("invalid JSON"));
+}
+
+#[tokio::test]
+async fn returns_missing_method_error() {
+    let (router, _state) = router(test_state());
+    let (mut sender, mut receiver) = connect(router).await;
+
+    let request = json!({"id": 5});
+    send_json(&mut sender, &request).await;
+    let response = read_json(&mut receiver).await;
+
+    assert_eq!(response["error"]["code"], -32600);
+    assert!(response["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("missing method"));
+}
+
+#[tokio::test]
+async fn lists_tools_from_registry() {
+    let (router, _state) = router(test_state());
+    let (mut sender, mut receiver) = connect(router).await;
+
+    let request = json!({"id": 6, "method": "list_tools"});
+    send_json(&mut sender, &request).await;
+    let response = read_json(&mut receiver).await;
+
+    assert_eq!(response["id"], 6);
+    let tools = response["result"]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0]["operation"], "test.echo");
 }

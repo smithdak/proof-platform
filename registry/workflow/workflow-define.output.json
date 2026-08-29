@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "workflow.define"},
+    "data": {
+      "type": "object",
+      "required": ["workflow_id", "name", "description", "steps", "content_digest"],
+      "properties": {
+        "workflow_id": {"type": "string", "format": "uuid"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "kind"],
+            "properties": {
+              "name": {"type": "string"},
+              "kind": {"type": "string", "enum": ["agent", "human"]},
+              "description": {"type": "string"}
+            }
+          }
+        },
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}

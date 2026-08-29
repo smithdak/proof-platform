@@ -1,0 +1,64 @@
+{
+  "name": "workflow-governance-lifecycle-and-idempotency",
+  "cases": [
+    {
+      "name": "workflow.approve is human-only and rejects agent execution",
+      "operation": "workflow.approve",
+      "version": "v1",
+      "domain": "workflow",
+      "governance": "human-only",
+      "actor": "agent",
+      "input": {"run_id": "$workflow.trigger:data.run_id"},
+      "expected_rejection": {
+        "error": "HumanOnly",
+        "message_contains": "human-only"
+      }
+    },
+    {
+      "name": "workflow operations require define trigger complete approve sequence",
+      "operation": "workflow.step.complete",
+      "version": "v1",
+      "domain": "workflow",
+      "governance": "agent-executable",
+      "actor": "agent",
+      "sequence": ["workflow.define", "workflow.trigger", "workflow.step.complete", "workflow.approve"],
+      "before_sequence": {
+        "operation": "workflow.step.complete",
+        "input": {"run_id": "$workflow.trigger:data.run_id"},
+        "expected_rejection": {
+          "error": "HandlerFailed",
+          "message_contains": "workflow run must be triggered before steps can be completed"
+        }
+      },
+      "after_sequence": {
+        "operation": "workflow.step.complete",
+        "input": {"run_id": "$workflow.trigger:data.run_id"},
+        "expected_status": "in-progress"
+      }
+    },
+    {
+      "name": "workflow operations require UUIDv7 idempotency keys",
+      "operation": "workflow.define",
+      "version": "v1",
+      "domain": "workflow",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "input": {"name": "Review chain", "steps": [{"name": "review", "kind": "agent"}]},
+      "without_key": {
+        "expected_rejection": {
+          "error": "InvalidInput",
+          "message_contains": "idempotency_key"
+        }
+      },
+      "duplicate_with_same_key": {
+        "expected_rejection": {
+          "error": "IdempotencyKeyReused",
+          "message_contains": "already used"
+        }
+      },
+      "with_new_key": {
+        "expected_allowed": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "workflow.approve"},
+    "data": {
+      "type": "object",
+      "required": ["run_id", "status", "approved_at", "content_digest"],
+      "properties": {
+        "run_id": {"type": "string", "format": "uuid"},
+        "status": {"type": "string", "const": "approved"},
+        "approved_at": {"type": "string"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}

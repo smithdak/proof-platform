@@ -18,7 +18,8 @@ use axum::extract::DefaultBodyLimit as RequestBodyLimitLayer;
 use handlers::operations::execute_operation;
 use handlers::proofs::{get_proof, list_audit, list_proofs, list_proofs_filtered, verify_proof};
 use handlers::system::{
-    capabilities, health, list_catalog, list_objects, list_orders, list_schemas, root,
+    capabilities, health, list_catalog, list_objects, list_orders, list_schemas,
+    list_workflow_runs, list_workflows, root,
 };
 pub use limits::HttpMiddlewareState;
 pub use limits::{HttpLimits, RateLimitConfig};
@@ -44,6 +45,8 @@ pub fn router_with_limits(state: SharedState, limits: HttpLimits) -> Router {
         .route("/v1/objects", get(list_objects))
         .route("/catalog", get(list_catalog))
         .route("/orders", get(list_orders))
+        .route("/workflows", get(list_workflows))
+        .route("/workflow-runs", get(list_workflow_runs))
         .route("/v1/proofs", get(list_proofs))
         .route("/v1/proofs/:id", get(get_proof))
         .route("/proofs", get(list_proofs_filtered))

@@ -232,6 +232,55 @@ pub const MIGRATIONS: &[Migration] = &[
             DROP TABLE IF EXISTS catalog;
             ",
     },
+    Migration {
+        version: 5,
+        description: "create workflow definition, run, and step tables",
+        up: "
+            CREATE TABLE IF NOT EXISTS workflow_definition (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                steps TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS workflow_run (
+                id TEXT PRIMARY KEY,
+                workflow_definition_id TEXT NOT NULL REFERENCES workflow_definition(id),
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                approved_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS workflow_step (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES workflow_run(id),
+                name TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('agent', 'human')),
+                description TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                completed_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_workflow_run_definition
+                ON workflow_run(workflow_definition_id);
+            CREATE INDEX IF NOT EXISTS idx_workflow_step_run
+                ON workflow_step(run_id);
+            CREATE INDEX IF NOT EXISTS idx_workflow_run_status
+                ON workflow_run(status);
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_workflow_run_status;
+            DROP INDEX IF EXISTS idx_workflow_step_run;
+            DROP INDEX IF EXISTS idx_workflow_run_definition;
+            DROP TABLE IF EXISTS workflow_step;
+            DROP TABLE IF EXISTS workflow_run;
+            DROP TABLE IF EXISTS workflow_definition;
+            ",
+    },
 ];
 
 /// A SQLite-backed store for Proof data.

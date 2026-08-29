@@ -30,6 +30,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Canonical release manifests with deterministic entries and a release digest.
 - Independent release-manifest verification against a set of objects.
 
+#### Workflow Management
+
+- Workflow definition, run, and step models with lifecycle state-machine validation.
+- Governed handlers for `workflow.define`, `workflow.trigger`, `workflow.step.complete`, and `workflow.approve`.
+- Canonical JSON digests for workflow definitions and runs.
+- SQLite persistence for workflow definitions, runs, and steps with ordered migrations and round-trip tests.
+- HTTP endpoints for workflow and workflow-run listing, with registry-backed execution for all four operations.
+- Workflow governance conformance suite covering human-only approval rejection, lifecycle sequencing, and UUIDv7 idempotency-key enforcement.
+
 #### Storage
 
 - SQLite-backed persistence for proofs, execution contexts, principals, delegations, registry entries, schemas, objects, changesets, editions, and releases.
@@ -39,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Signature and digest-chain verification for ordered proof sequences.
 - Expired execution-context cleanup and proof/context counters.
 - Registry save/load with deterministic ordering and transactional persistence.
+- Workflow definition, run, and step persistence with list, load, and delete support.
 
 #### Transports
 
@@ -103,10 +113,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Known Limitations
 
-- The HTTP `/capabilities` endpoint remains static rather than registry-derived.
-- HTTP execution creates a proof in the transport when the engine has no storage; engine-backed storage and transport proof generation should be reconciled to avoid divergent persistence behavior.
-- `GET /proofs/:id` reports `unverified`; use `POST /proofs/verify` for signature verification.
-- `GET /proofs` does not apply the accepted `version` filter when combined with `operation`.
-- HTTP readiness and metrics endpoints, rotating proof envelopes, and full multi-workspace CLI management are not yet present in the committed HTTP/CLI/kernel surface.
+- The WebSocket transport is functional but has no dedicated test coverage.
+- Rotating proof envelopes and full multi-workspace CLI management are not yet present in the committed kernel/CLI surface.
 
 [Unreleased]: https://github.com/example/proof-platform/compare/v0.1.0...HEAD

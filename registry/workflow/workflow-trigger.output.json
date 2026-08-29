@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "workflow.trigger"},
+    "data": {
+      "type": "object",
+      "required": ["run_id", "workflow_id", "status", "triggered_at", "content_digest"],
+      "properties": {
+        "run_id": {"type": "string", "format": "uuid"},
+        "workflow_id": {"type": "string", "format": "uuid"},
+        "status": {"type": "string", "const": "in-progress"},
+        "triggered_at": {"type": "string"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}
