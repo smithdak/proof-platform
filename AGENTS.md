@@ -25,6 +25,7 @@ Exception: adding a new variant to an enum or a new field to a struct that you o
 ## Shared Types & API Contracts
 
 - `contracts/kernel-api.md` defines the canonical shapes of shared types (`RegistryEntry`, `ExecutionContext`, `Proof`, operation naming, error variants). Read it before touching any shared type.
+- `contracts/domain-definitions.md` defines the canonical scope, operation set, and decision history for each domain module. Read it before starting any domain work. Wave specs must reference the domain definition — the swarm builds toward what is written there, not toward chat.
 - When adding a field to a shared struct, make it backward-compatible: use `Option<T>` with `#[serde(default)]` where possible, and never remove or rename existing fields.
 - Operation names follow `domain.action` (e.g. `schema.create`, `object.create`). Version strings follow `v<N>` (e.g. `v1`). Proof storage uses the `operation::version` composite key format. Do not invent new formats.
 - New SQLite migrations must be appended to the `MIGRATIONS` list with the next sequential version number. Never edit or duplicate an existing migration.

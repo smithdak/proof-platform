@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "catalog.update"},
+    "data": {
+      "type": "object",
+      "required": ["catalog_id", "name", "description", "updated_at", "content_digest"],
+      "properties": {
+        "catalog_id": {"type": "string", "format": "uuid"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "updated_at": {"type": "string"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}

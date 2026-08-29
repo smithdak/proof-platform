@@ -181,6 +181,57 @@ pub const MIGRATIONS: &[Migration] = &[
             ALTER TABLE proofs DROP COLUMN expires_at;
         ",
     },
+    Migration {
+        version: 4,
+        description: "create commerce catalog, product, order, and order_line tables",
+        up: "
+            CREATE TABLE IF NOT EXISTS catalog (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS catalog_product (
+                id TEXT PRIMARY KEY,
+                catalog_id TEXT NOT NULL REFERENCES catalog(id),
+                name TEXT NOT NULL,
+                description TEXT,
+                price_cents INTEGER,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS \"order\" (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                approved_at TEXT,
+                fulfilled_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS order_line (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL REFERENCES \"order\"(id),
+                catalog_id TEXT NOT NULL REFERENCES catalog(id),
+                name TEXT NOT NULL,
+                quantity INTEGER NOT NULL CHECK (quantity >= 1)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_catalog_product_catalog ON catalog_product(catalog_id);
+            CREATE INDEX IF NOT EXISTS idx_order_line_order ON order_line(order_id);
+            CREATE INDEX IF NOT EXISTS idx_order_status ON \"order\"(status);
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_order_status;
+            DROP INDEX IF EXISTS idx_order_line_order;
+            DROP INDEX IF EXISTS idx_catalog_product_catalog;
+            DROP TABLE IF EXISTS order_line;
+            DROP TABLE IF EXISTS \"order\";
+            DROP TABLE IF EXISTS catalog_product;
+            DROP TABLE IF EXISTS catalog;
+            ",
+    },
 ];
 
 /// A SQLite-backed store for Proof data.

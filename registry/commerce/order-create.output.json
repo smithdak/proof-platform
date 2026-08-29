@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "order.create"},
+    "data": {
+      "type": "object",
+      "required": ["order_id", "lines", "status", "created_at", "content_digest"],
+      "properties": {
+        "order_id": {"type": "string", "format": "uuid"},
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["catalog_id", "name", "quantity"],
+            "properties": {
+              "catalog_id": {"type": "string", "format": "uuid"},
+              "name": {"type": "string"},
+              "quantity": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
+        "status": {"type": "string", "const": "pending"},
+        "created_at": {"type": "string"},
+        "content_digest": {"type": "string"}
+      }
+    }
+  }
+}

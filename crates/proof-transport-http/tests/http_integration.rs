@@ -67,6 +67,27 @@ fn registry_entry(operation: &str, governance: Governance) -> RegistryEntry {
     }
 }
 
+fn commerce_entry(operation: &str, governance: Governance) -> RegistryEntry {
+    RegistryEntry {
+        operation: operation.to_string(),
+        domain: "commerce".to_string(),
+        version: "v1".to_string(),
+        action: format!("commerce:{}", operation.replace('.', "_")),
+        description: format!("Commerce operation {operation}"),
+        input_schema: format!("registry/commerce/{operation}.input.json"),
+        output_schema: r#"{"type":"object"}"#.to_string(),
+        required_authority: "delegation-grant".to_string(),
+        governance,
+        idempotency: "required-uuidv7".to_string(),
+        consequence: "commerce-mutation".to_string(),
+        evidence_contract: "operation-effect-v1".to_string(),
+        benchmark: None,
+        status: VersionStatus::Active,
+        deprecated_since: None,
+        replacement_operation: None,
+    }
+}
+
 fn app_state() -> Arc<AppState> {
     let registry = Registry::new(vec![
         registry_entry("test.echo", Governance::AgentExecutable),
@@ -79,6 +100,52 @@ fn app_state() -> Arc<AppState> {
     state.register_handler(Arc::new(EchoHandler));
     state.register_handler(Arc::new(FailingHandler));
     state
+}
+
+fn commerce_state() -> (Arc<AppState>, tempfile::TempDir) {
+    let temp = tempfile::TempDir::new().unwrap();
+    let schemas = temp.path().join(".proof/registry/commerce");
+    std::fs::create_dir_all(&schemas).unwrap();
+    std::fs::write(
+        schemas.join("catalog.create.input.json"),
+        r#"{"type":"object","required":["name"],"properties":{"name":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("catalog.update.input.json"),
+        r#"{"type":"object","required":["catalog_id"],"properties":{"catalog_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("order.create.input.json"),
+        r#"{"type":"object","required":["catalog_id"],"properties":{"catalog_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("order.approve.input.json"),
+        r#"{"type":"object","required":["order_id"],"properties":{"order_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        schemas.join("order.fulfill.input.json"),
+        r#"{"type":"object","required":["order_id"],"properties":{"order_id":{"type":"string"}},"additionalProperties":false}"#,
+    )
+    .unwrap();
+    let registry = Registry::new(vec![
+        commerce_entry("catalog.create", Governance::AgentExecutable),
+        commerce_entry("catalog.update", Governance::AgentExecutable),
+        commerce_entry("order.create", Governance::AgentExecutable),
+        commerce_entry("order.approve", Governance::HumanOnly),
+        commerce_entry("order.fulfill", Governance::AgentExecutable),
+    ])
+    .unwrap();
+    (
+        Arc::new(AppState::with_registry(
+            temp.path().to_str().unwrap(),
+            registry,
+        )),
+        temp,
+    )
 }
 
 fn registry() -> Registry {
@@ -580,6 +647,109 @@ async fn capabilities_lists_registry_operations() {
             ]
         })
     );
+}
+
+#[tokio::test]
+async fn commerce_operations_execute_through_dispatch_and_list_endpoints() {
+    let (state, _workspace) = commerce_state();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/catalog.create/v1",
+        Some(json!({"name": "Spring"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "executed");
+    assert_eq!(body["result"]["operation"], "catalog.create");
+    let catalog_id = body["result"]["data"]["catalog_id"].as_str().unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/catalog.update/v1",
+        Some(json!({"catalog_id": catalog_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["result"]["operation"], "catalog.update");
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/order.create/v1",
+        Some(json!({"catalog_id": catalog_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let order_id = body["result"]["data"]["order_id"].as_str().unwrap();
+
+    let (_, body) = response_json(router(state.clone()), "GET", "/catalog", None).await;
+    assert_eq!(body["catalogs"].as_array().unwrap().len(), 1);
+    assert_eq!(body["catalogs"][0]["id"], catalog_id);
+
+    let (_, body) = response_json(router(state.clone()), "GET", "/orders", None).await;
+    assert_eq!(body["orders"].as_array().unwrap().len(), 1);
+    assert_eq!(body["orders"][0]["id"], order_id);
+    assert_eq!(body["orders"][0]["status"], "pending_approval");
+}
+
+#[tokio::test]
+async fn commerce_order_lifecycle_requires_human_approval_before_fulfillment() {
+    let (state, _workspace) = commerce_state();
+
+    let (_, catalog) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/catalog.create/v1",
+        Some(json!({"name": "Seasonal"})),
+    )
+    .await;
+    let catalog_id = catalog["result"]["data"]["catalog_id"].as_str().unwrap();
+    let (_, order) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/order.create/v1",
+        Some(json!({"catalog_id": catalog_id})),
+    )
+    .await;
+    let order_id = order["result"]["data"]["order_id"].as_str().unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/order.fulfill/v1",
+        Some(json!({"order_id": order_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("only approved orders can be fulfilled"));
+
+    let (status, _) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/order.approve/v1",
+        Some(json!({"order_id": order_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/order.fulfill/v1",
+        Some(json!({"order_id": order_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("only approved orders can be fulfilled"));
 }
 
 #[tokio::test]

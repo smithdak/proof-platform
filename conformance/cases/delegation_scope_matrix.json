@@ -130,6 +130,56 @@
       "domain": "content",
       "resource": "site/a",
       "expected_allowed": false
+    },
+    {
+      "name": "commerce-only scope allows catalog.create",
+      "allowed_operations": null,
+      "allowed_domains": ["commerce"],
+      "resource_scope": null,
+      "operation": "catalog.create",
+      "domain": "commerce",
+      "resource": "catalog/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "commerce-only scope allows catalog.update",
+      "allowed_operations": null,
+      "allowed_domains": ["commerce"],
+      "resource_scope": null,
+      "operation": "catalog.update",
+      "domain": "commerce",
+      "resource": "catalog/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "commerce-only scope allows order.create",
+      "allowed_operations": null,
+      "allowed_domains": ["commerce"],
+      "resource_scope": null,
+      "operation": "order.create",
+      "domain": "commerce",
+      "resource": "order/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "exact operation scope allows order.approve",
+      "allowed_operations": ["order.approve"],
+      "allowed_domains": ["commerce"],
+      "resource_scope": "order/a",
+      "operation": "order.approve",
+      "domain": "commerce",
+      "resource": "order/a",
+      "expected_allowed": true
+    },
+    {
+      "name": "exact operation scope allows order.fulfill",
+      "allowed_operations": ["order.fulfill"],
+      "allowed_domains": ["commerce"],
+      "resource_scope": "order/a",
+      "operation": "order.fulfill",
+      "domain": "commerce",
+      "resource": "order/a",
+      "expected_allowed": true
     }
   ]
 }
