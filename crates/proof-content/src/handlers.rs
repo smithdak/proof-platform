@@ -64,6 +64,10 @@ fn registry_schema(
         context.workspace_path.join(file_name),
         context
             .workspace_path
+            .join(".proof/registry")
+            .join(file_name),
+        context
+            .workspace_path
             .join("crates/proof-content")
             .join(file_name),
         context.workspace_path.join("schemas").join(file_name),

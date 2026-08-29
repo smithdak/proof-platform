@@ -8,6 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+#### Agent Experience Platform
+
+- Runnable dual-era MCP stdio server with registry-derived tools, stable workspace identity, structured results, and persisted signed proofs.
+- Signed approval requests and human approve/deny decisions bound to the exact actor, operation, version, input digest, and validity window.
+- Durable SQLite approval requests, decisions, and execution replay records, with terminal trace seals that permit only exact idempotent retries of bound approval evidence.
+- CLI approver enrollment, pending-request listing, and signed approve/deny commands.
+- Resumable MCP `input_required` flow that ignores unsigned client acceptance and replays completed approved operations without redispatch.
+- Durable `AgentRun` and `AgentRunStep` lifecycle contracts for one-shot calls, multi-step sessions, approval waits, failures, cancellations, and retry lineage.
+- Immutable agent checkpoints and terminal evaluations with canonical metrics and optional basis-point scores.
+- SQLite agent-run control-plane persistence with optimistic revisions and process-safe approval-to-step linkage.
+- CLI run start, list, inspect, checkpoint, retry, complete, cancel, and evaluate commands.
+- MCP run metadata that creates one-shot runs automatically, composes calls into sessions, and resumes the exact persisted approval or retry attempt.
+- Immutable agent definitions with instructions, provider/model selection, explicit registry-tool allowlists, and step/model/token/time/output/cost limits.
+- Provider-neutral `proof-agent-runtime` planner/tool loop with an OpenAI Responses API adapter and sequential function calling.
+- Durable model cursors, pending tool calls, usage counters, terminal results, and digest-addressed agent-run events.
+- Fail-closed crash recovery that reconciles persisted tool or approval results without blindly replaying interrupted mutations, and replays terminal failed or budget-exceeded outcomes without appending new checkpoints or events.
+- Approval expiration capped by the run duration deadline, with deadline enforcement before approval validation, reconciliation, or execution so late decisions cannot dispatch tools.
+- Native CLI `agent create`, `list`, `inspect`, `start`, `resume`, and `watch` commands.
+- Deterministic `agent evaluate` policies with strict unknown-field rejection that verify signed tool, approval, lifecycle, final-report, and failure evidence; validate run/step topology, retry lineage, timestamps, and approval chronology; and bind each result to canonical policy and trace digests that remain stable across repeated storage reads.
+- A loopback-only browser approval console that shows the exact governed context and records signed human decisions without executing the tool.
+- Evidence-returning execution engine APIs used by runtimes to receive the exact persisted signed proof.
+
 #### Execution Engine
 
 - Registry-backed operation discovery for versioned operations.
@@ -39,9 +61,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - HTTP endpoints for workflow and workflow-run listing, with registry-backed execution for all four operations.
 - Workflow governance conformance suite covering human-only approval rejection, lifecycle sequencing, and UUIDv7 idempotency-key enforcement.
 
+#### Commerce Management
+
+- Catalog, product, and order models with governed lifecycle handlers.
+- Governed handlers for `catalog.create`, `catalog.update`, `order.create`, `order.approve`, and `order.fulfill`.
+- SQLite persistence for catalogs, products, and orders with stale-timestamp conflict detection.
+- HTTP endpoints for catalog and order listing, with registry-backed execution for all five operations.
+
+#### Analytics Management
+
+- Snapshot, query, and insight models with governed lifecycle handlers.
+- Governed handlers for `analytics.snapshot.create`, `analytics.query.create`, `analytics.query.execute`, and `analytics.insight.approve`.
+- SQLite persistence for snapshots, queries, and insights with ordered migrations and round-trip tests.
+- HTTP endpoints for snapshot and query listing, with registry-backed execution for all four operations.
+- Analytics governance conformance suite covering human-only insight approval rejection, lifecycle sequencing, and UUIDv7 idempotency-key enforcement.
+
+#### Unified Storage Persistence
+
+- Domain operations persist through `SqliteStore` rather than ad-hoc JSON files, making SQLite the authoritative system of record for commerce, workflow, and analytics records.
+- SQLite WAL journal mode and foreign-key enforcement enabled for concurrent read safety and referential integrity.
+
 #### Storage
 
 - SQLite-backed persistence for proofs, execution contexts, principals, delegations, registry entries, schemas, objects, changesets, editions, and releases.
+- Immutable durable principal bindings: repeated saves of the same ID, kind, and public key are idempotent, while conflicting identity material is rejected.
 - Ordered, idempotent schema migrations with version tracking and rollback support.
 - Content-addressed blob storage backed by SQLite metadata and filesystem objects.
 - Proof lookup by operation, operation/version, actor, and proof ID.
@@ -106,14 +149,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Centralized execution authority in `proof-kernel::ExecutionEngine` across CLI, HTTP, and MCP transports.
-- HTTP execution now uses the engine’s registry and governance checks rather than an ad-hoc operation path.
+- HTTP execution now uses the engine's registry and governance checks rather than an ad-hoc operation path.
 - MCP tool discovery is now driven directly by registry entries and exposes registry schemas.
 - SQLite storage is now shared across proof persistence, execution audit, principals, delegations, and registry state.
 - README architecture and usage documentation was expanded and reconciled with the implemented platform surface.
+- HTTP registry schema loading and record listing are unified across content, commerce, workflow, and analytics domains.
+- Unauthenticated HTTP execution no longer trusts the caller-controlled `X-Principal-Kind` header; human-only operations fail closed until routed through signed approval evidence.
+- The legacy `proof release-publish` shortcut now fails closed instead of bypassing HumanOnly governance and writing a release directly.
+- Proof operation filters treat SQL `%` and `_` characters literally across storage and HTTP queries.
+- MCP approval execution timestamps are identical to their signed proof timestamps, matching native recovery and evaluation invariants.
+- Cancelled native runs use SQLite's immediate terminal seal and can persist a deterministic failing task evaluation without a synthetic failure event.
+- MCP governance conformance tests now cover all four domains (content, commerce, workflow, analytics).
+- Registry directory loading now ignores adjacent input/output JSON Schema files and accepts nested dot-delimited operation names.
+- Domain handlers resolve schemas from workspace-local `.proof/registry` directories for installed runtimes.
+- Execution proofs now sign the canonical `operation::version` composite. Proofs emitted by older builds with a bare operation remain signature-valid legacy bytes, but fail closed in version-bound run/evaluation checks and must be regenerated.
 
 ### Known Limitations
 
-- The WebSocket transport is functional but has no dedicated test coverage.
 - Rotating proof envelopes and full multi-workspace CLI management are not yet present in the committed kernel/CLI surface.
 
 [Unreleased]: https://github.com/example/proof-platform/compare/v0.1.0...HEAD

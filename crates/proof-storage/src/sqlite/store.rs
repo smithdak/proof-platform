@@ -3,7 +3,7 @@
 use super::migrations::run_migrations;
 use crate::StorageError;
 use chrono::{DateTime, Utc};
-use proof_kernel::{AuditFilter, ExecutionContext, ExecutionStore, Proof, RegistryEntry};
+use proof_kernel::{AuditFilter, ExecutionContext, ExecutionStore, Proof};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -49,14 +49,20 @@ impl ExecutionStore for SqliteStore {
                    execution_contexts.workspace_path,
                    execution_contexts.timestamp
             FROM execution_contexts
-            JOIN proofs
-              ON proofs.actor = execution_contexts.actor
             WHERE 1 = 1
         "
         .to_string();
 
         if filter.operation.is_some() {
-            sql.push_str(" AND proofs.operation = :operation");
+            sql.push_str(
+                " AND EXISTS (
+                    SELECT 1 FROM proofs
+                    WHERE proofs.actor = execution_contexts.actor
+                      AND proofs.timestamp = execution_contexts.timestamp
+                      AND substr(proofs.operation, 1, length(:operation_prefix))
+                          = :operation_prefix
+                )",
+            );
         }
         if filter.actor.is_some() {
             sql.push_str(" AND execution_contexts.actor = :actor");
@@ -75,7 +81,7 @@ impl ExecutionStore for SqliteStore {
 
         let mut params: Vec<(&str, Box<dyn rusqlite::ToSql>)> = Vec::new();
         if let Some(operation) = &filter.operation {
-            params.push((":operation", Box::new(operation.clone())));
+            params.push((":operation_prefix", Box::new(format!("{operation}::"))));
         }
         if let Some(actor) = &filter.actor {
             params.push((":actor", Box::new(actor.as_uuid().to_string())));
@@ -122,6 +128,8 @@ impl SqliteStore {
     /// Opens (or creates) a SQLite database at the given path and initializes the schema.
     pub fn open(path: &Path) -> Result<Self, StorageError> {
         let conn = Connection::open(path)?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),

@@ -2,7 +2,7 @@
 
 use crate::StorageError;
 use chrono::Utc;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 pub struct Migration {
     pub version: u32,
@@ -328,6 +328,180 @@ pub const MIGRATIONS: &[Migration] = &[
             DROP TABLE IF EXISTS analytics_snapshot;
             ",
     },
+    Migration {
+        version: 7,
+        description: "create signed approval request, decision, and execution tables",
+        up: "
+            CREATE TABLE IF NOT EXISTS approval_requests (
+                id TEXT PRIMARY KEY,
+                requested_by TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                version TEXT NOT NULL,
+                input_digest TEXT NOT NULL,
+                requested_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                request_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS approval_decisions (
+                id TEXT PRIMARY KEY,
+                request_id TEXT NOT NULL UNIQUE REFERENCES approval_requests(id),
+                decided_by TEXT NOT NULL REFERENCES principals(id),
+                outcome TEXT NOT NULL CHECK (outcome IN ('approved', 'denied')),
+                decided_at TEXT NOT NULL,
+                decision_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS approval_executions (
+                request_id TEXT PRIMARY KEY REFERENCES approval_requests(id),
+                executed_at TEXT NOT NULL,
+                output_json TEXT NOT NULL,
+                proof_json TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_approval_requests_requested_at
+                ON approval_requests(requested_at);
+            CREATE INDEX IF NOT EXISTS idx_approval_requests_operation
+                ON approval_requests(operation, version);
+            CREATE INDEX IF NOT EXISTS idx_approval_decisions_decided_by
+                ON approval_decisions(decided_by);
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_approval_decisions_decided_by;
+            DROP INDEX IF EXISTS idx_approval_requests_operation;
+            DROP INDEX IF EXISTS idx_approval_requests_requested_at;
+            DROP TABLE IF EXISTS approval_executions;
+            DROP TABLE IF EXISTS approval_decisions;
+            DROP TABLE IF EXISTS approval_requests;
+            ",
+    },
+    Migration {
+        version: 8,
+        description: "create durable agent run control-plane tables",
+        up: "
+            CREATE TABLE IF NOT EXISTS agent_runs (
+                id TEXT PRIMARY KEY,
+                actor TEXT NOT NULL,
+                mode TEXT NOT NULL CHECK (mode IN ('one_shot', 'session')),
+                status TEXT NOT NULL CHECK (
+                    status IN ('queued', 'running', 'waiting_for_input', 'succeeded', 'failed', 'cancelled')
+                ),
+                revision INTEGER NOT NULL CHECK (revision >= 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                run_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_run_steps (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES agent_runs(id),
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                attempt INTEGER NOT NULL CHECK (attempt >= 1),
+                status TEXT NOT NULL CHECK (
+                    status IN ('pending', 'running', 'waiting_for_approval', 'succeeded', 'failed', 'cancelled')
+                ),
+                approval_request_id TEXT REFERENCES approval_requests(id),
+                revision INTEGER NOT NULL CHECK (revision >= 0),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                step_json TEXT NOT NULL,
+                UNIQUE (run_id, ordinal, attempt)
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_checkpoints (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES agent_runs(id),
+                sequence INTEGER NOT NULL CHECK (sequence >= 0),
+                state_digest TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                checkpoint_json TEXT NOT NULL,
+                UNIQUE (run_id, sequence)
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_run_evaluations (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES agent_runs(id),
+                evaluator TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK (outcome IN ('passed', 'failed')),
+                score_bps INTEGER CHECK (score_bps BETWEEN 0 AND 10000),
+                created_at TEXT NOT NULL,
+                evaluation_json TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_actor_status
+                ON agent_runs(actor, status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_run_steps_run
+                ON agent_run_steps(run_id, ordinal, attempt);
+            CREATE INDEX IF NOT EXISTS idx_agent_run_steps_approval
+                ON agent_run_steps(approval_request_id);
+            CREATE INDEX IF NOT EXISTS idx_agent_checkpoints_run
+                ON agent_checkpoints(run_id, sequence);
+            CREATE INDEX IF NOT EXISTS idx_agent_run_evaluations_run
+                ON agent_run_evaluations(run_id, created_at);
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_agent_run_evaluations_run;
+            DROP INDEX IF EXISTS idx_agent_checkpoints_run;
+            DROP INDEX IF EXISTS idx_agent_run_steps_approval;
+            DROP INDEX IF EXISTS idx_agent_run_steps_run;
+            DROP INDEX IF EXISTS idx_agent_runs_actor_status;
+            DROP TABLE IF EXISTS agent_run_evaluations;
+            DROP TABLE IF EXISTS agent_checkpoints;
+            DROP TABLE IF EXISTS agent_run_steps;
+            DROP TABLE IF EXISTS agent_runs;
+            ",
+    },
+    Migration {
+        version: 9,
+        description: "create agent definitions and append-only runtime events",
+        up: "
+            ALTER TABLE agent_runs ADD COLUMN agent_id TEXT;
+
+            CREATE TABLE IF NOT EXISTS agent_definitions (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                definition_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_run_events (
+                id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL REFERENCES agent_runs(id),
+                sequence INTEGER NOT NULL CHECK (sequence >= 0),
+                kind TEXT NOT NULL,
+                data_digest TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                event_json TEXT NOT NULL,
+                UNIQUE (run_id, sequence)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_agent
+                ON agent_runs(agent_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_run_events_run
+                ON agent_run_events(run_id, sequence);
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_agent_run_events_run;
+            DROP INDEX IF EXISTS idx_agent_runs_agent;
+            DROP TABLE IF EXISTS agent_run_events;
+            DROP TABLE IF EXISTS agent_definitions;
+            ALTER TABLE agent_runs DROP COLUMN agent_id;
+            ",
+    },
+    Migration {
+        version: 10,
+        description: "enforce single-use approval bindings for agent run steps",
+        up: "
+            CREATE UNIQUE INDEX idx_agent_run_steps_approval_unique
+                ON agent_run_steps(approval_request_id)
+                WHERE approval_request_id IS NOT NULL;
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_agent_run_steps_approval_unique;
+            ",
+    },
 ];
 
 /// A SQLite-backed store for Proof data.
@@ -344,13 +518,17 @@ pub fn schema_version(conn: &Connection) -> Result<u32, StorageError> {
 /// Applies every pending migration in ascending version order.
 pub fn run_migrations(conn: &Connection) -> Result<(), StorageError> {
     ensure_migration_table(conn)?;
-    let applied = schema_version(conn)?;
+    let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let applied = schema_version(&transaction)?;
     for migration in MIGRATIONS {
         if migration.version <= applied {
             continue;
         }
-        conn.execute_batch(migration.up)?;
-        conn.execute(
+        if migration.version == 10 {
+            reject_duplicate_agent_step_approvals(&transaction)?;
+        }
+        transaction.execute_batch(migration.up)?;
+        transaction.execute(
             "INSERT INTO schema_migrations (version, description, applied_at)
              VALUES (?1, ?2, ?3)",
             rusqlite::params![
@@ -360,14 +538,39 @@ pub fn run_migrations(conn: &Connection) -> Result<(), StorageError> {
             ],
         )?;
     }
+    transaction.commit()?;
+    Ok(())
+}
+
+fn reject_duplicate_agent_step_approvals(conn: &Connection) -> Result<(), StorageError> {
+    let duplicate = conn
+        .query_row(
+            "SELECT approval_request_id, COUNT(*)
+             FROM agent_run_steps
+             WHERE approval_request_id IS NOT NULL
+             GROUP BY approval_request_id
+             HAVING COUNT(*) > 1
+             ORDER BY approval_request_id
+             LIMIT 1",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .optional()?;
+    if let Some((approval_request_id, count)) = duplicate {
+        return Err(StorageError::Conflict(format!(
+            "cannot apply migration 10: approval request {approval_request_id} is bound to {count} agent run steps"
+        )));
+    }
     Ok(())
 }
 
 /// Rolls back migrations greater than `target_version`.
 pub fn rollback_to(conn: &Connection, target_version: u32) -> Result<(), StorageError> {
     ensure_migration_table(conn)?;
-    let current_version = schema_version(conn)?;
+    let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let current_version = schema_version(&transaction)?;
     if target_version >= current_version {
+        transaction.commit()?;
         return Ok(());
     }
     if target_version != 0
@@ -383,12 +586,13 @@ pub fn rollback_to(conn: &Connection, target_version: u32) -> Result<(), Storage
         if migration.version <= target_version || migration.version > current_version {
             continue;
         }
-        conn.execute_batch(migration.down)?;
-        conn.execute(
+        transaction.execute_batch(migration.down)?;
+        transaction.execute(
             "DELETE FROM schema_migrations WHERE version = ?1",
             [migration.version],
         )?;
     }
+    transaction.commit()?;
     Ok(())
 }
 

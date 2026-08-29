@@ -73,7 +73,7 @@ async fn list_proofs_inner(
     let mut sql = "
         SELECT signature, operation, actor
         FROM proofs
-        WHERE (?1 IS NULL OR operation LIKE ?1 || '::%')
+        WHERE (?1 IS NULL OR substr(operation, 1, length(?1) + 2) = ?1 || '::')
           AND (?2 IS NULL OR version = ?2)
           AND (?3 IS NULL OR actor = ?3)
         ORDER BY {sort} {order}, id
@@ -140,6 +140,9 @@ fn proof_verification_status(
     state: &AppState,
     proof: &Proof,
 ) -> Result<&'static str, (StatusCode, Json<Value>)> {
+    if !has_canonical_operation_version(&proof.body.operation) {
+        return Ok("invalid");
+    }
     let verification = if proof.body.actor == state.keypair.principal_id {
         Ok(proof.verify(&principal_from_keypair(&state.keypair).public_key))
     } else {
@@ -160,6 +163,21 @@ fn proof_verification_status(
     } else {
         "invalid"
     })
+}
+
+fn has_canonical_operation_version(operation: &str) -> bool {
+    let Some((operation, version)) = operation.split_once("::") else {
+        return false;
+    };
+    let mut segments = operation.split('.');
+    let operation_is_valid = segments.next().is_some_and(|segment| !segment.is_empty())
+        && segments.next().is_some_and(|segment| !segment.is_empty())
+        && segments.all(|segment| !segment.is_empty());
+    let version_is_valid = version.strip_prefix('v').is_some_and(|number| {
+        !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
+    });
+
+    operation_is_valid && version_is_valid
 }
 
 #[derive(serde::Deserialize)]
@@ -199,7 +217,8 @@ pub(crate) async fn verify_proof(
     };
     Ok(Json(json!({
         "proof_id": request.proof_id,
-        "valid": proof.verify(&public_key).is_ok(),
+        "valid": has_canonical_operation_version(&proof.body.operation)
+            && proof.verify(&public_key).is_ok(),
     })))
 }
 

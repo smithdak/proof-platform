@@ -132,6 +132,54 @@ impl SqliteStore {
         })
     }
 
+    pub fn list_analytics_snapshots(&self) -> Result<Vec<AnalyticsSnapshot>, StorageError> {
+        let connection = self.conn.lock().unwrap();
+        let mut statement = connection.prepare_cached(
+            "
+            SELECT id, name, description, digest, created_at
+            FROM analytics_snapshot ORDER BY created_at
+            ",
+        )?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .map(|(id, name, description, digest, created_at)| {
+                Ok(AnalyticsSnapshot {
+                    id: parse_uuid(&id, "analytics snapshot ID")?,
+                    name,
+                    description,
+                    digest,
+                    created_at: parse_timestamp(&created_at)?,
+                })
+            })
+            .collect()
+    }
+
+    pub fn list_all_analytics_queries(&self) -> Result<Vec<AnalyticsQuery>, StorageError> {
+        let connection = self.conn.lock().unwrap();
+        let ids: Vec<String> = {
+            let mut statement =
+                connection.prepare_cached("SELECT id FROM analytics_query ORDER BY created_at")?;
+            let ids = statement
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            ids
+        };
+        drop(connection);
+        ids.iter()
+            .map(|id| self.load_analytics_query(&parse_uuid(id, "analytics query ID")?))
+            .collect()
+    }
+
     pub fn delete_analytics_snapshot(&self, id: &Uuid) -> Result<bool, StorageError> {
         let deleted = self.conn.lock().unwrap().execute(
             "DELETE FROM analytics_snapshot WHERE id = ?1",

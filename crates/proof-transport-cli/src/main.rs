@@ -74,6 +74,12 @@ enum Command {
     Benchmark(BenchmarkCommand),
     #[command(subcommand)]
     Delegation(DelegationCommand),
+    #[command(subcommand)]
+    Approval(ApprovalCommand),
+    #[command(subcommand)]
+    Agent(AgentCommand),
+    #[command(subcommand)]
+    Run(RunCommand),
     Export {
         #[arg(short, long)]
         output: PathBuf,
@@ -112,6 +118,122 @@ enum DelegationCommand {
     },
     Validate {
         delegation_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum ApprovalCommand {
+    ApproverInit,
+    List,
+    /// Start the local operator approval console.
+    Ui {
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+    },
+    Approve {
+        request_id: String,
+        #[arg(long)]
+        approver: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    Deny {
+        request_id: String,
+        #[arg(long)]
+        approver: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentCommand {
+    Create {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        instructions: String,
+        #[arg(long, default_value = "openai")]
+        provider: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long = "tool", required = true)]
+        tools: Vec<String>,
+        #[arg(long, default_value_t = 16)]
+        max_steps: u32,
+        #[arg(long, default_value_t = 24)]
+        max_model_calls: u32,
+        #[arg(long, default_value_t = 100_000)]
+        max_total_tokens: u64,
+        #[arg(long, default_value_t = 900)]
+        max_duration_seconds: u64,
+        #[arg(long, default_value_t = 4_096)]
+        max_output_tokens_per_call: u32,
+        #[arg(long)]
+        max_cost_microusd: Option<u64>,
+    },
+    List,
+    Inspect {
+        agent_id: String,
+    },
+    Start {
+        agent_id: String,
+        #[arg(long)]
+        goal: String,
+    },
+    Resume {
+        run_id: String,
+    },
+    Watch {
+        run_id: String,
+    },
+    /// Evaluate a terminal agent trace against a deterministic task policy.
+    Evaluate {
+        run_id: String,
+        #[arg(long)]
+        evaluator: String,
+        #[arg(long)]
+        policy_file: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum RunCommand {
+    Start {
+        #[arg(long)]
+        goal: String,
+    },
+    List,
+    Inspect {
+        run_id: String,
+    },
+    Checkpoint {
+        run_id: String,
+        #[arg(long)]
+        state: String,
+    },
+    Retry {
+        run_id: String,
+        step_id: String,
+    },
+    Complete {
+        run_id: String,
+    },
+    Cancel {
+        run_id: String,
+    },
+    Evaluate {
+        run_id: String,
+        #[arg(long)]
+        evaluator: String,
+        #[arg(long)]
+        outcome: String,
+        #[arg(long)]
+        score_bps: Option<u16>,
+        #[arg(long, default_value = "{}")]
+        metrics: String,
+        #[arg(long)]
+        summary: Option<String>,
     },
 }
 
@@ -341,6 +463,102 @@ fn main() -> Result<()> {
                 commands::delegation::cmd_delegation_validate(&cli, delegation_id)?
             }
         },
+        Command::Approval(command) => match command {
+            ApprovalCommand::ApproverInit => commands::approval::cmd_approver_init(&cli)?,
+            ApprovalCommand::List => commands::approval::cmd_approval_list(&cli)?,
+            ApprovalCommand::Ui { port } => commands::approval_ui::cmd_approval_ui(&cli, *port)?,
+            ApprovalCommand::Approve {
+                request_id,
+                approver,
+                reason,
+            } => commands::approval::cmd_approval_approve(
+                &cli,
+                request_id,
+                approver,
+                reason.as_deref(),
+            )?,
+            ApprovalCommand::Deny {
+                request_id,
+                approver,
+                reason,
+            } => commands::approval::cmd_approval_deny(
+                &cli,
+                request_id,
+                approver,
+                reason.as_deref(),
+            )?,
+        },
+        Command::Agent(command) => match command {
+            AgentCommand::Create {
+                name,
+                instructions,
+                provider,
+                model,
+                tools,
+                max_steps,
+                max_model_calls,
+                max_total_tokens,
+                max_duration_seconds,
+                max_output_tokens_per_call,
+                max_cost_microusd,
+            } => commands::agent::cmd_agent_create(
+                &cli,
+                name,
+                instructions,
+                provider,
+                model,
+                tools,
+                *max_steps,
+                *max_model_calls,
+                *max_total_tokens,
+                *max_duration_seconds,
+                *max_output_tokens_per_call,
+                *max_cost_microusd,
+            )?,
+            AgentCommand::List => commands::agent::cmd_agent_list(&cli)?,
+            AgentCommand::Inspect { agent_id } => {
+                commands::agent::cmd_agent_inspect(&cli, agent_id)?
+            }
+            AgentCommand::Start { agent_id, goal } => {
+                commands::agent::cmd_agent_start(&cli, agent_id, goal)?
+            }
+            AgentCommand::Resume { run_id } => commands::agent::cmd_agent_resume(&cli, run_id)?,
+            AgentCommand::Watch { run_id } => commands::agent::cmd_agent_watch(&cli, run_id)?,
+            AgentCommand::Evaluate {
+                run_id,
+                evaluator,
+                policy_file,
+            } => commands::agent::cmd_agent_evaluate(&cli, run_id, evaluator, policy_file)?,
+        },
+        Command::Run(command) => match command {
+            RunCommand::Start { goal } => commands::run::cmd_run_start(&cli, goal)?,
+            RunCommand::List => commands::run::cmd_run_list(&cli)?,
+            RunCommand::Inspect { run_id } => commands::run::cmd_run_inspect(&cli, run_id)?,
+            RunCommand::Checkpoint { run_id, state } => {
+                commands::run::cmd_run_checkpoint(&cli, run_id, state)?
+            }
+            RunCommand::Retry { run_id, step_id } => {
+                commands::run::cmd_run_retry(&cli, run_id, step_id)?
+            }
+            RunCommand::Complete { run_id } => commands::run::cmd_run_complete(&cli, run_id)?,
+            RunCommand::Cancel { run_id } => commands::run::cmd_run_cancel(&cli, run_id)?,
+            RunCommand::Evaluate {
+                run_id,
+                evaluator,
+                outcome,
+                score_bps,
+                metrics,
+                summary,
+            } => commands::run::cmd_run_evaluate(
+                &cli,
+                run_id,
+                evaluator,
+                outcome,
+                *score_bps,
+                metrics,
+                summary.as_deref(),
+            )?,
+        },
         Command::Export { output } => commands::transfer::cmd_export(&cli, output)?,
         Command::Import { input } => commands::transfer::cmd_import(&cli, input)?,
     }
@@ -356,6 +574,35 @@ mod tests {
     use proof_kernel::Proof;
 
     #[test]
+    fn legacy_release_publish_fails_closed_without_mutation() {
+        let workspace = assert_fs::TempDir::new().unwrap();
+        let cli = Cli::parse_from(["proof", "-w", workspace.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&cli).unwrap();
+
+        let error = commands::content::cmd_release_publish(
+            &cli,
+            "018f0000-0000-7000-8000-000000000001",
+            "preview",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("release.publish is human-only"));
+        assert_eq!(
+            std::fs::read_dir(workspace.path().join(".proof/data/releases"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_eq!(
+            open_store(&workspace.path().to_path_buf())
+                .unwrap()
+                .proof_count()
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn exports_and_imports_workspace_round_trip() {
         let source = assert_fs::TempDir::new().unwrap();
         let target = assert_fs::TempDir::new().unwrap();
@@ -365,7 +612,8 @@ mod tests {
         let source_workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
         let proof = source_workspace
             .make_proof(
-                "test.operation::v1",
+                "test.operation",
+                "v1",
                 &serde_json::json!({"roundtrip": true}),
                 &serde_json::json!({"ok": true}),
             )
@@ -521,7 +769,8 @@ mod tests {
         let mut workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
         let proof = workspace
             .make_proof(
-                "test.operation::v1",
+                "test.operation",
+                "v1",
                 &serde_json::json!({"a": 1}),
                 &serde_json::json!({"b": 2}),
             )
@@ -588,7 +837,8 @@ mod tests {
         let source_keypair = workspace.keypair.clone();
         let proof = workspace
             .make_proof(
-                "test.operation::v1",
+                "test.operation",
+                "v1",
                 &serde_json::json!({"a": 1}),
                 &serde_json::json!({"b": 2}),
             )

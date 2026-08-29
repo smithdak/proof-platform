@@ -60,6 +60,10 @@ fn registry_schema(
 ) -> Result<Value, ExecutionError> {
     let candidates = [
         context.workspace_path.join(file_name),
+        context
+            .workspace_path
+            .join(".proof/registry")
+            .join(file_name),
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")

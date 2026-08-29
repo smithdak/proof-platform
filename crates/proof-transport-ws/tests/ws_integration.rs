@@ -1,7 +1,7 @@
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use proof_kernel::{
-    ExecutionContext, ExecutionError, Governance, OperationHandler, Registry, RegistryEntry,
+    ExecutionContext, ExecutionError, Governance, OperationHandler, Proof, Registry, RegistryEntry,
     VersionStatus,
 };
 use proof_transport_ws::{ws_router, WsAppState};
@@ -103,7 +103,7 @@ where
 
 #[tokio::test]
 async fn executes_operation_and_returns_proof() {
-    let (router, _state) = router(test_state());
+    let (router, state) = router(test_state());
     let (mut sender, mut receiver) = connect(router).await;
 
     let request = json!({
@@ -121,7 +121,11 @@ async fn executes_operation_and_returns_proof() {
     assert_eq!(response["id"], 1);
     assert_eq!(response["result"]["status"], "executed");
     assert_eq!(response["result"]["result"]["message"], "hello");
-    assert!(response["result"]["proof"].is_object());
+    let proof: Proof = serde_json::from_value(response["result"]["proof"].clone()).unwrap();
+    assert_eq!(proof.body.operation, "test.echo::v1");
+    proof
+        .verify(&state.keypair.signing_key.verifying_key())
+        .unwrap();
 }
 
 #[tokio::test]

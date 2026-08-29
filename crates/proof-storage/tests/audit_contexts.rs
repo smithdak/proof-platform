@@ -8,6 +8,7 @@ use serde_json::json;
 use std::path::PathBuf;
 
 const OPERATION: &str = "schema.create";
+const PROOF_OPERATION: &str = "schema.create::v1";
 
 fn timestamp(seconds: u32) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, seconds).unwrap()
@@ -43,17 +44,41 @@ fn audit_contexts_round_trip_with_operation_filter() {
     let proof = create_proof(
         keypair.principal_id,
         None,
-        OPERATION,
+        PROOF_OPERATION,
         &json!({"name": "example"}),
         &json!({"created": true}),
         timestamp(1),
         &keypair,
     )
     .unwrap();
+    let duplicate_proof = create_proof(
+        keypair.principal_id,
+        None,
+        PROOF_OPERATION,
+        &json!({"name": "duplicate"}),
+        &json!({"created": true}),
+        timestamp(1),
+        &keypair,
+    )
+    .unwrap();
+    let other_proof = create_proof(
+        keypair.principal_id,
+        None,
+        "object.create::v1",
+        &json!({"name": "other"}),
+        &json!({"created": true}),
+        timestamp(2),
+        &keypair,
+    )
+    .unwrap();
     let saved_context = context(keypair.principal_id, timestamp(1), None);
+    let other_context = context(keypair.principal_id, timestamp(2), None);
 
     store.save_proof(&proof).unwrap();
+    store.save_proof(&duplicate_proof).unwrap();
+    store.save_proof(&other_proof).unwrap();
     store.save_execution_context(&saved_context).unwrap();
+    store.save_execution_context(&other_context).unwrap();
 
     let mut filter = AuditFilter::new();
     filter.operation = Some(OPERATION.to_string());
@@ -61,6 +86,11 @@ fn audit_contexts_round_trip_with_operation_filter() {
 
     assert_eq!(loaded.len(), 1);
     assert_context(&loaded[0], &saved_context);
+
+    for literal_filter in ["schema%create", "schema_create", "SCHEMA.CREATE"] {
+        filter.operation = Some(literal_filter.to_string());
+        assert!(store.load_audit_contexts(&filter).unwrap().is_empty());
+    }
 }
 
 #[test]
@@ -71,7 +101,7 @@ fn audit_contexts_filter_by_actor_since_limit_and_offset() {
     let actor_proof = create_proof(
         actor_keypair.principal_id,
         None,
-        OPERATION,
+        PROOF_OPERATION,
         &json!({"sequence": 1}),
         &json!({}),
         timestamp(1),
@@ -81,7 +111,7 @@ fn audit_contexts_filter_by_actor_since_limit_and_offset() {
     let other_proof = create_proof(
         other_keypair.principal_id,
         None,
-        "object.create",
+        "object.create::v1",
         &json!({"sequence": 2}),
         &json!({}),
         timestamp(4),

@@ -333,6 +333,63 @@ fn lists_proofs_by_operation_and_version() {
 }
 
 #[test]
+fn operation_filters_treat_sql_wildcards_as_literals() {
+    let store = SqliteStore::in_memory().unwrap();
+    let keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);
+    store
+        .save_principal(&proof_kernel::principal_from_keypair(&keypair))
+        .unwrap();
+    let operations = [
+        "filter.percent%name::v1",
+        "filter.percentXname::v1",
+        "filter.under_name::v1",
+        "filter.underXname::v1",
+    ];
+    let proofs = operations
+        .iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            signed_proof(
+                &keypair,
+                operation,
+                json_digest(ArtifactKind::OperationInput, json!({"index": index})),
+                json_digest(ArtifactKind::OperationOutput, json!({"index": index})),
+                Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, index as u32 + 1)
+                    .unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    for proof in &proofs {
+        store.save_proof(proof).unwrap();
+    }
+
+    assert_eq!(
+        store
+            .list_proofs_for_operation("filter.percent%name", None)
+            .unwrap(),
+        vec![proofs[0].clone()]
+    );
+    assert_eq!(
+        store
+            .list_proofs_for_operation("filter.under_name", None)
+            .unwrap(),
+        vec![proofs[2].clone()]
+    );
+    for operation in ["filter.percent%name", "filter.under_name"] {
+        assert_eq!(
+            store
+                .count_proofs(&ProofFilter {
+                    operation: Some(operation.to_string()),
+                    version: None,
+                    actor: None,
+                })
+                .unwrap(),
+            1
+        );
+    }
+}
+
+#[test]
 fn lists_proofs_by_actor() {
     let store = SqliteStore::in_memory().unwrap();
     let first_keypair = generate_keypair_for(proof_kernel::PrincipalKind::Agent);

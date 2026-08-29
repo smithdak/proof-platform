@@ -9,13 +9,19 @@ name = "proof"
 path = "src/main.rs"
 
 [dependencies]
+proof-agent-runtime = { path = "../proof-agent-runtime" }
 proof-kernel = { path = "../proof-kernel" }
 proof-content = { path = "../proof-content" }
+proof-commerce = { path = "../proof-commerce" }
+proof-workflow = { path = "../proof-workflow" }
+proof-analytics = { path = "../proof-analytics" }
+axum.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 tokio.workspace = true
+rand.workspace = true
 anyhow = "1"
 chrono.workspace = true
 ed25519-dalek.workspace = true
@@ -29,3 +35,4 @@ hex = "0.4"
 [dev-dependencies]
 assert_fs = "1.1.4"
 predicates = "3.1.4"
+tower = { version = "0.5", features = ["util"] }

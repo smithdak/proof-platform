@@ -1,16 +1,16 @@
 //! The ExecutionEngine implementation.
 
-use super::context::{AuditFilter, ExecutionContext};
+use super::context::ExecutionContext;
 use super::error::ExecutionError;
 use super::store::{ExecutionStore, OperationHandler};
+use crate::approval::ApprovalGrant;
 use crate::delegation::DelegationError;
 use crate::evidence::{Proof, ProofError};
-use crate::identity::{PrincipalId, PrincipalKind};
-use crate::registry::{Governance, Registry, RegistryEntry, VersionStatus};
+use crate::identity::{Principal, PrincipalId, PrincipalKind};
+use crate::registry::{Governance, Registry, VersionStatus};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -19,6 +19,17 @@ pub struct ExecutionEngine {
     handlers: HashMap<String, Arc<dyn OperationHandler>>,
     storage: Option<Arc<dyn ExecutionStore>>,
     keypair: Arc<crate::identity::Keypair>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionOutcome {
+    pub output: Value,
+    pub proof: Proof,
+}
+
+struct InternalExecutionOutcome {
+    output: Value,
+    proof: Option<Proof>,
 }
 
 impl ExecutionEngine {
@@ -68,13 +79,105 @@ impl ExecutionEngine {
         input: &Value,
         context: &ExecutionContext,
     ) -> Result<Value, ExecutionError> {
+        self.execute_operation(operation, version, input, context, None, false)
+            .map(|outcome| outcome.output)
+    }
+
+    /// Executes an operation and returns its signed proof with the output.
+    pub fn execute_evidenced(
+        &self,
+        operation: &str,
+        version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+    ) -> Result<ExecutionOutcome, ExecutionError> {
+        let outcome = self.execute_operation(operation, version, input, context, None, true)?;
+        Ok(ExecutionOutcome {
+            output: outcome.output,
+            proof: outcome
+                .proof
+                .expect("evidenced execution always creates a proof"),
+        })
+    }
+
+    /// Executes a human-only operation after verifying signed approval evidence.
+    pub fn execute_with_approval(
+        &self,
+        operation: &str,
+        version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+        approval: &ApprovalGrant,
+        trusted_approver: &Principal,
+    ) -> Result<Value, ExecutionError> {
+        self.execute_operation(
+            operation,
+            version,
+            input,
+            context,
+            Some((approval, trusted_approver)),
+            false,
+        )
+        .map(|outcome| outcome.output)
+    }
+
+    /// Executes a human-only operation and returns signed execution evidence.
+    pub fn execute_with_approval_evidenced(
+        &self,
+        operation: &str,
+        version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+        approval: &ApprovalGrant,
+        trusted_approver: &Principal,
+    ) -> Result<ExecutionOutcome, ExecutionError> {
+        let outcome = self.execute_operation(
+            operation,
+            version,
+            input,
+            context,
+            Some((approval, trusted_approver)),
+            true,
+        )?;
+        Ok(ExecutionOutcome {
+            output: outcome.output,
+            proof: outcome
+                .proof
+                .expect("evidenced execution always creates a proof"),
+        })
+    }
+
+    fn execute_operation(
+        &self,
+        operation: &str,
+        version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+        approval: Option<(&ApprovalGrant, &Principal)>,
+        evidence_required: bool,
+    ) -> Result<InternalExecutionOutcome, ExecutionError> {
         #[cfg(feature = "tracing")]
         let mut operation_span =
             proof_observability::OperationSpan::new(operation, version, context.actor.to_string());
         #[cfg(feature = "tracing")]
-        let result = self.execute_inner(operation, version, input, context, &mut operation_span);
+        let result = self.execute_inner(
+            operation,
+            version,
+            input,
+            context,
+            approval,
+            evidence_required,
+            &mut operation_span,
+        );
         #[cfg(not(feature = "tracing"))]
-        let result = self.execute_inner(operation, version, input, context);
+        let result = self.execute_inner(
+            operation,
+            version,
+            input,
+            context,
+            approval,
+            evidence_required,
+        );
         #[cfg(feature = "tracing")]
         match &result {
             Ok(_) => operation_span.record_success(),
@@ -89,8 +192,10 @@ impl ExecutionEngine {
         version: &str,
         input: &Value,
         context: &ExecutionContext,
+        approval: Option<(&ApprovalGrant, &Principal)>,
+        evidence_required: bool,
         #[cfg(feature = "tracing")] operation_span: &mut proof_observability::OperationSpan,
-    ) -> Result<Value, ExecutionError> {
+    ) -> Result<InternalExecutionOutcome, ExecutionError> {
         let entry = self.registry.find(operation, version).ok_or_else(|| {
             ExecutionError::OperationNotFound {
                 operation: operation.to_string(),
@@ -101,7 +206,18 @@ impl ExecutionEngine {
         if entry.governance == Governance::HumanOnly
             && context.principal_kind != Some(PrincipalKind::Human)
         {
-            return Err(ExecutionError::HumanOnly);
+            let Some((approval, trusted_approver)) = approval else {
+                return Err(ExecutionError::HumanOnly);
+            };
+            approval.verify_for_execution(
+                &self.keypair,
+                trusted_approver,
+                operation,
+                version,
+                input,
+                context.actor,
+                context.timestamp,
+            )?;
         }
 
         if entry.status == VersionStatus::Deprecated {
@@ -149,36 +265,45 @@ impl ExecutionEngine {
             .get(operation)
             .ok_or_else(|| ExecutionError::NoHandler(operation.to_string()))?;
 
-        let result = handler.execute(input, context)?;
+        let output = handler.execute(input, context)?;
+        let proof = if evidence_required || self.storage.is_some() {
+            Some(
+                self.create_operation_proof(operation, version, input, &output, context)
+                    .map_err(|error| ExecutionError::EvidenceFailed(error.to_string()))?,
+            )
+        } else {
+            None
+        };
+        #[cfg(feature = "tracing")]
+        if let Some(proof) = &proof {
+            operation_span.set_proof_id(proof.body.id.to_string());
+        }
 
         if let Some(storage) = &self.storage {
             storage
                 .save_execution_context(context)
                 .map_err(ExecutionError::StorageFailed)?;
-            let proof = self
-                .create_operation_proof(operation, input, &result, context)
-                .map_err(|error| ExecutionError::EvidenceFailed(error.to_string()))?;
-            #[cfg(feature = "tracing")]
-            operation_span.set_proof_id(proof.body.id.to_string());
             storage
-                .save_proof(&proof)
+                .save_proof(proof.as_ref().expect("storage execution creates a proof"))
                 .map_err(ExecutionError::StorageFailed)?;
         }
 
-        Ok(result)
+        Ok(InternalExecutionOutcome { output, proof })
     }
 
     pub(crate) fn create_operation_proof(
         &self,
         operation: &str,
+        version: &str,
         input: &Value,
         output: &Value,
         context: &ExecutionContext,
     ) -> Result<Proof, ProofError> {
+        let proof_operation = format!("{operation}::{version}");
         create_proof(
             context.actor,
             context.delegation_id,
-            operation,
+            &proof_operation,
             input,
             output,
             context.timestamp,
@@ -281,13 +406,21 @@ pub fn create_proof(
     proof.sign(keypair)
 }
 
+#[cfg(test)]
 mod tests {
     use super::super::store::RecordingStore;
     use super::*;
+    use crate::approval::{
+        ApprovalError, ApprovalGrant, ApprovalOutcome, SignedApprovalDecision,
+        SignedApprovalRequest,
+    };
     use crate::delegation::{Delegation, DelegationChain, DelegationScope};
-    use crate::identity::generate_keypair;
+    use crate::identity::{generate_keypair, generate_keypair_for, principal_from_keypair};
     use chrono::Duration;
     use serde_json::json;
+    use std::path::PathBuf;
+
+    use super::super::context::AuditFilter;
 
     #[test]
     fn audit_filter_uses_default_limit() {
@@ -627,6 +760,37 @@ mod tests {
     }
 
     #[test]
+    fn evidenced_execution_returns_matching_signed_proof() {
+        let keypair = generate_keypair();
+        let registry = Registry::new(vec![test_registry_entry(
+            "test.echo",
+            Governance::AgentExecutable,
+        )])
+        .unwrap();
+        let mut engine = ExecutionEngine::new_with_keypair(registry, keypair.clone());
+        engine.register_handler(Arc::new(TestHandler {
+            operation: "test.echo".to_string(),
+        }));
+        let input = json!({"msg": "hello"});
+        let context = ExecutionContext {
+            actor: keypair.principal_id,
+            ..test_context()
+        };
+
+        let outcome = engine
+            .execute_evidenced("test.echo", "v1", &input, &context)
+            .unwrap();
+
+        assert_eq!(outcome.output["echo"], input);
+        assert_eq!(outcome.proof.body.operation, "test.echo::v1");
+        assert_eq!(outcome.proof.body.actor, keypair.principal_id);
+        outcome
+            .proof
+            .verify(&keypair.signing_key.verifying_key())
+            .unwrap();
+    }
+
+    #[test]
     fn rejects_unknown_operation() {
         let engine = test_engine(vec![]);
         let context = test_context();
@@ -667,6 +831,76 @@ mod tests {
             .execute("test.human_only", "v1", &json!({}), &context)
             .unwrap();
         assert_eq!(result["handled_by"], "test.human_only");
+    }
+
+    #[test]
+    fn executes_human_only_with_exact_signed_approval() {
+        let requester = generate_keypair();
+        let approver = generate_keypair_for(PrincipalKind::Human);
+        let trusted_approver = principal_from_keypair(&approver);
+        let registry = Registry::new(vec![test_registry_entry(
+            "test.human_only",
+            Governance::HumanOnly,
+        )])
+        .unwrap();
+        let mut engine = ExecutionEngine::new_with_keypair(registry, requester.clone());
+        engine.register_handler(Arc::new(TestHandler {
+            operation: "test.human_only".to_string(),
+        }));
+        let input = json!({"change": "publish"});
+        let context = ExecutionContext {
+            actor: requester.principal_id,
+            ..test_context()
+        };
+        let request = SignedApprovalRequest::create(
+            "test.human_only",
+            "v1",
+            &input,
+            context.timestamp - Duration::seconds(1),
+            context.timestamp + Duration::minutes(15),
+            &requester,
+        )
+        .unwrap();
+        let decision = SignedApprovalDecision::create(
+            &request,
+            ApprovalOutcome::Approved,
+            None,
+            context.timestamp,
+            &approver,
+        )
+        .unwrap();
+        let grant = ApprovalGrant {
+            request,
+            decision,
+            approver: trusted_approver.clone(),
+        };
+
+        let result = engine
+            .execute_with_approval(
+                "test.human_only",
+                "v1",
+                &input,
+                &context,
+                &grant,
+                &trusted_approver,
+            )
+            .unwrap();
+        assert_eq!(result["handled_by"], "test.human_only");
+
+        let error = engine
+            .execute_with_approval(
+                "test.human_only",
+                "v1",
+                &json!({"change": "different"}),
+                &context,
+                &grant,
+                &trusted_approver,
+            )
+            .unwrap_err();
+        assert_eq!(
+            error,
+            ExecutionError::Approval(ApprovalError::InputMismatch)
+        );
     }
 
     #[test]

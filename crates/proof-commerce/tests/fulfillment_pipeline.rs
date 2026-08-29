@@ -104,6 +104,15 @@ fn fulfills_order_with_governed_step_proofs() {
         operations,
         ["order.create", "order.approve", "order.fulfill"]
     );
+    let proof_operations: Vec<_> = output
+        .evidence_proofs
+        .iter()
+        .map(|proof| proof.body.operation.as_str())
+        .collect();
+    assert_eq!(
+        proof_operations,
+        ["order.create::v1", "order.approve::v1", "order.fulfill::v1"]
+    );
     for evidence in &output.manifest.evidence {
         assert!(evidence.content_digest.starts_with("sha256:"));
         assert_eq!(

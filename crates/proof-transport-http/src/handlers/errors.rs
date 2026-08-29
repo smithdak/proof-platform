@@ -8,6 +8,7 @@ pub(crate) fn execution_error_response(error: &ExecutionError) -> (StatusCode, J
     let status = match error {
         ExecutionError::OperationNotFound { .. } => StatusCode::NOT_FOUND,
         ExecutionError::HumanOnly => StatusCode::FORBIDDEN,
+        ExecutionError::Approval(_) => StatusCode::FORBIDDEN,
         ExecutionError::ScopeViolation => StatusCode::FORBIDDEN,
         ExecutionError::Sunset => StatusCode::GONE,
         ExecutionError::NoHandler(_)
@@ -29,4 +30,18 @@ pub(crate) fn internal_error(error: String) -> (StatusCode, Json<Value>) {
 
 pub(crate) fn bad_request(error: &str) -> (StatusCode, Json<Value>) {
     (StatusCode::BAD_REQUEST, Json(json!({ "error": error })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_errors_are_forbidden() {
+        let (status, _) = execution_error_response(&ExecutionError::Approval(
+            proof_kernel::ApprovalError::Denied,
+        ));
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
 }

@@ -5,6 +5,7 @@ use crate::StorageError;
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
 use proof_kernel::{ExecutionContext, Proof, RegistryEntry};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 use uuid::Uuid;
 
 impl SqliteStore {
@@ -43,7 +44,7 @@ impl SqliteStore {
         let sql = "
             SELECT COUNT(*)
             FROM proofs
-            WHERE (?1 IS NULL OR operation LIKE ?1 || '::%')
+            WHERE (?1 IS NULL OR substr(operation, 1, length(?1) + 2) = ?1 || '::')
               AND (?2 IS NULL OR version = ?2)
               AND (?3 IS NULL OR actor = ?3)
         ";
@@ -86,22 +87,41 @@ impl SqliteStore {
 
     /// Persists a principal so signed proofs can later be verified.
     pub fn save_principal(&self, principal: &proof_kernel::Principal) -> Result<(), StorageError> {
-        self.conn.lock().unwrap().execute(
+        let id = principal.id.as_uuid().to_string();
+        let kind = serde_json::to_string(&principal.kind)?;
+        let public_key = principal.public_key.as_bytes().to_vec();
+        let connection = self.conn.lock().unwrap();
+        let transaction = Transaction::new_unchecked(&connection, TransactionBehavior::Immediate)?;
+        let existing = transaction
+            .query_row(
+                "SELECT kind, public_key FROM principals WHERE id = ?1",
+                [&id],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )
+            .optional()?;
+        if let Some((stored_kind, stored_public_key)) = existing {
+            if stored_kind == kind && stored_public_key == public_key {
+                transaction.commit()?;
+                return Ok(());
+            }
+            return Err(StorageError::Conflict(format!(
+                "principal {} already exists with a different kind or public key",
+                principal.id
+            )));
+        }
+        transaction.execute(
             "
             INSERT INTO principals (id, kind, display_name, public_key)
             VALUES (?1, ?2, ?3, ?4)
-            ON CONFLICT(id) DO UPDATE SET
-                kind = excluded.kind,
-                display_name = excluded.display_name,
-                public_key = excluded.public_key
             ",
             rusqlite::params![
-                principal.id.as_uuid().to_string(),
+                id,
+                kind,
                 serde_json::to_string(&principal.kind)?,
-                serde_json::to_string(&principal.kind)?,
-                principal.public_key.as_bytes().to_vec(),
+                public_key,
             ],
         )?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -306,7 +326,7 @@ impl SqliteStore {
         } else {
             let mut statement = connection.prepare_cached(
                 "SELECT signature FROM proofs
-                 WHERE operation LIKE ?1 || '::%'
+                 WHERE substr(operation, 1, length(?1) + 2) = ?1 || '::'
                    AND (?2 OR expires_at IS NULL OR expires_at > ?3)
                  ORDER BY timestamp, id",
             )?;

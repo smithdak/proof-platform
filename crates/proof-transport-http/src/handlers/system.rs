@@ -66,114 +66,89 @@ pub(crate) async fn list_objects(State(state): State<SharedState>) -> impl IntoR
     Json(json!({"objects": objects}))
 }
 
-fn read_commerce_records(
-    state: &SharedState,
-    kind: &str,
-) -> Result<Vec<Value>, (axum::http::StatusCode, Json<Value>)> {
-    let dir = std::path::Path::new(&state.workspace_path).join(".proof/data/commerce");
-    let mut records = vec![];
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.filter_map(|entry| entry.ok()) {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with(&format!("{kind}-")) && name.ends_with(".json") {
-                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                        if let Ok(value) = serde_json::from_str::<Value>(&content) {
-                            records.push(value);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    records.sort_by(|left, right| {
-        left["id"]
-            .as_str()
-            .unwrap_or_default()
-            .cmp(right["id"].as_str().unwrap_or_default())
-    });
-    Ok(records)
-}
-
-fn read_workflow_records(
-    state: &SharedState,
-    kind: &str,
-) -> Result<Vec<Value>, (axum::http::StatusCode, Json<Value>)> {
-    let dir = std::path::Path::new(&state.workspace_path).join(".proof/data/workflow");
-    let mut records = vec![];
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.filter_map(|entry| entry.ok()) {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with(&format!("{kind}-")) && name.ends_with(".json") {
-                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                        if let Ok(value) = serde_json::from_str::<Value>(&content) {
-                            records.push(value);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    records.sort_by(|left, right| {
-        left["id"]
-            .as_str()
-            .unwrap_or_default()
-            .cmp(right["id"].as_str().unwrap_or_default())
-    });
-    Ok(records)
-}
-
-fn read_analytics_records(
-    state: &SharedState,
-    kind: &str,
-) -> Result<Vec<Value>, (axum::http::StatusCode, Json<Value>)> {
-    let dir = std::path::Path::new(&state.workspace_path).join(".proof/data/analytics");
-    let mut records = vec![];
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for entry in entries.filter_map(|entry| entry.ok()) {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with(&format!("{kind}-")) && name.ends_with(".json") {
-                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                        if let Ok(value) = serde_json::from_str::<Value>(&content) {
-                            records.push(value);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    records.sort_by(|left, right| {
-        left["id"]
-            .as_str()
-            .unwrap_or_default()
-            .cmp(right["id"].as_str().unwrap_or_default())
-    });
-    Ok(records)
+fn store_error(error: proof_storage::StorageError) -> (axum::http::StatusCode, Json<Value>) {
+    (
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": error.to_string()})),
+    )
 }
 
 pub(crate) async fn list_catalog(State(state): State<SharedState>) -> impl IntoResponse {
-    read_commerce_records(&state, "catalog").map(|catalogs| Json(json!({ "catalogs": catalogs })))
+    match state.store.list_catalogs() {
+        Ok(items) => {
+            let values: Vec<Value> = items
+                .iter()
+                .map(|item| serde_json::to_value(item).unwrap_or_default())
+                .collect();
+            Json(json!({ "catalogs": values }))
+        }
+        Err(error) => store_error(error).1,
+    }
 }
 
 pub(crate) async fn list_orders(State(state): State<SharedState>) -> impl IntoResponse {
-    read_commerce_records(&state, "order").map(|orders| Json(json!({ "orders": orders })))
+    match state.store.list_orders() {
+        Ok(items) => {
+            let values: Vec<Value> = items
+                .iter()
+                .map(|item| serde_json::to_value(item).unwrap_or_default())
+                .collect();
+            Json(json!({ "orders": values }))
+        }
+        Err(error) => store_error(error).1,
+    }
 }
 
 pub(crate) async fn list_workflows(State(state): State<SharedState>) -> impl IntoResponse {
-    read_workflow_records(&state, "workflow")
-        .map(|workflows| Json(json!({ "workflows": workflows })))
+    match state.store.list_workflow_definitions() {
+        Ok(items) => {
+            let values: Vec<Value> = items
+                .iter()
+                .map(|item| serde_json::to_value(item).unwrap_or_default())
+                .collect();
+            Json(json!({ "workflows": values }))
+        }
+        Err(error) => store_error(error).1,
+    }
 }
 
 pub(crate) async fn list_workflow_runs(State(state): State<SharedState>) -> impl IntoResponse {
-    read_workflow_records(&state, "run").map(|runs| Json(json!({ "workflow_runs": runs })))
+    match state.store.list_workflow_runs(None) {
+        Ok(items) => {
+            let values: Vec<Value> = items
+                .iter()
+                .map(|item| serde_json::to_value(item).unwrap_or_default())
+                .collect();
+            Json(json!({ "workflow_runs": values }))
+        }
+        Err(error) => store_error(error).1,
+    }
 }
 
 pub(crate) async fn list_analytics_snapshots(
     State(state): State<SharedState>,
 ) -> impl IntoResponse {
-    read_analytics_records(&state, "snapshot")
-        .map(|snapshots| Json(json!({ "snapshots": snapshots })))
+    match state.store.list_analytics_snapshots() {
+        Ok(items) => {
+            let values: Vec<Value> = items
+                .iter()
+                .map(|item| serde_json::to_value(item).unwrap_or_default())
+                .collect();
+            Json(json!({ "snapshots": values }))
+        }
+        Err(error) => store_error(error).1,
+    }
 }
 
 pub(crate) async fn list_analytics_queries(State(state): State<SharedState>) -> impl IntoResponse {
-    read_analytics_records(&state, "query").map(|queries| Json(json!({ "queries": queries })))
+    match state.store.list_all_analytics_queries() {
+        Ok(items) => {
+            let values: Vec<Value> = items
+                .iter()
+                .map(|item| serde_json::to_value(item).unwrap_or_default())
+                .collect();
+            Json(json!({ "queries": values }))
+        }
+        Err(error) => store_error(error).1,
+    }
 }

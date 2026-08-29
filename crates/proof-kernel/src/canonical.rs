@@ -14,6 +14,10 @@ pub enum ArtifactKind {
     OperationOutput,
     Proof,
     Delegation,
+    ApprovalRequest,
+    ApprovalDecision,
+    AgentCheckpoint,
+    AgentEvent,
     Generic,
 }
 
@@ -24,6 +28,10 @@ impl ArtifactKind {
             Self::OperationOutput => "operation-output",
             Self::Proof => "proof",
             Self::Delegation => "delegation",
+            Self::ApprovalRequest => "approval-request",
+            Self::ApprovalDecision => "approval-decision",
+            Self::AgentCheckpoint => "agent-checkpoint",
+            Self::AgentEvent => "agent-event",
             Self::Generic => "generic",
         }
     }

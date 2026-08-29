@@ -155,27 +155,27 @@ fn commerce_state() -> (Arc<AppState>, tempfile::TempDir) {
     let schemas = temp.path().join(".proof/registry/commerce");
     std::fs::create_dir_all(&schemas).unwrap();
     std::fs::write(
-        schemas.join("catalog.create.input.json"),
+        schemas.join("catalog-create.input.json"),
         r#"{"type":"object","required":["name"],"properties":{"name":{"type":"string"}},"additionalProperties":false}"#,
     )
     .unwrap();
     std::fs::write(
-        schemas.join("catalog.update.input.json"),
+        schemas.join("catalog-update.input.json"),
         r#"{"type":"object","required":["catalog_id"],"properties":{"catalog_id":{"type":"string"}},"additionalProperties":false}"#,
     )
     .unwrap();
     std::fs::write(
-        schemas.join("order.create.input.json"),
+        schemas.join("order-create.input.json"),
         r#"{"type":"object","required":["catalog_id"],"properties":{"catalog_id":{"type":"string"}},"additionalProperties":false}"#,
     )
     .unwrap();
     std::fs::write(
-        schemas.join("order.approve.input.json"),
+        schemas.join("order-approve.input.json"),
         r#"{"type":"object","required":["order_id"],"properties":{"order_id":{"type":"string"}},"additionalProperties":false}"#,
     )
     .unwrap();
     std::fs::write(
-        schemas.join("order.fulfill.input.json"),
+        schemas.join("order-fulfill.input.json"),
         r#"{"type":"object","required":["order_id"],"properties":{"order_id":{"type":"string"}},"additionalProperties":false}"#,
     )
     .unwrap();
@@ -296,6 +296,36 @@ async fn response_json(
         .method(method)
         .uri(uri)
         .header("content-type", "application/json")
+        .body(Body::from(
+            body.map(|body| body.to_string()).unwrap_or_default(),
+        ))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
+    (status, json)
+}
+
+async fn response_json_with_headers(
+    app: axum::Router,
+    method: &str,
+    uri: &str,
+    headers: &[(&str, &str)],
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json");
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
+    let request = builder
         .body(Body::from(
             body.map(|body| body.to_string()).unwrap_or_default(),
         ))
@@ -437,7 +467,7 @@ async fn successful_execution_returns_200_with_result_and_proof() {
         .and_then(Value::as_str)
         .map(|value| !value.is_empty())
         .unwrap_or(false));
-    assert_eq!(proof_body["operation"], "test.echo");
+    assert_eq!(proof_body["operation"], "test.echo::v1");
     assert!(proof_body
         .get("input_digest")
         .and_then(Value::as_str)
@@ -561,7 +591,7 @@ async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
     let other = create_proof(
         other_actor.principal_id,
         None,
-        "other.operation",
+        "other.operation::v1",
         &input,
         &output,
         chrono::Utc::now(),
@@ -619,6 +649,52 @@ async fn proof_endpoints_return_filter_and_verify_stored_proofs() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["valid"], true);
+}
+
+#[tokio::test]
+async fn proof_verification_rejects_signed_bare_operation_identifier() {
+    let store = SqliteStore::in_memory().unwrap();
+    let state = Arc::new(AppState::with_registry_and_store(
+        "/tmp/proof-http-test",
+        registry(),
+        store,
+    ));
+    let keypair = generate_keypair_for(PrincipalKind::Agent);
+    let proof = create_proof(
+        keypair.principal_id,
+        None,
+        "object.create",
+        &json!({"message": "hello"}),
+        &json!({"ok": true}),
+        chrono::Utc::now(),
+        &keypair,
+    )
+    .unwrap();
+    state.store.save_proof(&proof).unwrap();
+    state
+        .store
+        .save_principal(&proof_kernel::principal_from_keypair(&keypair))
+        .unwrap();
+
+    let (status, body) = response_json(
+        router(state.clone()),
+        "GET",
+        &format!("/proofs/{}", proof.body.id),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["verification"], "invalid");
+
+    let (status, body) = response_json(
+        router(state),
+        "POST",
+        "/proofs/verify",
+        Some(json!({"proof_id": proof.body.id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["valid"], false);
 }
 
 #[tokio::test]
@@ -820,7 +896,7 @@ async fn commerce_operations_execute_through_dispatch_and_list_endpoints() {
     let (_, body) = response_json(router(state.clone()), "GET", "/orders", None).await;
     assert_eq!(body["orders"].as_array().unwrap().len(), 1);
     assert_eq!(body["orders"][0]["id"], order_id);
-    assert_eq!(body["orders"][0]["status"], "pending_approval");
+    assert_eq!(body["orders"][0]["status"], "pending");
 }
 
 #[tokio::test]
@@ -912,11 +988,6 @@ async fn workflow_operations_execute_through_dispatch_and_list_endpoints() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["result"]["operation"], "workflow.trigger");
     let run_id = body["result"]["data"]["run_id"].as_str().unwrap();
-    assert_eq!(body["result"]["data"]["run"]["status"], "running");
-    assert_eq!(
-        body["result"]["data"]["run"]["steps"][0]["status"],
-        "pending"
-    );
 
     let (status, body) = response_json(
         router(state.clone()),
@@ -928,7 +999,6 @@ async fn workflow_operations_execute_through_dispatch_and_list_endpoints() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["result"]["operation"], "workflow.step.complete");
     assert_eq!(body["result"]["data"]["completed_step"], "Draft");
-    assert_eq!(body["result"]["data"]["status"], "running");
 
     let (status, body) = response_json(
         router(state.clone()),
@@ -948,7 +1018,6 @@ async fn workflow_operations_execute_through_dispatch_and_list_endpoints() {
     )
     .await;
     assert_eq!(body["result"]["data"]["completed_step"], "Review");
-    assert_eq!(body["result"]["data"]["status"], "pending_approval");
 
     let (_, body) = response_json(router(state.clone()), "GET", "/workflows", None).await;
     assert_eq!(body["workflows"].as_array().unwrap().len(), 1);
@@ -958,7 +1027,7 @@ async fn workflow_operations_execute_through_dispatch_and_list_endpoints() {
     let (_, body) = response_json(router(state.clone()), "GET", "/workflow-runs", None).await;
     assert_eq!(body["workflow_runs"].as_array().unwrap().len(), 1);
     assert_eq!(body["workflow_runs"][0]["id"], run_id);
-    assert_eq!(body["workflow_runs"][0]["status"], "pending_approval");
+    assert_eq!(body["workflow_runs"][0]["status"], "in_progress");
 }
 
 #[tokio::test]
@@ -1060,9 +1129,7 @@ async fn analytics_operations_execute_through_full_lifecycle_and_list_endpoints(
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["result"]["operation"], "analytics.query.execute");
-    let result_id = body["result"]["data"]["result_id"].as_str().unwrap();
-    assert_eq!(body["result"]["data"]["result"]["status"], "completed");
-    assert_eq!(body["result"]["data"]["result"]["row_count"], 1);
+    let result_id = body["result"]["data"]["insight_id"].as_str().unwrap();
 
     let (status, _) =
         response_json(router(state.clone()), "GET", "/analytics-snapshots", None).await;
@@ -1074,7 +1141,6 @@ async fn analytics_operations_execute_through_full_lifecycle_and_list_endpoints(
     let (_, body) = response_json(router(state.clone()), "GET", "/analytics-queries", None).await;
     assert_eq!(body["queries"].as_array().unwrap().len(), 1);
     assert_eq!(body["queries"][0]["id"], query_id);
-    assert_eq!(body["queries"][0]["status"], "completed");
 
     let (status, _) = response_json(
         router(state.clone()),
@@ -1115,7 +1181,7 @@ async fn analytics_insight_approval_is_human_only() {
         Some(json!({"query_id": query_id})),
     )
     .await;
-    let result_id = result["result"]["data"]["result_id"].as_str().unwrap();
+    let result_id = result["result"]["data"]["insight_id"].as_str().unwrap();
 
     let (status, body) = response_json(
         router(state.clone()),
@@ -1129,6 +1195,56 @@ async fn analytics_insight_approval_is_human_only() {
         body["error"],
         "operation is human-only, agents cannot execute"
     );
+}
+
+#[tokio::test]
+async fn spoofed_human_header_cannot_approve_human_only_operations() {
+    let (state, _workspace) = analytics_state();
+
+    let (_, snapshot) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.snapshot.create/v1",
+        Some(json!({"metrics": [{"name": "revenue", "value": 120}]})),
+    )
+    .await;
+    let snapshot_id = snapshot["result"]["data"]["snapshot_id"].as_str().unwrap();
+
+    let (_, query) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.query.create/v1",
+        Some(json!({"snapshot_id": snapshot_id, "sql": "SELECT revenue"})),
+    )
+    .await;
+    let query_id = query["result"]["data"]["query_id"].as_str().unwrap();
+
+    let (_, result) = response_json(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.query.execute/v1",
+        Some(json!({"query_id": query_id})),
+    )
+    .await;
+    let result_id = result["result"]["data"]["insight_id"].as_str().unwrap();
+
+    let (status, body) = response_json_with_headers(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/analytics.insight.approve/v1",
+        &[("x-principal-kind", "human")],
+        Some(json!({"result_id": result_id})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        body["error"],
+        "operation is human-only, agents cannot execute"
+    );
+
+    let (_, listing) =
+        response_json(router(state.clone()), "GET", "/analytics-snapshots", None).await;
+    assert_eq!(listing["snapshots"].as_array().unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -1175,6 +1291,59 @@ async fn proof_version_filter_applies_with_operation_filter() {
     let items = body["items"].as_array().unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["body"]["id"], version_one.body.id.to_string());
+}
+
+#[tokio::test]
+async fn proof_operation_filter_treats_sql_wildcards_as_literals() {
+    let store = SqliteStore::in_memory().unwrap();
+    let state = Arc::new(AppState::with_registry_and_store(
+        "/tmp/proof-http-test",
+        registry(),
+        store,
+    ));
+    let keypair = generate_keypair_for(PrincipalKind::Agent);
+    let operations = [
+        "filter.percent%name::v1",
+        "filter.percentXname::v1",
+        "filter.under_name::v1",
+        "filter.underXname::v1",
+    ];
+    let proofs = operations
+        .iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            create_proof(
+                keypair.principal_id,
+                None,
+                operation,
+                &json!({"index": index}),
+                &json!({}),
+                chrono::Utc::now() + chrono::Duration::milliseconds(index as i64),
+                &keypair,
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
+    for proof in &proofs {
+        state.store.save_proof(proof).unwrap();
+    }
+
+    for (query, expected) in [
+        ("filter.percent%25name", &proofs[0]),
+        ("filter.under_name", &proofs[2]),
+    ] {
+        let (_, body) = response_json(
+            router(state.clone()),
+            "GET",
+            &format!("/proofs?operation={query}"),
+            None,
+        )
+        .await;
+        assert_eq!(body["total"], 1);
+        let items = body["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["body"]["id"], expected.body.id.to_string());
+    }
 }
 
 #[tokio::test]

@@ -1,0 +1,40 @@
+{
+  "expected_calls": [
+    {
+      "operation": "release.publish",
+      "version": "v1",
+      "arguments": {
+        "environment": "preview",
+        "version_label": "2026.08.29-rc1"
+      },
+      "requires_approved_execution": true
+    }
+  ],
+  "allow_additional_calls": false,
+  "required_final_output_references": [
+    {
+      "call_index": 0,
+      "source": "arguments",
+      "pointer": "/environment"
+    },
+    {
+      "call_index": 0,
+      "source": "arguments",
+      "pointer": "/version_label"
+    },
+    {
+      "call_index": 0,
+      "source": "output",
+      "pointer": "/data/release/id"
+    },
+    {
+      "call_index": 0,
+      "source": "output",
+      "pointer": "/data/release/edition_id"
+    },
+    {
+      "call_index": 0,
+      "source": "proof_id"
+    }
+  ]
+}

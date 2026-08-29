@@ -1,6 +1,6 @@
 # Proof Platform
 
-Proof Platform is a governed, agent-native Rust platform in which autonomous software discovers and executes operations through a data-driven registry, bounded delegation, and domain handlers, while successful governed transitions produce signed cryptographic proof of execution. Its kernel binds the actor, authority, operation, input digest, output digest, and timestamp into independently verifiable evidence. Three domains — content governance, commerce, and workflow — are fully implemented and conformance-tested.
+Proof Platform is an **Agent Experience Platform (AXP)**: the governed runtime and control plane where autonomous software discovers capabilities, acts across domain systems, pauses for signed human decisions, and returns independently verifiable evidence. It is not a DXP or CMS; content governance is one domain alongside commerce, workflow, and analytics. The kernel binds actor, authority, operation, input digest, output digest, and timestamp into every successful proof.
 
 - **Full architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
@@ -11,7 +11,7 @@ Proof Platform is a governed, agent-native Rust platform in which autonomous sof
 
 ```text
 ┌────────────────────────────────────────────────────────────────────┐
-│                           Humnan/Agents                            │
+│                           Humans / Agents                          │
 └──────────────┬──────────────────┬───────────────────┬──────────────┘
                │                  │                   │
 ┌──────────────▼──────┐ ┌─────────▼─────────┐ ┌───────▼────────────┐
@@ -21,13 +21,14 @@ Proof Platform is a governed, agent-native Rust platform in which autonomous sof
                │                  │                   │
 ┌──────────────▼──────────────────▼───────────────────▼──────────────┐
 │                    Execution Engine (proof-kernel)                 │
-│  registry → governance → delegation → handler dispatch → evidence   │
-│   benchmarks · canonical JSON · digests · optional operation spans   │
+│ registry → governance → delegation → handler dispatch → evidence  │
+│ agent runs · approvals · retries · checkpoints · evaluations      │
 └──────────────┬──────────────────┬───────────────────┬──────────────┘
                │                  │                   │
 ┌──────────────▼──────┐ ┌─────────▼─────────┐ ┌───────▼────────────┐
-│ Operation Registry  │ │  Content Domain   │ │      Storage       │
-│ versioned JSON rows │ │ lifecycle handlers │ │  SQLite + blobs   │
+│ Operation Registry  │ │  Domain Crates    │ │      Storage       │
+│ versioned JSON rows │ │ content · commerce │ │  SQLite + blobs   │
+│                     │ │ workflow · analytics│ │                   │
 └─────────────────────┘ └───────────────────┘ └────────────────────┘
 
 Observability supplies structured JSON operation spans and HTTP request metrics.
@@ -39,12 +40,17 @@ The transports are intentionally thin. The registry is the source of capability 
 
 | Crate                  | Purpose                                                                                                                                    |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `proof-kernel`         | Registry, execution engine, benchmarks, delegation, canonical JSON, Ed25519 identity, proofs                                               |
+| `proof-agent-runtime`  | Durable provider-neutral planner/tool loop, model adapters, budgets, signed approval suspension, and recovery                            |
+| `proof-kernel`         | Registry, execution engine, agent-run lifecycle, approvals, delegation, canonical JSON, Ed25519 identity, proofs                         |
 | `proof-content`        | Content models, lifecycle handlers, and release pipeline                                                                                   |
-| `proof-storage`        | SQLite migrations and storage for proofs, contexts, principals, delegations, registry entries, and domain records; content-addressed blobs |
+| `proof-commerce`       | Catalog, order, and fulfillment models with governed lifecycle handlers                                                                     |
+| `proof-workflow`       | Workflow definition, run, and step models with governed lifecycle handlers                                                                  |
+| `proof-analytics`      | Analytics snapshot, query, and insight models with governed lifecycle handlers                                                              |
+| `proof-storage`        | SQLite persistence for evidence, identity, approvals, agent runs, evaluations, and domain records; content-addressed blobs              |
 | `proof-transport-cli`  | Developer-oriented `proof` binary                                                                                                          |
 | `proof-transport-http` | Axum HTTP API on `0.0.0.0:3000`                                                                                                            |
-| `proof-transport-mcp`  | Registry-derived MCP tool schemas and governed tool-call execution                                                                         |
+| `proof-transport-mcp`  | Runnable MCP stdio server with registry discovery, governed execution, signed approvals, and proof results                                  |
+| `proof-transport-ws`   | WebSocket transport with registry-derived tool listing and governed execution                                                              |
 | `proof-observability`  | Structured JSON tracing, operation spans, and HTTP request middleware                                                                      |
 
 ## Quickstart
@@ -91,8 +97,11 @@ CHANGESET_ID="$(
 )"
 
 proof edition-create --changeset-id "$CHANGESET_ID"
-proof release-publish --edition-id "$EDITION_ID" --environment preview
 ```
+
+`release.publish` is HumanOnly. The legacy `proof release-publish` shortcut is
+disabled because it cannot supply signed human approval evidence; use the
+native agent approval workflow below.
 
 Execute a registry operation directly through the governed engine:
 
@@ -140,48 +149,120 @@ The repository registry must be copied to `<workspace>/.proof/registry`, as show
 
 ### Run the MCP transport
 
-`proof-transport-mcp` is a library for embedding MCP tool execution. Generate the tool list and route calls through the governed engine:
+Install and run the MCP stdio server against an initialized workspace:
 
-```rust
-use std::path::PathBuf;
-
-use proof_kernel::{ExecutionContext, ExecutionEngine, Registry};
-use proof_transport_mcp::{handle_tool_call, tools_from_registry};
-
-let registry = Registry::load_from_directory("registry")?;
-let tools = tools_from_registry(&registry);
-
-let mut engine = ExecutionEngine::new(registry);
-for handler in proof_content::handlers::content_handlers() {
-    engine.register_handler(handler);
-}
-
-let context = ExecutionContext {
-    actor: keypair.principal_id,
-    delegation_id: None,
-    delegation_chain: None,
-    workspace_path: PathBuf::from("."),
-    timestamp: chrono::Utc::now(),
-};
-
-let call = proof_transport_mcp::McpToolCall {
-    name: "proof_content_v1_schema_create".to_string(),
-    arguments: serde_json::json!({
-        "name": "Article",
-        "version": 1,
-        "fields": [{ "name": "title", "type": "text", "required": true }]
-    }),
-};
-
-let result = handle_tool_call(&call, &engine, context.actor, PathBuf::from("."));
+```bash
+cargo install --path crates/proof-transport-mcp --bin proof-mcp
+proof-mcp --workspace /absolute/path/to/workspace
 ```
 
-MCP tools expose input/output schemas and annotations derived from the registry’s governance and consequence fields. Tool calls are validated, routed through `ExecutionEngine`, and return structured result content with a signed proof.
+MCP tools expose input/output schemas and annotations derived from registry governance and consequences. Calls are validated, routed through `ExecutionEngine`, and return signed proof plus durable run metadata. Calls without a supplied run become one-shot runs; callers can attach tools to a multi-step session. Human-only tools suspend the same run and step for a signed human decision, then an exact retry executes once or replays the persisted result. See [`crates/proof-transport-mcp/README.md`](crates/proof-transport-mcp/README.md) for client configuration and the complete flow.
 
 MCP tool names use this form:
 
 ```text
 proof_<domain>_<version>_<operation.with.dots.encoded.as.underscores>
+```
+
+### Run a native agent
+
+Define an agent as instructions, a model, an explicit operation allowlist, and
+hard execution budgets. Tool references use `operation::version`:
+
+```bash
+export OPENAI_API_KEY='<key>'
+export OPENAI_MODEL='<model>'
+
+proof agent create \
+  --name catalog-manager \
+  --instructions 'Create the catalog requested by the operator.' \
+  --model "$OPENAI_MODEL" \
+  --tool catalog.create::v1
+
+# Copy agent.id from the create response.
+proof agent start '<AGENT_ID>' --goal 'Create the Spring catalog'
+
+# Copy run.id from the start response.
+proof agent watch '<RUN_ID>'
+```
+
+The runtime calls the model, validates requested arguments against registry
+schemas, executes only allowlisted tools through `ExecutionEngine`, returns the
+signed proof to the model, and repeats until completion or a budget limit. Set
+`OPENAI_BASE_URL` to override `https://api.openai.com/v1`.
+
+Human-only tools return `waiting_for_approval` without losing the run. Enroll a
+human once, sign the exact pending request, and resume the same checkpoint:
+
+```bash
+proof approval approver-init
+proof approval approve '<REQUEST_ID>' --approver '<APPROVER_ID>'
+proof agent resume '<RUN_ID>'
+```
+
+For a browser-based review, start the local operator console instead:
+
+```bash
+proof approval ui
+```
+
+Open the private URL printed by the command. The console binds only to
+`127.0.0.1` (on a random port unless `--port` is supplied), shows the exact
+arguments covered by the signed request, and signs an approval or denial with
+the selected locally enrolled human identity. Keep the URL private: its
+fragment contains the session credential. The console records the decision but
+does not execute the tool; run `proof agent resume '<RUN_ID>'` afterward.
+
+For a terminal run, execute a reproducible task-correctness policy and persist
+its evaluation of the signed trace:
+
+```bash
+proof agent evaluate '<RUN_ID>' \
+  --evaluator release-manager-preview/v1 \
+  --policy-file evals/release-manager-preview-v1.json
+```
+
+Policy objects are parsed strictly, so unknown top-level or nested fields fail
+closed instead of being silently ignored. The command verifies the expected
+calls, arguments, proofs, approvals, and event lifecycle; can require
+tool-result values and proof IDs in the final report; and binds the persisted
+result to canonical policy and trace digests. Lifecycle validation covers
+contiguous event sequences, run and step timestamp windows, contiguous step
+ordinals and attempts, retry lineage, and approval chronology from tool request
+through decision, resume, and execution. Trace bindings normalize principals
+to durable identity fields, so repeated reads of the same sealed trace produce
+the same digest. A terminal event must seal the run before evaluation begins. A
+failed policy is still persisted for audit and exits nonzero. Evaluations are
+append-only historical assertions; compare evaluator, policy digest, and trace
+digest rather than treating the newest row as an implicit replacement.
+
+See the [Release Manager preview dogfood trace](docs/dogfood/release-manager-preview.md)
+for a recorded approval/recovery sequence and the live-provider gate.
+
+`proof agent` is the autonomous runtime. The lower-level `proof run` commands
+remain available for transports and operators managing run records directly.
+
+### Control an agent run
+
+Start a durable multi-step session and pass the returned `mcpMeta` object with subsequent MCP tool calls:
+
+```bash
+proof run start --goal "Prepare and publish the release"
+proof run list
+proof run inspect <RUN_ID>
+proof run checkpoint <RUN_ID> --state '{"phase":"review"}'
+```
+
+Failed attempts can be retried without losing lineage. Terminal runs can be evaluated with canonical metrics:
+
+```bash
+proof run retry <RUN_ID> <FAILED_STEP_ID>
+proof run complete <RUN_ID>
+proof run evaluate <RUN_ID> \
+  --evaluator policy-v1 \
+  --outcome passed \
+  --score-bps 9500 \
+  --metrics '{"proof_valid":true}'
 ```
 
 ## Platform Capabilities
@@ -190,9 +271,24 @@ proof_<domain>_<version>_<operation.with.dots.encoded.as.underscores>
 
 - Versioned JSON operations are discovered from `.proof/registry`.
 - `ExecutionEngine` enforces registry governance, validates optional delegation chains, dispatches handlers, and returns typed kernel errors.
+- Human-only operations require an exact agent-signed request and a separate decision from an enrolled human signing identity.
+- MCP approval retries ignore unsigned client acceptance, verify both signatures, and replay persisted completed results.
 - Successful engine executions persist the execution context and signed proof when an `ExecutionStore` is configured.
 - Operation inputs and outputs use canonical JSON and BLAKE3 content digests.
 - Benchmark contracts measure duration and validate operation output against JSON Schema success criteria.
+
+### Agent runtime
+
+- Immutable `AgentDefinition` records bind instructions, provider/model, an explicit operation allowlist, and token/cost/time/step limits.
+- `proof-agent-runtime` drives a provider-neutral model/tool loop over the same registry and execution engine used by every transport.
+- Model calls, tool requests, approvals, outcomes, usage, and terminal results are appended as digest-addressed run events.
+- Runtime state is checkpointed before model calls and tool dispatch. Recovery reuses completed steps and approval executions, while interrupted mutations fail closed instead of being replayed blindly. Resuming a run already sealed by a terminal `failed` or `budget_exceeded` event returns its persisted outcome without appending another checkpoint or event.
+- Token, model-call, step, duration, output-token, and optional cost budgets terminate the run with a failed evaluation when exceeded. Approval request expiration is capped at the run's duration deadline, and resume checks that deadline before approval validation, reconciliation, or execution, so a late approval cannot dispatch the tool.
+- Every MCP tool call is represented by a durable `AgentRun` and `AgentRunStep` attempt.
+- One-shot runs complete automatically; session runs compose multiple governed operations under one goal.
+- Human-only operations persist a waiting checkpoint in the lifecycle and resume the exact step after a trusted signed decision.
+- Failed or cancelled steps create explicit retry attempts linked by `retry_of`; prior attempts remain auditable.
+- Immutable checkpoints preserve resumable state, and terminal evaluations record pass/fail outcomes, scores, and metrics.
 
 ### Content management
 
@@ -207,6 +303,7 @@ proof_<domain>_<version>_<operation.with.dots.encoded.as.underscores>
 - Proofs bind actor, delegation, operation, input digest, output digest, and timestamp.
 - Proofs can be signed, independently signature-verified, and verified as ordered digest chains.
 - Persisted principals allow verification of proofs not signed by the current transport identity.
+- A persisted principal's ID, kind, and public key are immutable; saving the same durable identity is idempotent, while a conflicting kind or key for that ID is rejected.
 
 ### Delegation
 
@@ -217,10 +314,11 @@ proof_<domain>_<version>_<operation.with.dots.encoded.as.underscores>
 
 ### Storage
 
-- SQLite persists proofs, execution contexts, principals, delegations, registry entries, and content records.
+- SQLite persists proofs, execution contexts, principals, delegations, registry entries, approvals, agent runs, attempts, checkpoints, evaluations, and domain records.
 - Schema migrations are versioned, idempotent, and support rollback helpers.
 - Proof-chain queries and context expiration helpers are available on `SqliteStore`.
 - The content-addressed store persists blobs on the filesystem with SQLite metadata, references, and garbage collection.
+- A terminal run seal covers approval request, decision, and execution evidence bound to its step as well as the run, steps, checkpoints, and events; exact evidence retries remain idempotent, while missing or conflicting post-seal inserts fail closed.
 
 ### Observability
 
@@ -364,7 +462,7 @@ The default workspace is `.`.
 | `proof object-create`                       | `--schema-id <uuid>`, `--locale <locale>` (default `en-US`), `--data <json>` | Validate against schema, save, and prove object creation                           |
 | `proof changeset-create`                    | `--intent <text>`                                                            | Create a changeset and signed proof                                                |
 | `proof edition-create`                      | `--changeset-id <uuid>`                                                      | Snapshot current objects into an edition                                           |
-| `proof release-publish`                     | `--edition-id <uuid>`, `--environment <name>`                                | Publish an edition to an environment                                               |
+| `proof release-publish`                     | `--edition-id <uuid>`, `--environment <name>`                                | Disabled legacy shortcut; use the signed agent approval flow                       |
 | `proof status`                              | none                                                                         | Count saved schemas, objects, changesets, editions, releases, and proofs           |
 | `proof capabilities`                        | none                                                                         | Print registry operations and governance levels                                    |
 | `proof registry list`                       | none                                                                         | List operation, version, domain, action, and governance                            |
@@ -506,6 +604,6 @@ cargo test --workspace
 - SQLite stores proofs, execution contexts, principals, delegations, registry entries, and domain records.
 - CLI, HTTP, and MCP transports route supported operations through the governed engine.
 - The content, commerce, and workflow domains are implemented and tested.
-- WebSocket transport is functional but has no dedicated tests yet.
+- Unauthenticated HTTP execution always uses an agent principal; caller-supplied headers cannot authorize human-only operations.
 - Proof envelopes do not yet support rotation/expiry links; workspace keypair rotation is available in the CLI.
 - Full multi-workspace management is not yet implemented; the CLI supports initializing and inspecting additional workspaces with `--workspace`.

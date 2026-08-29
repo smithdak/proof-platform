@@ -203,7 +203,7 @@ impl<'a> ReleasePipeline<'a> {
         let release_proof = create_proof(
             context.actor,
             context.delegation_id,
-            "release.publish",
+            "release.publish::v1",
             &release_input,
             &serde_json::to_value(&manifest)
                 .map_err(|error| ExecutionError::EvidenceFailed(error.to_string()))?,
@@ -257,10 +257,11 @@ impl<'a> ReleasePipeline<'a> {
         };
 
         let result = self.engine.execute(operation, "v1", &input, context)?;
+        let proof_operation = format!("{operation}::v1");
         let proof = create_proof(
             context.actor,
             context.delegation_id,
-            operation,
+            &proof_operation,
             &input,
             &result,
             context.timestamp,

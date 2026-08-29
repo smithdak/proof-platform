@@ -132,7 +132,7 @@ fn visit(directory: &Path, entries: &mut Vec<RegistryEntry>) -> Result<(), Regis
         let path = item?.path();
         if path.is_dir() {
             visit(&path, entries)?;
-        } else if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+        } else if is_registry_entry_file(&path) {
             let contents = fs::read_to_string(&path)?;
             let entry = serde_json::from_str::<RegistryEntry>(&contents).map_err(|source| {
                 RegistryError::InvalidJson {
@@ -144,6 +144,15 @@ fn visit(directory: &Path, entries: &mut Vec<RegistryEntry>) -> Result<(), Regis
         }
     }
     Ok(())
+}
+
+fn is_registry_entry_file(path: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    file_name.ends_with(".json")
+        && !file_name.ends_with(".input.json")
+        && !file_name.ends_with(".output.json")
 }
 
 #[cfg(test)]
@@ -240,6 +249,31 @@ mod tests {
             Governance::AgentExecutable
         );
         assert!(registry.find("object.create", "v2").is_none());
+    }
+
+    #[test]
+    fn ignores_input_and_output_schema_files() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join("object-create.input.json"),
+            r#"{"type":"object"}"#,
+        )
+        .unwrap();
+        fs::write(
+            directory.path().join("object-create.output.json"),
+            r#"{"type":"object"}"#,
+        )
+        .unwrap();
+        fs::write(
+            directory.path().join("object-create.json"),
+            serde_json::to_vec(&entry("object.create", Governance::AgentExecutable, None)).unwrap(),
+        )
+        .unwrap();
+
+        let registry = Registry::load_from_directory(directory.path()).unwrap();
+
+        assert_eq!(registry.operations().len(), 1);
+        assert!(registry.find("object.create", "v1").is_some());
     }
 
     #[test]

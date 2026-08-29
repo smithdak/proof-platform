@@ -1,7 +1,12 @@
 //! MCP (Model Context Protocol) transport adapter for the Proof platform.
 
+mod server;
+
+pub use server::{load_workspace_keypair, load_workspace_registry, McpServer, McpServerError};
+
 use proof_kernel::{
-    create_proof, generate_keypair, ExecutionEngine, ExecutionError, Registry, RegistryEntry,
+    create_proof, generate_keypair, ApprovalGrant, ExecutionEngine, ExecutionError, Principal,
+    Registry, RegistryEntry,
 };
 
 const TOOL_PAGE_SIZE: usize = 20;
@@ -25,11 +30,11 @@ pub struct McpTool {
 /// MCP tool annotations derived from operation governance and consequences.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpToolAnnotations {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "destructiveHint", skip_serializing_if = "Option::is_none")]
     pub destructive: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "idempotentHint", skip_serializing_if = "Option::is_none")]
     pub idempotent: Option<bool>,
-    #[serde(rename = "readOnly", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "readOnlyHint", skip_serializing_if = "Option::is_none")]
     pub read_only: Option<bool>,
 }
 
@@ -37,7 +42,7 @@ pub struct McpToolAnnotations {
 #[derive(Clone, Debug, Serialize)]
 pub struct McpToolsList {
     pub tools: Vec<McpTool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "nextCursor", skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,
 }
 
@@ -66,7 +71,7 @@ pub struct McpToolResult {
     pub content: Vec<McpContent>,
     #[serde(rename = "isError", skip_serializing_if = "std::ops::Not::not")]
     pub is_error: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "structuredContent", skip_serializing_if = "Option::is_none")]
     pub structured_content: Option<Value>,
 }
 
@@ -226,6 +231,56 @@ pub fn handle_tool_call(
     workspace_path: std::path::PathBuf,
 ) -> McpToolResult {
     let keypair = generate_keypair();
+    handle_tool_call_signed(call, engine, actor, workspace_path, &keypair, None)
+}
+
+/// Handles an MCP tool call using a stable Proof identity.
+///
+/// The supplied keypair becomes both the executing actor and the signer of the
+/// returned proof, allowing clients to verify identity continuity across calls.
+pub fn handle_tool_call_with_keypair(
+    call: &McpToolCall,
+    engine: &ExecutionEngine,
+    keypair: &proof_kernel::Keypair,
+    workspace_path: std::path::PathBuf,
+) -> McpToolResult {
+    handle_tool_call_signed(
+        call,
+        engine,
+        keypair.principal_id,
+        workspace_path,
+        keypair,
+        None,
+    )
+}
+
+/// Handles an MCP tool call authorized by an exact signed human approval.
+pub fn handle_tool_call_with_approval(
+    call: &McpToolCall,
+    engine: &ExecutionEngine,
+    keypair: &proof_kernel::Keypair,
+    workspace_path: std::path::PathBuf,
+    approval: &ApprovalGrant,
+    trusted_approver: &Principal,
+) -> McpToolResult {
+    handle_tool_call_signed(
+        call,
+        engine,
+        keypair.principal_id,
+        workspace_path,
+        keypair,
+        Some((approval, trusted_approver)),
+    )
+}
+
+fn handle_tool_call_signed(
+    call: &McpToolCall,
+    engine: &ExecutionEngine,
+    actor: proof_kernel::PrincipalId,
+    workspace_path: std::path::PathBuf,
+    keypair: &proof_kernel::Keypair,
+    approval: Option<(&ApprovalGrant, &Principal)>,
+) -> McpToolResult {
     let Some(entry) = engine
         .operations()
         .iter()
@@ -247,7 +302,19 @@ pub fn handle_tool_call(
         timestamp: chrono::Utc::now(),
     };
 
-    match engine.execute(&entry.operation, &entry.version, &call.arguments, &context) {
+    let execution = match approval {
+        Some((approval, trusted_approver)) => engine.execute_with_approval(
+            &entry.operation,
+            &entry.version,
+            &call.arguments,
+            &context,
+            approval,
+            trusted_approver,
+        ),
+        None => engine.execute(&entry.operation, &entry.version, &call.arguments, &context),
+    };
+
+    match execution {
         Ok(output) => {
             if let Err(error) = validate_value(&schema_value(entry, &entry.output_schema), &output)
             {
@@ -256,11 +323,11 @@ pub fn handle_tool_call(
                     entry.operation, error
                 ));
             } else {
-                let signed_actor = keypair.principal_id;
+                let proof_operation = format!("{}::{}", entry.operation, entry.version);
                 return match create_proof(
-                    signed_actor,
+                    keypair.principal_id,
                     context.delegation_id,
-                    &entry.operation,
+                    &proof_operation,
                     &call.arguments,
                     &output,
                     context.timestamp,

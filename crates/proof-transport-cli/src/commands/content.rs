@@ -1,7 +1,7 @@
 use crate::workspace::{save_workspace_json, Workspace};
 use crate::{build_engine, load_registry, Cli};
 use anyhow::{bail, Context, Result};
-use proof_content::{changeset::BaseState, edition::Edition, object::Object, release::Release};
+use proof_content::{changeset::BaseState, edition::Edition, object::Object};
 use proof_kernel::{create_proof, ExecutionContext};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -49,6 +49,7 @@ pub fn cmd_schema_create(cli: &Cli, name: &str, fields_json: &str) -> Result<()>
     ws.save_json("schemas", &schema.id.to_string(), &schema_json)?;
     let proof = ws.make_proof(
         "schema.create",
+        "v1",
         &serde_json::json!({"name": name}),
         &serde_json::json!({"schema_id": schema.id.to_string()}),
     )?;
@@ -72,6 +73,7 @@ pub fn cmd_object_create(cli: &Cli, schema_id: &str, locale: &str, data: &str) -
     ws.save_json("objects", &object.id.to_string(), &object_json)?;
     let proof = ws.make_proof(
         "object.create",
+        "v1",
         &serde_json::json!({"schema_id": schema_id}),
         &serde_json::json!({"object_id": object.id.to_string()}),
     )?;
@@ -91,6 +93,7 @@ pub fn cmd_changeset_create(cli: &Cli, intent: &str) -> Result<()> {
     ws.save_json("changesets", &changeset.id.to_string(), &cs_json)?;
     let proof = ws.make_proof(
         "changeset.create",
+        "v1",
         &serde_json::json!({"intent": intent}),
         &serde_json::json!({"changeset_id": changeset.id.to_string()}),
     )?;
@@ -123,7 +126,7 @@ pub fn cmd_edition_create(cli: &Cli, changeset_id: &str) -> Result<()> {
         &edition.id.to_string(),
         &serde_json::to_value(&edition)?,
     )?;
-    let proof = ws.make_proof("edition.create",
+    let proof = ws.make_proof("edition.create", "v1",
         &serde_json::json!({"changeset_id": changeset_id}),
         &serde_json::json!({"edition_id": edition.id.to_string(), "content_digest": edition.content_digest}))?;
     ws.save_proof(&proof)?;
@@ -134,30 +137,12 @@ pub fn cmd_edition_create(cli: &Cli, changeset_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn cmd_release_publish(cli: &Cli, edition_id: &str, environment: &str) -> Result<()> {
-    let ws = Workspace::open(&cli.workspace)?;
-    let edition_uuid = uuid::Uuid::parse_str(edition_id)?;
-    let release = Release::new(
-        edition_uuid,
-        environment.to_string(),
-        proof_content::PrincipalId(uuid::Uuid::parse_str(&ws.actor.to_string()).unwrap()),
-    );
-    ws.save_json(
-        "releases",
-        &release.id.to_string(),
-        &serde_json::to_value(&release)?,
-    )?;
-    let proof = ws.make_proof(
-        "release.publish",
-        &serde_json::json!({"edition_id": edition_id, "environment": environment}),
-        &serde_json::json!({"release_id": release.id.to_string()}),
-    )?;
-    ws.save_proof(&proof)?;
-    println!(
-        "{}",
-        serde_json::json!({"status": "published", "type": "release", "id": release.id.to_string(), "edition_id": edition_id, "environment": environment, "proof_id": proof.body.id.to_string()})
-    );
-    Ok(())
+pub fn cmd_release_publish(_cli: &Cli, _edition_id: &str, _environment: &str) -> Result<()> {
+    bail!(
+        "release.publish is human-only; use `proof agent start` to create a signed approval \
+         request, `proof approval approve` to record the human decision, then `proof agent \
+         resume`"
+    )
 }
 
 pub fn cmd_status(cli: &Cli) -> Result<()> {
@@ -202,10 +187,11 @@ pub fn cmd_execute(cli: &Cli, operation: &str, version: &str, input: &str) -> Re
     let output = engine
         .execute(operation, version, &input_value, &context)
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let proof_operation = format!("{operation}::{version}");
     let proof = create_proof(
         ws.actor,
         context.delegation_id,
-        operation,
+        &proof_operation,
         &input_value,
         &output,
         context.timestamp,

@@ -1,5 +1,5 @@
 use proof_content::{content_handlers, verify_release, ContentChange, ReleasePipeline};
-use proof_kernel::{ExecutionContext, ExecutionEngine, Registry};
+use proof_kernel::{ExecutionContext, ExecutionEngine, Governance, PrincipalKind, Registry};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -25,16 +25,28 @@ fn engine() -> ExecutionEngine {
 }
 
 fn context() -> (proof_kernel::Keypair, ExecutionContext) {
-    let keypair = proof_kernel::generate_keypair();
+    let keypair = proof_kernel::generate_keypair_for(PrincipalKind::Human);
     let execution_context = ExecutionContext {
         actor: keypair.principal_id,
-        principal_kind: Some(proof_kernel::PrincipalKind::Agent),
+        principal_kind: Some(PrincipalKind::Human),
         delegation_id: None,
         delegation_chain: None,
         workspace_path: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
         timestamp: chrono::Utc::now(),
     };
     (keypair, execution_context)
+}
+
+#[test]
+fn release_publish_registry_is_human_only() {
+    let registry =
+        Registry::load_from_directory(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("registry"))
+            .unwrap();
+
+    assert_eq!(
+        registry.find("release.publish", "v1").unwrap().governance,
+        Governance::HumanOnly
+    );
 }
 
 #[test]
@@ -57,7 +69,7 @@ fn publishes_and_verifies_manifest_with_governed_proofs() {
     assert_eq!(output.objects.len(), 1);
     assert_eq!(output.manifest.entries.len(), 1);
     assert_eq!(output.change_proofs.len(), 1);
-    assert_eq!(output.release_proof.body.operation, "release.publish");
+    assert_eq!(output.release_proof.body.operation, "release.publish::v1");
     verify_release(&output.manifest, &output.objects).unwrap();
 
     let manifest_json = serde_json::to_value(&output.manifest).unwrap();

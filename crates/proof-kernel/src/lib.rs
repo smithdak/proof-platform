@@ -1,5 +1,8 @@
 //! Proof kernel: canonical data, identity, delegation, evidence, and registry.
 
+pub mod agent;
+pub mod agent_run;
+pub mod approval;
 pub mod benchmark;
 pub mod canonical;
 pub mod delegation;
@@ -8,6 +11,20 @@ pub mod executor;
 pub mod identity;
 pub mod registry;
 
+pub use agent::{
+    AgentDefinition, AgentDefinitionError, AgentLimits, AgentRunEvent, AgentRunEventKind,
+    AgentStore, AgentTool, RecordingAgentStore,
+};
+pub use agent_run::{
+    AgentCheckpoint, AgentEvaluationOutcome, AgentRun, AgentRunError, AgentRunEvaluation,
+    AgentRunMode, AgentRunStatus, AgentRunStep, AgentRunStepStatus, AgentRunStore,
+    RecordingAgentRunStore,
+};
+pub use approval::{
+    ApprovalDecision, ApprovalError, ApprovalExecution, ApprovalGrant, ApprovalOutcome,
+    ApprovalRequest, ApprovalStore, RecordingApprovalStore, SignedApprovalDecision,
+    SignedApprovalRequest,
+};
 pub use benchmark::{Benchmark, BenchmarkError, BenchmarkResult, BenchmarkRunner};
 pub use canonical::{
     canonicalize, canonicalize_serialized, derive_key_material, digest, ArtifactKind,
@@ -16,8 +33,8 @@ pub use canonical::{
 pub use delegation::{validate_chain, Delegation, DelegationChain, DelegationError};
 pub use evidence::{Proof, ProofBody, ProofError};
 pub use executor::{
-    create_proof, AuditFilter, ExecutionContext, ExecutionEngine, ExecutionError, ExecutionStore,
-    OperationHandler, RecordingStore,
+    create_proof, AuditFilter, ExecutionContext, ExecutionEngine, ExecutionError, ExecutionOutcome,
+    ExecutionStore, OperationHandler, RecordingStore,
 };
 pub use identity::{
     generate_keypair, generate_keypair_for, principal_from_keypair, sign, verify, IdentityError,

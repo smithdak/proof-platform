@@ -4,7 +4,12 @@ pub mod cas;
 pub mod sqlite;
 
 pub use cas::{BlobReference, ContentAddressedStore, GarbageCollectionResult};
-pub use sqlite::{Migration, ProofFilter, SqliteStore, MIGRATIONS};
+pub use sqlite::{
+    AnalyticsInsight, AnalyticsInsightStatus, AnalyticsQuery, AnalyticsSnapshot, Catalog,
+    CatalogProduct, Migration, Order, OrderLine, OrderStatus, ProofFilter, SqliteStore,
+    WorkflowDefinition, WorkflowRun, WorkflowRunStatus, WorkflowStep, WorkflowStepKind,
+    WorkflowStepStatus, WorkflowStepTemplate, MIGRATIONS,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {

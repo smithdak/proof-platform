@@ -85,7 +85,7 @@ fn records_proof_and_context_for_storage_enabled_engine() {
     let mut proofs = store.proofs.lock().unwrap();
     assert_eq!(proofs.len(), 1);
     let proof = proofs.pop().unwrap();
-    assert_eq!(proof.body.operation, "test.echo");
+    assert_eq!(proof.body.operation, "test.echo::v1");
     assert_eq!(proof.body.actor, execution_context.actor);
     assert_eq!(
         proof.verify(&actor_keypair.signing_key.verifying_key()),

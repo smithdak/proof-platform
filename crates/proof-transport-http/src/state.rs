@@ -2,7 +2,7 @@
 
 use proof_kernel::generate_keypair;
 use proof_kernel::{ExecutionEngine, Keypair, OperationHandler, Registry};
-use proof_storage::SqliteStore;
+use proof_storage::{SqliteStore, StorageError};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -16,48 +16,15 @@ pub struct AppState {
     pub store: Arc<SqliteStore>,
 }
 
-fn commerce_registry_schema(
-    workspace_path: &str,
-    operation: &str,
-) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-    let path = PathBuf::from(workspace_path)
-        .join(".proof/registry/commerce")
-        .join(format!("{operation}.input.json"));
-    let contents = std::fs::read_to_string(path).map_err(|error| {
-        proof_kernel::ExecutionError::HandlerFailed(format!(
-            "failed to read registry schema: {error}"
-        ))
-    })?;
-    serde_json::from_str(&contents).map_err(|error| {
-        proof_kernel::ExecutionError::HandlerFailed(format!("invalid registry schema: {error}"))
-    })
-}
-
-fn workflow_registry_schema(
+fn registry_schema(
+    domain: &str,
     workspace_path: &str,
     operation: &str,
 ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
     let file_name = operation.replace('.', "-");
     let path = PathBuf::from(workspace_path)
-        .join(".proof/registry/workflow")
-        .join(format!("{file_name}.input.json"));
-    let contents = std::fs::read_to_string(path).map_err(|error| {
-        proof_kernel::ExecutionError::HandlerFailed(format!(
-            "failed to read registry schema: {error}"
-        ))
-    })?;
-    serde_json::from_str(&contents).map_err(|error| {
-        proof_kernel::ExecutionError::HandlerFailed(format!("invalid registry schema: {error}"))
-    })
-}
-
-fn analytics_registry_schema(
-    workspace_path: &str,
-    operation: &str,
-) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-    let file_name = operation.replace('.', "-");
-    let path = PathBuf::from(workspace_path)
-        .join(".proof/registry/analytics")
+        .join(".proof/registry")
+        .join(domain)
         .join(format!("{file_name}.input.json"));
     let contents = std::fs::read_to_string(path).map_err(|error| {
         proof_kernel::ExecutionError::HandlerFailed(format!(
@@ -116,95 +83,109 @@ fn execute_commerce_operation(
     operation: &str,
     input: &serde_json::Value,
     context: &proof_kernel::ExecutionContext,
+    store: &proof_storage::SqliteStore,
 ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-    let workspace = context.workspace_path.join(".proof/data/commerce");
-    std::fs::create_dir_all(&workspace).map_err(|error| {
-        proof_kernel::ExecutionError::HandlerFailed(format!(
-            "failed to create commerce store: {error}"
-        ))
-    })?;
-    let read = |id: &str, kind: &str| -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-        let path = workspace.join(format!("{kind}-{id}.json"));
-        let contents = std::fs::read_to_string(&path).map_err(|_| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
-        })?;
-        serde_json::from_str(&contents).map_err(|error| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("invalid {kind} {id}: {error}"))
-        })
+    use proof_storage::{Catalog, Order, OrderLine, OrderStatus};
+
+    let not_found = |id: &str, kind: &str| {
+        proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
     };
-    let write = |id: &str,
-                 kind: &str,
-                 value: &serde_json::Value|
-     -> Result<(), proof_kernel::ExecutionError> {
-        let path = workspace.join(format!("{kind}-{id}.json"));
-        std::fs::write(
-            &path,
-            serde_json::to_string_pretty(value).unwrap_or_default(),
-        )
-        .map_err(|error| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("failed to save {kind}: {error}"))
-        })
+    let map_store_error = |error: proof_storage::StorageError| {
+        proof_kernel::ExecutionError::HandlerFailed(error.to_string())
     };
-    let mut record = input.clone();
-    record["id"] = serde_json::json!(uuid::Uuid::now_v7().to_string());
     match operation {
         "catalog.create" => {
-            record["status"] = serde_json::json!("active");
-            record["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(record["id"].as_str().unwrap(), "catalog", &record)?;
-            Ok(serde_json::json!({"operation": operation, "data": {"catalog_id": record["id"]}}))
+            let catalog = Catalog {
+                id: uuid::Uuid::now_v7(),
+                name: input["name"].as_str().unwrap_or_default().to_string(),
+                description: input["description"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                created_at: context.timestamp,
+                updated_at: context.timestamp,
+            };
+            store.save_catalog(&catalog).map_err(map_store_error)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"catalog_id": catalog.id.to_string()}}),
+            )
         }
         "catalog.update" => {
             let id = input["catalog_id"].as_str().unwrap_or_default().to_string();
-            let mut catalog = read(&id, "catalog")?;
-            if let Some(fields) = input.as_object() {
-                for (key, value) in fields {
-                    if key != "catalog_id" {
-                        catalog[key] = value.clone();
-                    }
-                }
+            let catalog_id = uuid::Uuid::parse_str(&id).map_err(|_| not_found(&id, "catalog"))?;
+            let mut catalog = store
+                .load_catalog(&catalog_id)
+                .map_err(|_| not_found(&id, "catalog"))?;
+            if let Some(name) = input["name"].as_str() {
+                catalog.name = name.to_string();
             }
-            catalog["updated_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(&id, "catalog", &catalog)?;
-            Ok(serde_json::json!({"operation": operation, "data": {"catalog": catalog}}))
+            if let Some(description) = input["description"].as_str() {
+                catalog.description = description.to_string();
+            }
+            catalog.updated_at = context.timestamp;
+            store.save_catalog(&catalog).map_err(map_store_error)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"catalog": serde_json::to_value(&catalog).unwrap_or_default()}}),
+            )
         }
         "order.create" => {
-            record["status"] = serde_json::json!("pending_approval");
-            record["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(record["id"].as_str().unwrap(), "order", &record)?;
-            Ok(serde_json::json!({"operation": operation, "data": {"order_id": record["id"]}}))
+            let catalog_id = uuid::Uuid::parse_str(
+                input["catalog_id"].as_str().unwrap_or_default(),
+            )
+            .map_err(|_| not_found(input["catalog_id"].as_str().unwrap_or_default(), "catalog"))?;
+            let order = Order {
+                id: uuid::Uuid::now_v7(),
+                status: OrderStatus::Pending,
+                created_at: context.timestamp,
+                approved_at: None,
+                fulfilled_at: None,
+                lines: vec![OrderLine {
+                    catalog_id,
+                    name: input["catalog_id"].as_str().unwrap_or_default().to_string(),
+                    quantity: 1,
+                }],
+            };
+            store.save_order(&order).map_err(map_store_error)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"order_id": order.id.to_string()}}),
+            )
         }
         "order.approve" => {
             let id = input["order_id"].as_str().unwrap_or_default().to_string();
-            let mut order = read(&id, "order")?;
-            if order["status"] == "fulfilled" || order["status"] == "approved" {
+            let order_id = uuid::Uuid::parse_str(&id).map_err(|_| not_found(&id, "order"))?;
+            let mut order = store
+                .load_order(&order_id)
+                .map_err(|_| not_found(&id, "order"))?;
+            if order.status == OrderStatus::Approved || order.status == OrderStatus::Fulfilled {
                 return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
                     "order {id} is already {}",
-                    order["status"]
+                    order.status.as_str()
                 )));
             }
-            order["status"] = serde_json::json!("approved");
-            order["approved_by"] = serde_json::json!(context.actor.to_string());
-            order["approved_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(&id, "order", &order)?;
+            order.status = OrderStatus::Approved;
+            order.approved_at = Some(context.timestamp);
+            store.save_order(&order).map_err(map_store_error)?;
             Ok(
-                serde_json::json!({"operation": operation, "data": {"status": "approved", "order": order}}),
+                serde_json::json!({"operation": operation, "data": {"status": "approved", "order": serde_json::to_value(&order).unwrap_or_default()}}),
             )
         }
         "order.fulfill" => {
             let id = input["order_id"].as_str().unwrap_or_default().to_string();
-            let mut order = read(&id, "order")?;
-            if order["status"] != "approved" {
+            let order_id = uuid::Uuid::parse_str(&id).map_err(|_| not_found(&id, "order"))?;
+            let mut order = store
+                .load_order(&order_id)
+                .map_err(|_| not_found(&id, "order"))?;
+            if order.status != OrderStatus::Approved {
                 return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
                     "order {id} is {}; only approved orders can be fulfilled",
-                    order["status"]
+                    order.status.as_str()
                 )));
             }
-            order["status"] = serde_json::json!("fulfilled");
-            order["fulfilled_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(&id, "order", &order)?;
+            order.status = OrderStatus::Fulfilled;
+            order.fulfilled_at = Some(context.timestamp);
+            store.save_order(&order).map_err(map_store_error)?;
             Ok(
-                serde_json::json!({"operation": operation, "data": {"status": "fulfilled", "order": order}}),
+                serde_json::json!({"operation": operation, "data": {"status": "fulfilled", "order": serde_json::to_value(&order).unwrap_or_default()}}),
             )
         }
         _ => Err(proof_kernel::ExecutionError::NoHandler(
@@ -217,121 +198,155 @@ fn execute_workflow_operation(
     operation: &str,
     input: &serde_json::Value,
     context: &proof_kernel::ExecutionContext,
+    store: &proof_storage::SqliteStore,
 ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-    let workspace = context.workspace_path.join(".proof/data/workflow");
-    std::fs::create_dir_all(&workspace).map_err(|error| {
-        proof_kernel::ExecutionError::HandlerFailed(format!(
-            "failed to create workflow store: {error}"
-        ))
-    })?;
-    let read = |id: &str, kind: &str| -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-        let path = workspace.join(format!("{kind}-{id}.json"));
-        let contents = std::fs::read_to_string(&path).map_err(|_| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
-        })?;
-        serde_json::from_str(&contents).map_err(|error| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("invalid {kind} {id}: {error}"))
-        })
+    use proof_storage::{
+        WorkflowDefinition, WorkflowRun, WorkflowRunStatus, WorkflowStep, WorkflowStepKind,
+        WorkflowStepStatus, WorkflowStepTemplate,
     };
-    let write = |id: &str,
-                 kind: &str,
-                 value: &serde_json::Value|
-     -> Result<(), proof_kernel::ExecutionError> {
-        let path = workspace.join(format!("{kind}-{id}.json"));
-        std::fs::write(
-            &path,
-            serde_json::to_string_pretty(value).unwrap_or_default(),
-        )
-        .map_err(|error| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("failed to save {kind}: {error}"))
-        })
+
+    let not_found = |id: &str, kind: &str| {
+        proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
     };
+    let map_store_error = |error: proof_storage::StorageError| {
+        proof_kernel::ExecutionError::HandlerFailed(error.to_string())
+    };
+    let parse_id =
+        |id: &str, kind: &str| uuid::Uuid::parse_str(id).map_err(|_| not_found(id, kind));
 
     match operation {
         "workflow.define" => {
-            let mut definition = input.clone();
-            let id = uuid::Uuid::now_v7().to_string();
-            definition["id"] = serde_json::json!(id);
-            definition["status"] = serde_json::json!("active");
-            definition["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(&id, "workflow", &definition)?;
-            Ok(serde_json::json!({"operation": operation, "data": {"workflow_id": id}}))
+            let steps: Vec<WorkflowStepTemplate> = input["steps"]
+                .as_array()
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+                .iter()
+                .map(|step| WorkflowStepTemplate {
+                    name: step["name"].as_str().unwrap_or_default().to_string(),
+                    kind: if step["kind"].as_str() == Some("human") {
+                        WorkflowStepKind::Human
+                    } else {
+                        WorkflowStepKind::Agent
+                    },
+                    description: step["description"].as_str().unwrap_or_default().to_string(),
+                })
+                .collect();
+            let definition = WorkflowDefinition {
+                id: uuid::Uuid::now_v7(),
+                name: input["name"].as_str().unwrap_or_default().to_string(),
+                description: input["description"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                steps,
+                created_at: context.timestamp,
+                updated_at: context.timestamp,
+            };
+            store
+                .save_workflow_definition(&definition)
+                .map_err(map_store_error)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"workflow_id": definition.id.to_string()}}),
+            )
         }
         "workflow.trigger" => {
-            let workflow_id = input["workflow_id"].as_str().unwrap_or_default();
-            let definition = read(workflow_id, "workflow")?;
-            let id = uuid::Uuid::now_v7().to_string();
-            let mut run = serde_json::json!({
-                "id": id,
-                "workflow_id": workflow_id,
-                "name": definition["name"],
-                "status": "running",
-                "steps": definition["steps"]
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|mut step| {
-                        step["status"] = serde_json::json!("pending");
-                        step
+            let workflow_id = parse_id(
+                input["workflow_id"].as_str().unwrap_or_default(),
+                "workflow",
+            )?;
+            let definition = store
+                .load_workflow_definition(&workflow_id)
+                .map_err(|_| not_found(&workflow_id.to_string(), "workflow"))?;
+            let run = WorkflowRun {
+                id: uuid::Uuid::now_v7(),
+                workflow_definition_id: definition.id,
+                status: WorkflowRunStatus::InProgress,
+                created_at: context.timestamp,
+                completed_at: None,
+                approved_at: None,
+            };
+            store.save_workflow_run(&run).map_err(map_store_error)?;
+            for (ordinal, template) in definition.steps.iter().enumerate() {
+                store
+                    .save_workflow_step(&WorkflowStep {
+                        id: uuid::Uuid::now_v7(),
+                        run_id: run.id,
+                        name: template.name.clone(),
+                        kind: template.kind,
+                        description: template.description.clone(),
+                        status: WorkflowStepStatus::Pending,
+                        ordinal: ordinal as u32,
+                        completed_at: None,
                     })
-                    .collect::<Vec<_>>(),
-                "created_at": context.timestamp.to_rfc3339(),
-            });
-            write(&id, "run", &run)?;
-            if let Some(object) = run.as_object_mut() {
-                object.remove("id");
+                    .map_err(map_store_error)?;
             }
-            Ok(serde_json::json!({"operation": operation, "data": {"run_id": id, "run": run}}))
+            Ok(serde_json::json!({"operation": operation, "data": {"run_id": run.id.to_string()}}))
         }
         "workflow.step.complete" => {
             let run_id = input["run_id"].as_str().unwrap_or_default();
-            let mut run = read(run_id, "run")?;
-            let steps = run["steps"].as_array_mut().ok_or_else(|| {
-                proof_kernel::ExecutionError::HandlerFailed(format!(
-                    "workflow run {run_id} has no steps"
-                ))
-            })?;
-            let Some(step) = steps.iter_mut().find(|step| step["status"] == "pending") else {
+            let run_id = parse_id(run_id, "workflow run")?;
+            store
+                .load_workflow_run(&run_id)
+                .map_err(|_| not_found(&run_id.to_string(), "workflow run"))?;
+            let mut steps = store
+                .list_workflow_steps(&run_id)
+                .map_err(map_store_error)?;
+            let Some(step) = steps
+                .iter_mut()
+                .find(|step| step.status == WorkflowStepStatus::Pending)
+            else {
                 return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
                     "workflow run {run_id} has no pending steps"
                 )));
             };
-            let step_name = step["name"].clone();
-            step["status"] = serde_json::json!("complete");
-            step["completed_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            let all_complete = steps.iter().all(|step| step["status"] == "complete");
+            let step_name = step.name.clone();
+            let mut completed_step = step.clone();
+            completed_step.status = WorkflowStepStatus::Completed;
+            completed_step.completed_at = Some(context.timestamp);
+            store
+                .save_workflow_step(&completed_step)
+                .map_err(map_store_error)?;
+            let all_complete = steps
+                .iter()
+                .all(|step| step.status == WorkflowStepStatus::Completed);
             if all_complete {
-                run["status"] = serde_json::json!("pending_approval");
+                let mut run = store.load_workflow_run(&run_id).map_err(map_store_error)?;
+                run.completed_at = Some(context.timestamp);
+                store.save_workflow_run(&run).map_err(map_store_error)?;
             }
-            write(run_id, "run", &run)?;
             Ok(serde_json::json!({
                 "operation": operation,
                 "data": {
                     "run_id": run_id,
                     "completed_step": step_name,
-                    "status": run["status"],
                 }
             }))
         }
         "workflow.approve" => {
             let run_id = input["run_id"].as_str().unwrap_or_default();
-            let mut run = read(run_id, "run")?;
-            if run["status"] == "approved" {
+            let run_id = parse_id(run_id, "workflow run")?;
+            let mut run = store
+                .load_workflow_run(&run_id)
+                .map_err(|_| not_found(&run_id.to_string(), "workflow run"))?;
+            if run.status == WorkflowRunStatus::Approved {
                 return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
                     "workflow run {run_id} is already approved"
                 )));
             }
-            if run["status"] != "pending_approval" {
+            let steps = store
+                .list_workflow_steps(&run_id)
+                .map_err(map_store_error)?;
+            let all_complete = steps
+                .iter()
+                .all(|step| step.status == WorkflowStepStatus::Completed);
+            if !all_complete {
                 return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
-                    "workflow run {run_id} is {}; only pending_approval runs can be approved",
-                    run["status"]
+                    "workflow run {run_id} has incomplete steps; complete all steps before approval"
                 )));
             }
-            run["status"] = serde_json::json!("approved");
-            run["approved_by"] = serde_json::json!(context.actor.to_string());
-            run["approved_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(run_id, "run", &run)?;
+            run.status = WorkflowRunStatus::Approved;
+            run.approved_at = Some(context.timestamp);
+            store.save_workflow_run(&run).map_err(map_store_error)?;
             Ok(serde_json::json!({
                 "operation": operation,
                 "data": {"run_id": run_id, "status": "approved"}
@@ -347,107 +362,115 @@ fn execute_analytics_operation(
     operation: &str,
     input: &serde_json::Value,
     context: &proof_kernel::ExecutionContext,
+    store: &proof_storage::SqliteStore,
 ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-    let workspace = context.workspace_path.join(".proof/data/analytics");
-    std::fs::create_dir_all(&workspace).map_err(|error| {
-        proof_kernel::ExecutionError::HandlerFailed(format!(
-            "failed to create analytics store: {error}"
-        ))
-    })?;
-    let read = |id: &str, kind: &str| -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-        let path = workspace.join(format!("{kind}-{id}.json"));
-        let contents = std::fs::read_to_string(&path).map_err(|_| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
-        })?;
-        serde_json::from_str(&contents).map_err(|error| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("invalid {kind} {id}: {error}"))
-        })
+    use proof_storage::{
+        AnalyticsInsight, AnalyticsInsightStatus, AnalyticsQuery, AnalyticsSnapshot,
     };
-    let write = |id: &str,
-                 kind: &str,
-                 value: &serde_json::Value|
-     -> Result<(), proof_kernel::ExecutionError> {
-        let path = workspace.join(format!("{kind}-{id}.json"));
-        std::fs::write(
-            &path,
-            serde_json::to_string_pretty(value).unwrap_or_default(),
-        )
-        .map_err(|error| {
-            proof_kernel::ExecutionError::HandlerFailed(format!("failed to save {kind}: {error}"))
-        })
+
+    let not_found = |id: &str, kind: &str| {
+        proof_kernel::ExecutionError::HandlerFailed(format!("{kind} {id} not found"))
     };
+    let map_store_error = |error: proof_storage::StorageError| {
+        proof_kernel::ExecutionError::HandlerFailed(error.to_string())
+    };
+    let parse_id =
+        |id: &str, kind: &str| uuid::Uuid::parse_str(id).map_err(|_| not_found(id, kind));
+    let snapshot_digest = |snapshot: &AnalyticsSnapshot| format!("snapshot-{}-digest", snapshot.id);
 
     match operation {
         "analytics.snapshot.create" => {
-            let mut snapshot = input.clone();
-            let id = uuid::Uuid::now_v7().to_string();
-            snapshot["id"] = serde_json::json!(id);
-            snapshot["status"] = serde_json::json!("active");
-            snapshot["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(&id, "snapshot", &snapshot)?;
-            Ok(serde_json::json!({"operation": operation, "data": {"snapshot_id": id}}))
+            let snapshot = AnalyticsSnapshot {
+                id: uuid::Uuid::now_v7(),
+                name: input["name"]
+                    .as_str()
+                    .unwrap_or_else(|| "unnamed snapshot")
+                    .to_string(),
+                description: input["description"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                digest: String::new(),
+                created_at: context.timestamp,
+            };
+            let mut snapshot = snapshot;
+            snapshot.digest = snapshot_digest(&snapshot);
+            store
+                .save_analytics_snapshot(&snapshot)
+                .map_err(map_store_error)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"snapshot_id": snapshot.id.to_string()}}),
+            )
         }
         "analytics.query.create" => {
-            let snapshot_id = input["snapshot_id"].as_str().unwrap_or_default();
-            read(snapshot_id, "snapshot")?;
-            let mut query = input.clone();
-            let id = uuid::Uuid::now_v7().to_string();
-            query["id"] = serde_json::json!(id);
-            query["status"] = serde_json::json!("created");
-            query["created_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(&id, "query", &query)?;
-            Ok(serde_json::json!({"operation": operation, "data": {"query_id": id}}))
+            let snapshot_id = parse_id(
+                input["snapshot_id"].as_str().unwrap_or_default(),
+                "snapshot",
+            )?;
+            store
+                .load_analytics_snapshot(&snapshot_id)
+                .map_err(|_| not_found(&snapshot_id.to_string(), "snapshot"))?;
+            let now = context.timestamp;
+            let query = AnalyticsQuery {
+                id: uuid::Uuid::now_v7(),
+                snapshot_id,
+                name: input["name"]
+                    .as_str()
+                    .unwrap_or_else(|| "unnamed query")
+                    .to_string(),
+                filter: input["filter"].clone(),
+                aggregation: input["aggregation"].clone(),
+                created_at: now,
+                updated_at: now,
+            };
+            store
+                .save_analytics_query(&query)
+                .map_err(map_store_error)?;
+            Ok(
+                serde_json::json!({"operation": operation, "data": {"query_id": query.id.to_string()}}),
+            )
         }
         "analytics.query.execute" => {
-            let query_id = input["query_id"].as_str().unwrap_or_default();
-            let mut query = read(query_id, "query")?;
-            if query["status"] == "completed" {
-                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
-                    "query {query_id} is already completed"
-                )));
-            }
-            let snapshot_id = query["snapshot_id"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
-            let snapshot = read(&snapshot_id, "snapshot")?;
-            query["status"] = serde_json::json!("completed");
-            query["executed_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(query_id, "query", &query)?;
-            let result = serde_json::json!({
-                "id": uuid::Uuid::now_v7().to_string(),
-                "query_id": query_id,
-                "snapshot_id": snapshot_id,
-                "status": "completed",
-                "row_count": snapshot["metrics"].as_array().map_or(0, Vec::len),
-                "executed_at": context.timestamp.to_rfc3339(),
-            });
-            let result_id = result["id"].as_str().unwrap().to_string();
-            write(&result_id, "result", &result)?;
+            let query_id = parse_id(input["query_id"].as_str().unwrap_or_default(), "query")?;
+            let query = store
+                .load_analytics_query(&query_id)
+                .map_err(|_| not_found(&query_id.to_string(), "query"))?;
+            let snapshot = store
+                .load_analytics_snapshot(&query.snapshot_id)
+                .map_err(|_| not_found(&query.snapshot_id.to_string(), "snapshot"))?;
+            let insight = AnalyticsInsight {
+                id: uuid::Uuid::now_v7(),
+                query_id: query.id,
+                result_digest: snapshot_digest(&snapshot),
+                status: AnalyticsInsightStatus::Pending,
+                approved_at: None,
+                approved_by: None,
+            };
+            store
+                .save_analytics_insight(&insight)
+                .map_err(map_store_error)?;
             Ok(
-                serde_json::json!({"operation": operation, "data": {"result_id": result_id, "result": result}}),
+                serde_json::json!({"operation": operation, "data": {"insight_id": insight.id.to_string()}}),
             )
         }
         "analytics.insight.approve" => {
-            let result_id = input["result_id"].as_str().unwrap_or_default();
-            let mut result = read(result_id, "result")?;
-            if result["status"] == "approved" {
+            let insight_id = parse_id(input["result_id"].as_str().unwrap_or_default(), "insight")?;
+            let mut insight = store
+                .load_analytics_insight(&insight_id)
+                .map_err(|_| not_found(&insight_id.to_string(), "insight"))?;
+            if insight.status == AnalyticsInsightStatus::Approved {
                 return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
-                    "analytics result {result_id} is already approved"
+                    "analytics insight {insight_id} is already approved"
                 )));
             }
-            if result["status"] != "completed" {
-                return Err(proof_kernel::ExecutionError::HandlerFailed(format!(
-                    "analytics result {result_id} is {}; only completed results can be approved",
-                    result["status"]
-                )));
-            }
-            result["status"] = serde_json::json!("approved");
-            result["approved_by"] = serde_json::json!(context.actor.to_string());
-            result["approved_at"] = serde_json::json!(context.timestamp.to_rfc3339());
-            write(result_id, "result", &result)?;
+            insight.status = AnalyticsInsightStatus::Approved;
+            insight.approved_at = Some(context.timestamp);
+            insight.approved_by = Some(context.actor.to_string());
+            store
+                .save_analytics_insight(&insight)
+                .map_err(map_store_error)?;
             Ok(
-                serde_json::json!({"operation": operation, "data": {"result_id": result_id, "status": "approved"}}),
+                serde_json::json!({"operation": operation, "data": {"insight_id": insight.id.to_string(), "status": "approved"}}),
             )
         }
         _ => Err(proof_kernel::ExecutionError::NoHandler(
@@ -458,6 +481,7 @@ fn execute_analytics_operation(
 
 struct CommerceHandler {
     operation: &'static str,
+    store: Arc<SqliteStore>,
 }
 
 impl proof_kernel::OperationHandler for CommerceHandler {
@@ -470,15 +494,19 @@ impl proof_kernel::OperationHandler for CommerceHandler {
         input: &serde_json::Value,
         context: &proof_kernel::ExecutionContext,
     ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-        let schema =
-            commerce_registry_schema(&context.workspace_path.to_string_lossy(), self.operation)?;
+        let schema = registry_schema(
+            "commerce",
+            &context.workspace_path.to_string_lossy(),
+            self.operation,
+        )?;
         validate_json_schema(&schema, input)?;
-        execute_commerce_operation(self.operation, input, context)
+        execute_commerce_operation(self.operation, input, context, &self.store)
     }
 }
 
 struct WorkflowHandler {
     operation: &'static str,
+    store: Arc<SqliteStore>,
 }
 
 impl proof_kernel::OperationHandler for WorkflowHandler {
@@ -491,15 +519,19 @@ impl proof_kernel::OperationHandler for WorkflowHandler {
         input: &serde_json::Value,
         context: &proof_kernel::ExecutionContext,
     ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-        let schema =
-            workflow_registry_schema(&context.workspace_path.to_string_lossy(), self.operation)?;
+        let schema = registry_schema(
+            "workflow",
+            &context.workspace_path.to_string_lossy(),
+            self.operation,
+        )?;
         validate_json_schema(&schema, input)?;
-        execute_workflow_operation(self.operation, input, context)
+        execute_workflow_operation(self.operation, input, context, &self.store)
     }
 }
 
 struct AnalyticsHandler {
     operation: &'static str,
+    store: Arc<SqliteStore>,
 }
 
 impl proof_kernel::OperationHandler for AnalyticsHandler {
@@ -512,10 +544,13 @@ impl proof_kernel::OperationHandler for AnalyticsHandler {
         input: &serde_json::Value,
         context: &proof_kernel::ExecutionContext,
     ) -> Result<serde_json::Value, proof_kernel::ExecutionError> {
-        let schema =
-            analytics_registry_schema(&context.workspace_path.to_string_lossy(), self.operation)?;
+        let schema = registry_schema(
+            "analytics",
+            &context.workspace_path.to_string_lossy(),
+            self.operation,
+        )?;
         validate_json_schema(&schema, input)?;
-        execute_analytics_operation(self.operation, input, context)
+        execute_analytics_operation(self.operation, input, context, &self.store)
     }
 }
 
@@ -552,6 +587,7 @@ impl AppState {
         registry: Registry,
         store: SqliteStore,
     ) -> Self {
+        let shared_store = Arc::new(store);
         let mut engine = ExecutionEngine::new(registry);
         for operation in [
             "catalog.create",
@@ -560,7 +596,10 @@ impl AppState {
             "order.approve",
             "order.fulfill",
         ] {
-            engine.register_handler(Arc::new(CommerceHandler { operation }));
+            engine.register_handler(Arc::new(CommerceHandler {
+                operation,
+                store: shared_store.clone(),
+            }));
         }
         for operation in [
             "workflow.define",
@@ -568,7 +607,10 @@ impl AppState {
             "workflow.step.complete",
             "workflow.approve",
         ] {
-            engine.register_handler(Arc::new(WorkflowHandler { operation }));
+            engine.register_handler(Arc::new(WorkflowHandler {
+                operation,
+                store: shared_store.clone(),
+            }));
         }
         for operation in [
             "analytics.snapshot.create",
@@ -576,14 +618,17 @@ impl AppState {
             "analytics.query.execute",
             "analytics.insight.approve",
         ] {
-            engine.register_handler(Arc::new(AnalyticsHandler { operation }));
+            engine.register_handler(Arc::new(AnalyticsHandler {
+                operation,
+                store: shared_store.clone(),
+            }));
         }
         Self {
             workspace_path: workspace_path.into(),
             version: "0.1.0".to_string(),
             engine: Arc::new(RwLock::new(engine)),
             keypair: generate_keypair(),
-            store: Arc::new(store),
+            store: shared_store,
         }
     }
 

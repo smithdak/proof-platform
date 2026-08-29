@@ -1,0 +1,19 @@
+//! Durable, governed agent execution over Proof operations.
+
+mod model;
+mod openai;
+mod runtime;
+mod trace_eval;
+
+pub use model::{
+    AgentFunctionTool, ModelDecision, ModelGateway, ModelGatewayError, ModelInput, ModelTurn,
+    ModelTurnRequest, ModelUsage,
+};
+pub use openai::{OpenAiResponsesGateway, DEFAULT_OPENAI_BASE_URL};
+pub use runtime::{
+    AgentRuntime, AgentRuntimeError, AgentRuntimeOutcome, AgentRuntimeState, PendingToolCall,
+};
+pub use trace_eval::{
+    ApprovalEvidence, DeterministicTraceEvaluator, ExpectedToolCall, FinalOutputReference,
+    FinalOutputSource, TraceEvaluationError, TraceEvaluationPolicy,
+};

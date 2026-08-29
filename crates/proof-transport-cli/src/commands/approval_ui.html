@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proof approvals</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0e14;
+      color: #edf1f7;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #0b0e14; }
+    button, select, textarea { font: inherit; }
+    button:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid #7cb7ff;
+      outline-offset: 2px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.15rem 1.5rem;
+      border-bottom: 1px solid #252b36;
+      background: #10141d;
+    }
+    header h1 { margin: 0; font-size: 1.1rem; letter-spacing: .01em; }
+    header p { margin: .25rem 0 0; color: #9ba6b5; font-size: .875rem; }
+    .refresh {
+      min-height: 2.5rem;
+      padding: .55rem .9rem;
+      border: 1px solid #394252;
+      border-radius: .5rem;
+      color: #edf1f7;
+      background: #181e29;
+      cursor: pointer;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(17rem, 23rem) minmax(0, 1fr);
+      min-height: calc(100vh - 5rem);
+    }
+    .inbox {
+      padding: 1rem;
+      border-right: 1px solid #252b36;
+      background: #0e121a;
+    }
+    .inbox-heading { display: flex; justify-content: space-between; align-items: baseline; }
+    h2 { margin: 0 0 .9rem; font-size: .95rem; }
+    .count { color: #9ba6b5; font-size: .82rem; }
+    #approval-list { display: grid; gap: .65rem; }
+    .approval-row {
+      width: 100%;
+      min-height: 4.75rem;
+      padding: .8rem;
+      border: 1px solid #293140;
+      border-radius: .65rem;
+      color: inherit;
+      text-align: left;
+      background: #151a24;
+      cursor: pointer;
+    }
+    .approval-row:hover, .approval-row[aria-current="true"] {
+      border-color: #65a8ff;
+      background: #182235;
+    }
+    .row-top { display: flex; justify-content: space-between; gap: .75rem; }
+    .operation { font-weight: 700; }
+    .goal { margin-top: .4rem; color: #bdc6d4; font-size: .86rem; line-height: 1.35; }
+    .meta { margin-top: .45rem; color: #8995a6; font-size: .76rem; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.5rem;
+      padding: .15rem .45rem;
+      border-radius: 99px;
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      background: #252d3b;
+      color: #c9d3e1;
+    }
+    .status.pending { background: #17385e; color: #a9d5ff; }
+    .status.expired, .status.denied { background: #4a2026; color: #ffbcc2; }
+    .status.approved, .status.executed { background: #183d32; color: #9be6ca; }
+    .detail { padding: clamp(1rem, 3vw, 2.5rem); max-width: 70rem; width: 100%; }
+    .empty {
+      padding: 2rem;
+      border: 1px dashed #303949;
+      border-radius: .75rem;
+      color: #9ba6b5;
+      text-align: center;
+    }
+    .detail-header { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+    .detail-header h2 { margin: 0; font-size: 1.55rem; }
+    .description { margin: .45rem 0 0; color: #aeb8c7; line-height: 1.5; }
+    .consequence { margin-top: .75rem; color: #ffc98c; font-size: .88rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .75rem;
+      margin: 1.25rem 0;
+    }
+    .fact { padding: .85rem; border: 1px solid #293140; border-radius: .6rem; background: #111720; }
+    .fact dt { color: #8995a6; font-size: .76rem; text-transform: uppercase; letter-spacing: .04em; }
+    .fact dd { margin: .35rem 0 0; overflow-wrap: anywhere; line-height: 1.4; }
+    .full { grid-column: 1 / -1; }
+    .arguments h3, .decision h3 { margin: 1.4rem 0 .6rem; font-size: .9rem; }
+    pre {
+      max-height: 24rem;
+      overflow: auto;
+      margin: 0;
+      padding: 1rem;
+      border: 1px solid #303949;
+      border-radius: .6rem;
+      background: #080b10;
+      color: #d8e4f5;
+      font: .84rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .blocked {
+      margin: 1rem 0;
+      padding: .9rem 1rem;
+      border: 1px solid #70404a;
+      border-radius: .6rem;
+      background: #2a171d;
+      color: #ffc5cb;
+    }
+    .blocked strong { display: block; margin-bottom: .35rem; }
+    .blocked ul { margin: .35rem 0 0; padding-left: 1.25rem; }
+    .decision {
+      margin-top: 1.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #293140;
+    }
+    label { display: block; margin: .8rem 0 .35rem; color: #c8d0dc; font-size: .85rem; font-weight: 650; }
+    select, textarea {
+      width: 100%;
+      padding: .7rem;
+      border: 1px solid #394252;
+      border-radius: .5rem;
+      color: #edf1f7;
+      background: #111720;
+    }
+    textarea { min-height: 5rem; resize: vertical; }
+    .actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1rem; }
+    .actions button {
+      min-height: 2.75rem;
+      padding: .65rem 1rem;
+      border: 1px solid transparent;
+      border-radius: .5rem;
+      font-weight: 750;
+      cursor: pointer;
+    }
+    .actions button:disabled { opacity: .45; cursor: not-allowed; }
+    .approve { background: #45c99a; color: #07140f; }
+    .deny { border-color: #9c4d5b !important; background: #321b21; color: #ffc5cb; }
+    .receipt { margin-top: 1rem; color: #9be6ca; line-height: 1.5; white-space: pre-wrap; }
+    #page-status { min-height: 1.4rem; color: #aeb8c7; font-size: .84rem; }
+    .fatal { max-width: 42rem; margin: 4rem auto; padding: 1.5rem; }
+    [hidden] { display: none !important; }
+    @media (max-width: 760px) {
+      main { grid-template-columns: 1fr; }
+      .inbox { border-right: 0; border-bottom: 1px solid #252b36; }
+      .grid { grid-template-columns: 1fr; }
+      .full { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Proof operator approvals</h1>
+      <p>Review exact native agent calls before signing authority.</p>
+    </div>
+    <button class="refresh" id="refresh" type="button">Refresh</button>
+  </header>
+  <div id="fatal" class="fatal" hidden></div>
+  <main id="app">
+    <aside class="inbox" aria-labelledby="inbox-title">
+      <div class="inbox-heading">
+        <h2 id="inbox-title">Approval inbox</h2>
+        <span class="count" id="approval-count"></span>
+      </div>
+      <div id="approval-list"></div>
+    </aside>
+    <section class="detail" aria-labelledby="detail-title">
+      <p id="page-status" role="status" aria-live="polite"></p>
+      <div id="detail-empty" class="empty">Select an approval request to review it.</div>
+      <article id="detail-card" hidden>
+        <div class="detail-header">
+          <div>
+            <h2 id="detail-title"></h2>
+            <p class="description" id="description"></p>
+            <p class="consequence" id="consequence"></p>
+          </div>
+          <span class="status" id="detail-status"></span>
+        </div>
+        <dl class="grid">
+          <div class="fact full"><dt>Run goal</dt><dd id="goal"></dd></div>
+          <div class="fact"><dt>Agent</dt><dd id="agent"></dd></div>
+          <div class="fact"><dt>Model</dt><dd id="model"></dd></div>
+          <div class="fact"><dt>Expires</dt><dd id="expires"></dd></div>
+          <div class="fact"><dt>Time remaining</dt><dd id="countdown"></dd></div>
+          <div class="fact full"><dt>Input digest</dt><dd id="digest"></dd></div>
+          <div class="fact"><dt>Request ID</dt><dd id="request-id"></dd></div>
+          <div class="fact"><dt>Run / step</dt><dd id="run-step"></dd></div>
+          <div class="fact full"><dt>Requested by</dt><dd id="requester"></dd></div>
+        </dl>
+        <section class="arguments" aria-labelledby="arguments-title">
+          <h3 id="arguments-title">Exact arguments covered by the signature</h3>
+          <pre id="arguments"></pre>
+        </section>
+        <div class="blocked" id="blocked" hidden>
+          <strong>This request cannot be signed.</strong>
+          <ul id="blocked-list"></ul>
+        </div>
+        <section class="decision" aria-labelledby="decision-title">
+          <h3 id="decision-title">Signed human decision</h3>
+          <label for="approver">Approver identity</label>
+          <select id="approver"></select>
+          <label for="reason">Reason (optional)</label>
+          <textarea id="reason" placeholder="What did you verify?"></textarea>
+          <div class="actions">
+            <button class="approve" id="approve" type="button">Approve</button>
+            <button class="deny" id="deny" type="button">Deny</button>
+          </div>
+          <div class="receipt" id="receipt" role="status" aria-live="polite"></div>
+        </section>
+      </article>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const fragmentToken = decodeURIComponent(location.hash.slice(1));
+      if (fragmentToken) sessionStorage.setItem("proofApprovalSession", fragmentToken);
+      const token = fragmentToken || sessionStorage.getItem("proofApprovalSession") || "";
+      if (location.hash) history.replaceState(null, "", location.pathname);
+
+      const app = document.getElementById("app");
+      const fatal = document.getElementById("fatal");
+      const list = document.getElementById("approval-list");
+      const count = document.getElementById("approval-count");
+      const pageStatus = document.getElementById("page-status");
+      const empty = document.getElementById("detail-empty");
+      const card = document.getElementById("detail-card");
+      const approveButton = document.getElementById("approve");
+      const denyButton = document.getElementById("deny");
+      let selectedId = null;
+      let selectedApproval = null;
+      let decisionPending = false;
+      let selectionGeneration = 0;
+
+      if (!token) {
+        app.hidden = true;
+        fatal.hidden = false;
+        fatal.textContent = "This approval console needs the private session URL printed by `proof approval ui`.";
+        return;
+      }
+
+      async function api(path, options = {}) {
+        const headers = new Headers(options.headers || {});
+        headers.set("X-Proof-Session", token);
+        if (options.body) headers.set("Content-Type", "application/json");
+        const response = await fetch(path, {...options, headers});
+        const payload = await response.json().catch(() => ({error: "Invalid server response"}));
+        if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+        return payload;
+      }
+
+      function setStatus(message) { pageStatus.textContent = message; }
+      function statusLabel(value) { return String(value || "unknown").replaceAll("_", " "); }
+      function formatDate(value) { return value ? new Date(value).toLocaleString() : "Unavailable"; }
+      function setInboxDisabled(disabled) {
+        for (const row of list.querySelectorAll(".approval-row")) row.disabled = disabled;
+      }
+
+      function renderInbox(payload) {
+        list.replaceChildren();
+        count.textContent = `${payload.approvals.length} total`;
+        if (!payload.approvals.length) {
+          selectionGeneration += 1;
+          const message = document.createElement("p");
+          message.className = "empty";
+          message.textContent = "No approval requests yet.";
+          list.append(message);
+          selectedId = null;
+          selectedApproval = null;
+          updateActions();
+          card.hidden = true;
+          empty.hidden = false;
+          empty.textContent = "Select a request to inspect its signed input and native run context.";
+          return;
+        }
+        for (const approval of payload.approvals) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "approval-row";
+          button.dataset.requestId = approval.request_id;
+          button.disabled = decisionPending;
+          button.setAttribute("aria-current", String(approval.request_id === selectedId));
+          const top = document.createElement("span");
+          top.className = "row-top";
+          const operation = document.createElement("span");
+          operation.className = "operation";
+          operation.textContent = `${approval.operation} ${approval.version}`;
+          const status = document.createElement("span");
+          status.className = `status ${approval.status}`;
+          status.textContent = statusLabel(approval.status);
+          top.append(operation, status);
+          const goal = document.createElement("span");
+          goal.className = "goal";
+          goal.textContent = approval.goal || "Native run context unavailable";
+          const meta = document.createElement("span");
+          meta.className = "meta";
+          meta.textContent = `${approval.agent_name || "Unknown agent"} · expires ${formatDate(approval.expires_at)}`;
+          button.append(top, goal, meta);
+          button.addEventListener("click", () => selectApproval(approval.request_id));
+          list.append(button);
+        }
+        if (!selectedId || !payload.approvals.some(item => item.request_id === selectedId)) {
+          const next = payload.approvals.find(item => item.actionable) || payload.approvals[0];
+          selectApproval(next.request_id);
+        }
+      }
+
+      async function loadInbox(quiet = false) {
+        if (!quiet) setStatus("Loading approval inbox…");
+        try {
+          renderInbox(await api("/api/approvals"));
+          if (!quiet) setStatus("Approval inbox is up to date.");
+        } catch (error) {
+          setStatus(error.message);
+        }
+      }
+
+      function setText(id, value) { document.getElementById(id).textContent = value || "Unavailable"; }
+
+      function renderDetail(payload, expectedRequestId) {
+        const approval = payload.approval;
+        if (approval.request_id !== expectedRequestId || selectedId !== expectedRequestId) {
+          return false;
+        }
+        selectedApproval = approval;
+        empty.hidden = true;
+        card.hidden = false;
+        setText("detail-title", `${approval.operation.name} ${approval.operation.version}`);
+        setText("description", approval.operation.description);
+        setText("consequence", approval.operation.consequence ? `Consequence: ${approval.operation.consequence}` : "");
+        const status = document.getElementById("detail-status");
+        status.className = `status ${approval.status}`;
+        status.textContent = statusLabel(approval.status);
+        setText("goal", approval.run && approval.run.goal);
+        setText("agent", approval.agent ? `${approval.agent.name} (${approval.agent.id})` : null);
+        setText("model", approval.agent ? `${approval.agent.provider} / ${approval.agent.model}` : null);
+        setText("expires", formatDate(approval.expires_at));
+        setText("digest", approval.input_digest);
+        setText("request-id", approval.request_id);
+        setText("run-step", approval.run && approval.step ? `${approval.run.id} / ${approval.step.id}` : null);
+        setText("requester", approval.requested_by);
+        document.getElementById("arguments").textContent = approval.arguments === null
+          ? "Exact native arguments are unavailable."
+          : JSON.stringify(approval.arguments, null, 2);
+
+        const blocked = document.getElementById("blocked");
+        const blockedList = document.getElementById("blocked-list");
+        blockedList.replaceChildren();
+        blocked.hidden = approval.blocked_reasons.length === 0;
+        for (const reason of approval.blocked_reasons) {
+          const item = document.createElement("li");
+          item.textContent = reason;
+          blockedList.append(item);
+        }
+
+        const approver = document.getElementById("approver");
+        approver.replaceChildren();
+        for (const id of payload.approvers) {
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = id;
+          approver.append(option);
+        }
+        if (!payload.approvers.length) {
+          const option = document.createElement("option");
+          option.textContent = "No enrolled local approver";
+          option.value = "";
+          approver.append(option);
+        }
+        document.getElementById("receipt").textContent = approval.decision
+          ? `${statusLabel(approval.decision.outcome)} by ${approval.decision.decided_by}${approval.decision.reason ? `\nReason: ${approval.decision.reason}` : ""}`
+          : "";
+        updateActions();
+        updateCountdown();
+        return true;
+      }
+
+      async function selectApproval(requestId, force = false) {
+        if (decisionPending && !force) return;
+        const generation = ++selectionGeneration;
+        selectedId = requestId;
+        selectedApproval = null;
+        updateActions();
+        for (const row of list.querySelectorAll(".approval-row")) {
+          row.setAttribute("aria-current", String(row.dataset.requestId === selectedId));
+        }
+        card.hidden = true;
+        card.setAttribute("aria-busy", "true");
+        empty.hidden = false;
+        empty.textContent = "Loading approval details…";
+        setStatus("Loading approval details…");
+        try {
+          const payload = await api(`/api/approvals/${encodeURIComponent(requestId)}`);
+          if (generation !== selectionGeneration || selectedId !== requestId) return;
+          if (!renderDetail(payload, requestId)) return;
+          setStatus("Review the exact arguments and signed digest before deciding.");
+        } catch (error) {
+          if (generation !== selectionGeneration || selectedId !== requestId) return;
+          empty.textContent = "Approval details could not be loaded.";
+          setStatus(error.message);
+        } finally {
+          if (generation === selectionGeneration && selectedId === requestId) {
+            card.removeAttribute("aria-busy");
+          }
+        }
+      }
+
+      function updateActions() {
+        const approver = document.getElementById("approver").value;
+        const disabled = decisionPending || !selectedApproval || !selectedApproval.actionable || !approver;
+        approveButton.disabled = disabled;
+        denyButton.disabled = disabled;
+      }
+
+      function updateCountdown() {
+        if (!selectedApproval) return;
+        const milliseconds = new Date(selectedApproval.expires_at).getTime() - Date.now();
+        const countdown = document.getElementById("countdown");
+        if (milliseconds <= 0) {
+          countdown.textContent = "Expired";
+          approveButton.disabled = true;
+          denyButton.disabled = true;
+          return;
+        }
+        const seconds = Math.floor(milliseconds / 1000);
+        const minutes = Math.floor(seconds / 60);
+        countdown.textContent = `${minutes}m ${seconds % 60}s`;
+      }
+
+      async function decide(outcome) {
+        if (!selectedApproval || !selectedApproval.actionable) return;
+        const approval = selectedApproval;
+        const requestId = approval.request_id;
+        if (selectedId !== requestId) return;
+        const approverId = document.getElementById("approver").value;
+        const verb = outcome === "approved" ? "approve" : "deny";
+        const goal = approval.run ? approval.run.goal : "Native run goal unavailable";
+        if (!confirm(
+          `Sign and ${verb} this exact ${approval.operation.name} call?\n\nRequest: ${requestId}\nGoal: ${goal}`
+        )) return;
+        decisionPending = true;
+        setInboxDisabled(true);
+        updateActions();
+        setStatus(`Signing ${verb} decision…`);
+        try {
+          const result = await api(`/api/approvals/${encodeURIComponent(requestId)}/decision`, {
+            method: "POST",
+            body: JSON.stringify({
+              approver_id: approverId,
+              outcome,
+              reason: document.getElementById("reason").value
+            })
+          });
+          const receipt = document.getElementById("receipt");
+          receipt.textContent = `Decision signed: ${result.status}.${result.resume_command ? `\nNext: ${result.resume_command}` : ""}`;
+          setStatus("Decision signed. No operation was executed or resumed by this console.");
+          await loadInbox(true);
+          if (selectedId === requestId) await selectApproval(requestId, true);
+          if (selectedId === requestId && selectedApproval && selectedApproval.request_id === requestId) {
+            receipt.textContent = `Decision signed: ${result.status}.${result.resume_command ? `\nNext: ${result.resume_command}` : ""}`;
+            setStatus("Decision signed. No operation was executed or resumed by this console.");
+          }
+        } catch (error) {
+          setStatus(error.message);
+        } finally {
+          decisionPending = false;
+          setInboxDisabled(false);
+          updateActions();
+        }
+      }
+
+      document.getElementById("refresh").addEventListener("click", () => loadInbox());
+      document.getElementById("approver").addEventListener("change", updateActions);
+      approveButton.addEventListener("click", () => decide("approved"));
+      denyButton.addEventListener("click", () => decide("denied"));
+      setInterval(updateCountdown, 1000);
+      setInterval(() => loadInbox(true), 5000);
+      loadInbox();
+    })();
+  </script>
+</body>
+</html>

@@ -119,10 +119,10 @@ Each domain has a definition block with:
 
 **Name:** `analytics`
 **Crate:** `proof-analytics`
-**Status:** draft
+**Status:** complete
 **Thesis:** Governed query and insight operations over workspace data, producing signed proof that a query was executed against a specific dataset snapshot and returned a specific result.
 
-### Operations (planned)
+### Operations
 
 | Operation | Governance | Consequence |
 |---|---|---|
@@ -144,5 +144,6 @@ Each domain has a definition block with:
 |---|---|---|---|
 | 1 | 2026-08-28 | Domain 4 placeholder scoped as Analytics & Insight | Matches architecture doc layer diagram; no decisions made yet |
 | 2 | 2026-08-29 | Initial operation set: snapshot, query creation, query execution, human-only insight approval | Snapshot separates dataset versioning from live data; query create/execute separates definition from execution (mirroring content define/edit pattern); insight approval is the governance hook where a human signs off on derived conclusions |
+| 3 | 2026-08-29 | Wave 14 completes Domain 4: AnalyticsSnapshot/Query/Insight models, SQLite storage, HTTP wiring, governance conformance | All four operations (`analytics.snapshot.create`, `analytics.query.create`, `analytics.query.execute`, `analytics.insight.approve`) are registry-covered, storage-backed, HTTP-exposed, and conformance-tested; `analytics.insight.approve` is human-only with UUIDv7 idempotency enforcement |
 
 ---

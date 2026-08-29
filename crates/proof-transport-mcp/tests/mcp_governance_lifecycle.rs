@@ -10,6 +10,78 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+const WORKFLOW_OPERATIONS: &[(&str, Governance)] = &[
+    ("workflow.define", Governance::AgentExecutable),
+    ("workflow.trigger", Governance::AgentExecutable),
+    ("workflow.step.complete", Governance::AgentExecutable),
+    ("workflow.approve", Governance::HumanOnly),
+];
+
+const ANALYTICS_OPERATIONS: &[(&str, Governance)] = &[
+    ("analytics.snapshot.create", Governance::AgentExecutable),
+    ("analytics.query.create", Governance::AgentExecutable),
+    ("analytics.query.execute", Governance::AgentExecutable),
+    ("analytics.insight.approve", Governance::HumanOnly),
+];
+
+fn domain_registry_entries(domain: &str) -> Vec<RegistryEntry> {
+    let registry_directory = workspace_registry_path().join(domain);
+    std::fs::read_dir(&registry_directory)
+        .unwrap_or_else(|error| panic!("{domain} registry directory should exist: {error}"))
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                == Some("json")
+        })
+        .map(|entry| entry.path())
+        .filter(|path| {
+            let name = path.file_name().unwrap().to_string_lossy();
+            !name.contains("input") && !name.contains("output")
+        })
+        .map(|path| {
+            let contents = std::fs::read_to_string(path).unwrap();
+            serde_json::from_str(&contents).unwrap()
+        })
+        .collect()
+}
+
+fn domain_tools_match_registry(domain: &str, domain_prefix: &str) {
+    let entries = domain_registry_entries(domain);
+    let registry = Registry::new(entries).unwrap();
+    let tools = tools_from_registry(&registry);
+
+    let operations: &[(&str, Governance)] = match domain {
+        "workflow" => WORKFLOW_OPERATIONS,
+        "analytics" => ANALYTICS_OPERATIONS,
+        other => panic!("unknown domain: {other}"),
+    };
+
+    for (operation, governance) in operations {
+        let tool_name = format!("proof_{domain_prefix}_v1_{}", operation.replace('.', "_"));
+        let tool = tools
+            .tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .unwrap_or_else(|| panic!("missing {domain} tool {tool_name}"));
+        assert_eq!(tool.input_schema["type"], "object");
+        assert_eq!(tool.output_schema["type"], "object");
+        let human_only = *governance == Governance::HumanOnly;
+        let entry = registry.find(operation, "v1").unwrap();
+        let consequence = entry.consequence.as_str();
+        let read_only = human_only
+            || consequence.contains("query")
+            || consequence.contains("read")
+            || consequence.contains("approval");
+        assert_eq!(tool.annotations.unwrap().read_only, Some(read_only));
+        assert_eq!(tool.annotations.unwrap().destructive, Some(false));
+        assert_eq!(tool.annotations.unwrap().idempotent, Some(true));
+        assert_eq!(entry.governance, *governance);
+    }
+}
+
 fn workspace_registry_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -353,7 +425,7 @@ fn agent_executable_tool_succeeds_through_mcp_flow() {
         structured["proof"]["body"]["actor"],
         structured["proof"]["body"]["actor"]
     );
-    assert!(structured["proof"]["body"]["operation"] == "test.echo");
+    assert_eq!(structured["proof"]["body"]["operation"], "test.echo::v1");
     assert!(structured["proof"]["signature"].as_array().unwrap().len() == 64);
 }
 
@@ -567,6 +639,16 @@ fn mcp_rejects_unknown_tool() {
         result.content[0].text,
         "Unknown operation: proof_content_v1_missing"
     );
+}
+
+#[test]
+fn workflow_registry_tools_have_schema_and_governance() {
+    domain_tools_match_registry("workflow", "workflow");
+}
+
+#[test]
+fn analytics_registry_tools_have_schema_and_governance() {
+    domain_tools_match_registry("analytics", "analytics");
 }
 
 struct BadOutputHandler;

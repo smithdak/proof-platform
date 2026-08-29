@@ -20,6 +20,8 @@ pub(crate) async fn execute_operation(
     let keypair = state.keypair.clone();
     let context = ExecutionContext {
         actor: keypair.principal_id,
+        // This endpoint has no authenticated human identity. Caller-supplied
+        // headers must never elevate the workspace service actor.
         principal_kind: Some(proof_kernel::PrincipalKind::Agent),
         delegation_id: None,
         delegation_chain: None,
@@ -37,10 +39,11 @@ pub(crate) async fn execute_operation(
         Err(error) => return Err(execution_error_response(&error)),
     };
 
+    let proof_operation = format!("{name}::{version}");
     let proof = match create_proof(
         keypair.principal_id,
         context.delegation_id,
-        &name,
+        &proof_operation,
         &body,
         &result,
         context.timestamp,

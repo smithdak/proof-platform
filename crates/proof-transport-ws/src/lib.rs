@@ -178,30 +178,33 @@ async fn handle_execute(state: &SharedWsState, params: Value, id: Option<Value>)
     );
 
     match result {
-        Ok(result) => match create_proof(
-            keypair.principal_id,
-            context.delegation_id,
-            &operation,
-            params.get("input").unwrap_or(&Value::Null),
-            &result,
-            timestamp,
-            &keypair,
-        ) {
-            Ok(proof) => {
-                let proof = serde_json::to_value(&proof).unwrap_or(Value::Null);
-                json!({
-                    "id": id,
-                    "result": {
-                        "operation": operation,
-                        "version": version,
-                        "status": "executed",
-                        "result": result,
-                        "proof": proof
-                    }
-                })
+        Ok(result) => {
+            let proof_operation = format!("{operation}::{version}");
+            match create_proof(
+                keypair.principal_id,
+                context.delegation_id,
+                &proof_operation,
+                params.get("input").unwrap_or(&Value::Null),
+                &result,
+                timestamp,
+                &keypair,
+            ) {
+                Ok(proof) => {
+                    let proof = serde_json::to_value(&proof).unwrap_or(Value::Null);
+                    json!({
+                        "id": id,
+                        "result": {
+                            "operation": operation,
+                            "version": version,
+                            "status": "executed",
+                            "result": result,
+                            "proof": proof
+                        }
+                    })
+                }
+                Err(error) => json_error(-32603, &error.to_string(), id),
             }
-            Err(error) => json_error(-32603, &error.to_string(), id),
-        },
+        }
         Err(error) => execution_error(error, id),
     }
 }
@@ -221,6 +224,7 @@ fn execution_error(error: ExecutionError, id: Option<Value>) -> Value {
     let code = match &error {
         ExecutionError::OperationNotFound { .. } => -32001,
         ExecutionError::HumanOnly
+        | ExecutionError::Approval(_)
         | ExecutionError::ScopeViolation
         | ExecutionError::Delegation(_) => -32002,
         ExecutionError::Sunset => -32003,
@@ -241,4 +245,19 @@ fn json_error(code: i32, message: &str, id: Option<Value>) -> Value {
         "id": id,
         "error": {"code": code, "message": message}
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_errors_use_the_authorization_code() {
+        let response = execution_error(
+            ExecutionError::Approval(proof_kernel::ApprovalError::Denied),
+            Some(json!(1)),
+        );
+
+        assert_eq!(response["error"]["code"], -32002);
+    }
 }

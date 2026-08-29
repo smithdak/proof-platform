@@ -6,10 +6,12 @@
 
 ## What Proof is
 
-Proof is a governed, agent-native platform where autonomous software discovers,
-composes, and executes operations across any domain, producing cryptographic
-evidence for every governed transition. Content governance is the first domain
-module; the kernel is domain-agnostic.
+Proof is an Agent Experience Platform (AXP): a governed environment where
+autonomous software discovers, composes, and executes operations across any
+domain, pauses for human authority when required, and produces cryptographic
+evidence for every governed transition. It is not a digital experience platform;
+content governance is one adapter alongside commerce, workflow, and analytics
+on a domain-agnostic kernel.
 
 ## Core thesis
 
@@ -19,6 +21,11 @@ system should compose from a shared operation registry rather than hard-coded
 interfaces. These three principles — evidence, authority, composability —
 define the platform.
 
+The platform has two primary users. Agents need stable discovery, structured
+contracts, resumable execution, and machine-verifiable results. Human operators
+need policy, approval, audit, and revocation surfaces. Product work should deepen
+those two experiences before adding more domain breadth.
+
 ## Architecture layers
 
 ```
@@ -26,6 +33,8 @@ define the platform.
 │                    Proof Platform                         │
 ├──────────────────────────────────────────────────────────┤
 │            SAM / Mesh Transport (adapter layer)           │
+├──────────────────────────────────────────────────────────┤
+│ Agent Runtime: models · tools · budgets · durable runs     │
 ├─────────────┬─────────────┬─────────────┬───────────────┤
 │   Content   │  Analytics  │  Commerce   │   Workflow    │
 │  Governance │  & Insight  │  & Orders   │  & Approvals  │
@@ -115,11 +124,39 @@ The kernel exposes operations through pluggable transports:
 
 No transport is privileged. All transports call the same kernel operations.
 
+### Agent Runtime & Control Plane
+
+The agent runtime turns isolated operation calls into an auditable execution
+experience. Immutable `AgentDefinition` records bind instructions, a provider
+and model, an explicit registry-operation allowlist, and hard step, model-call,
+token, duration, output, and optional cost limits. The provider-neutral runtime
+alternates model decisions with schema-validated operation calls and supplies
+each signed proof back to the model as tool evidence.
+
+`AgentRun` records the actor, agent definition, goal, mode, state, retry count,
+and optimistic revision. `AgentRunStep` records each exact operation attempt and
+its proof, failure, approval suspension, or retry lineage. Immutable checkpoints
+hold the next model input, provider response cursor, pending tool, and accumulated
+usage. Append-only events expose the execution trace; terminal evaluations hold
+quality and budget outcomes.
+
+This layer is domain-agnostic and sits above the operation engine. A workflow
+domain record describes business process state; an agent run describes how an
+agent pursued an intent across any combination of content, commerce, workflow,
+and analytics operations. One-shot calls create and finish a run automatically.
+Sessions remain active across calls and are explicitly completed or cancelled.
+Before a tool dispatch, the runtime persists its pending call. A restart reuses
+a completed step or recorded approval execution. An interrupted mutation with
+no durable result fails closed instead of being blindly replayed. Human-only
+operations suspend the same step and resume only after verification of the exact
+signed request and trusted human decision.
+
 ## Rust workspace structure
 
 ```
 proof-platform/
 ├── crates/
+│   ├── proof-agent-runtime/  # Durable planner/tool loop and model adapters
 │   ├── proof-kernel/          # Identity, delegation, evidence, registry
 │   │   ├── src/
 │   │   │   ├── identity.rs    # Ed25519 keys, Principal types
@@ -129,7 +166,7 @@ proof-platform/
 │   │   │   ├── canonical.rs   # RFC 8785 canonical JSON + digests
 │   │   │   └── lib.rs
 │   │   └── Cargo.toml
-│   ├── proof-content/         # Content governance domain (first domain)
+│   ├── proof-content/         # Content governance domain (domain 1)
 │   │   ├── src/
 │   │   │   ├── schema.rs      # Content schema definitions
 │   │   │   ├── object.rs      # Object lifecycle (create, mutate, archive)
@@ -138,6 +175,11 @@ proof-platform/
 │   │   │   ├── release.rs     # Release to Environments
 │   │   │   └── lib.rs
 │   │   └── Cargo.toml
+│   ├── proof-commerce/        # Commerce & orders domain (domain 2)
+│   ├── proof-workflow/        # Workflow & approvals domain (domain 3)
+│   ├── proof-analytics/       # Analytics & insight domain (domain 4)
+│   ├── proof-observability/   # Structured tracing and metrics
+│   ├── proof-transport-ws/    # WebSocket adapter
 │   ├── proof-transport-http/  # HTTP/REST adapter
 │   ├── proof-transport-mcp/   # MCP adapter
 │   ├── proof-transport-cli/   # CLI adapter
@@ -145,8 +187,9 @@ proof-platform/
 │   └── proof-storage/         # SQLite + PostgreSQL storage adapters
 ├── registry/                  # Operation registry manifests (JSON)
 │   ├── content/               # Content domain operations
-│   ├── kernel/                # Platform-level operations
-│   └── schema.json            # Registry entry schema
+│   ├── commerce/              # Commerce domain operations
+│   ├── workflow/              # Workflow domain operations
+│   ├── analytics/             # Analytics domain operations
 ├── schemas/                   # Input/output JSON Schemas
 │   ├── content/
 │   └── kernel/
@@ -210,6 +253,14 @@ canonical data the proof covers.
 ### D10. Performance is measured, not assumed
 
 Every capability has benchmark targets (latency, throughput, concurrency).
+
+### D11. Agent execution is durable
+
+Every agent tool attempt belongs to a persisted run. Approval waits, failures,
+retries, checkpoints, and evaluations survive process boundaries and retain
+their exact lineage; a transport response is never the sole record of progress.
+Model calls and tool dispatch are bounded by definition-level budgets. Recovery
+may replay model inference, but it never blindly replays an in-flight mutation.
 A capability that cannot meet its benchmark does not close.
 
 ## Competitive positioning

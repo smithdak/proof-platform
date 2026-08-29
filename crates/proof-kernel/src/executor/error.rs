@@ -1,5 +1,6 @@
 //! Execution error types.
 
+use crate::approval::ApprovalError;
 use crate::delegation::DelegationError;
 use thiserror::Error;
 
@@ -11,6 +12,8 @@ pub enum ExecutionError {
     NoHandler(String),
     #[error("operation is human-only, agents cannot execute")]
     HumanOnly,
+    #[error("approval invalid: {0}")]
+    Approval(#[from] ApprovalError),
     #[error("operation is sunset and cannot be executed")]
     Sunset,
     #[error("delegation chain invalid: {0}")]

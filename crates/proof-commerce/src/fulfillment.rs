@@ -138,10 +138,11 @@ impl<'a> FulfillmentPipeline<'a> {
         input: &Value,
         context: &ExecutionContext,
     ) -> Result<OrderEvidence, ExecutionError> {
+        let proof_operation = format!("{operation}::v1");
         let proof = create_proof(
             context.actor,
             context.delegation_id,
-            operation,
+            &proof_operation,
             input,
             &serde_json::to_value(order)
                 .map_err(|error| ExecutionError::EvidenceFailed(error.to_string()))?,

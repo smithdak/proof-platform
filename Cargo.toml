@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "conformance",
+    "crates/proof-agent-runtime",
     "crates/proof-kernel",
     "crates/proof-observability",
     "crates/proof-content",
@@ -30,6 +31,7 @@ axum = "0.7"
 clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 jsonschema = "0.26"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 [workspace.package]
 edition = "2021"

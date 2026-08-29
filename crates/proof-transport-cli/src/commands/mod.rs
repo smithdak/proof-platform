@@ -1,6 +1,10 @@
+pub mod agent;
+pub mod approval;
+pub mod approval_ui;
 pub mod benchmark;
 pub mod content;
 pub mod delegation;
 pub mod registry;
+pub mod run;
 pub mod transfer;
 pub mod workspace;
