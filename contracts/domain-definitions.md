@@ -55,7 +55,7 @@ Each domain has a definition block with:
 
 **Name:** `commerce`
 **Crate:** `proof-commerce`
-**Status:** in-progress
+**Status:** complete
 **Thesis:** Governed catalog, order, and fulfillment operations with signed evidence — the second domain proving the kernel's domain-agnosticism and the clearest migration path for Sitecore OrderCloud customers.
 
 ### Operations (planned)
@@ -81,6 +81,7 @@ Each domain has a definition block with:
 | 1 | 2026-08-28 | Domain 2 initially scoped as "Data" (Proof-hosted datasets) | Explored data-hosting market |
 | 2 | 2026-08-28 | Dropped "Data" as a domain; promoted Commerce to Domain 2 | Data ownership is an infrastructure commitment (self-host, export, Postgres), not a domain module. Commerce is the original architecture sequence and directly displaces Sitecore OrderCloud. Avoids scope creep of a generic query engine. |
 | 3 | 2026-08-28 | Commerce operations: catalog.create, catalog.update, order.create, order.approve, order.fulfill | Clear lifecycle mapping to evidence pipeline; mirrors content's create/edit/approve/release pattern |
+| 4 | 2026-08-28 | Wave 12 completes Domain 2: FulfillmentPipeline, MCP tools, commerce idempotency, human-principal kernel policy, benchmark conformance | Domain 2 is production-ready; kernel gained `ExecutionContext.principal_kind` to allow humans on human-only operations |
 
 ---
 
