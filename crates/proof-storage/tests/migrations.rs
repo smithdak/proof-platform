@@ -11,7 +11,7 @@ fn fresh_database_applies_all_migrations() {
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 10);
+    assert_eq!(schema_version(&connection).unwrap(), 11);
     let history_count: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM schema_migrations WHERE version = 1",
@@ -48,6 +48,7 @@ fn fresh_database_applies_all_migrations() {
         "agent_run_evaluations",
         "agent_definitions",
         "agent_run_events",
+        "execution_replays",
     ] {
         connection
             .prepare(&format!("SELECT 1 FROM {table}"))
@@ -62,7 +63,7 @@ fn migrations_are_idempotent() {
     run_migrations(&connection).unwrap();
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 10);
+    assert_eq!(schema_version(&connection).unwrap(), 11);
 }
 
 #[test]
@@ -72,8 +73,8 @@ fn open_and_in_memory_run_migrations_automatically() {
     let file_store = SqliteStore::open(&path).unwrap();
     let memory_store = SqliteStore::in_memory().unwrap();
 
-    assert_eq!(schema_version(&file_store.connection()).unwrap(), 10);
-    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 10);
+    assert_eq!(schema_version(&file_store.connection()).unwrap(), 11);
+    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 11);
 }
 
 #[test]
@@ -102,9 +103,9 @@ fn rollback_to_current_version_is_a_no_op() {
     let connection = Connection::open_in_memory().unwrap();
     run_migrations(&connection).unwrap();
 
-    rollback_to(&connection, 10).unwrap();
+    rollback_to(&connection, 11).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 10);
+    assert_eq!(schema_version(&connection).unwrap(), 11);
 }
 
 #[test]
@@ -126,7 +127,139 @@ fn rolled_back_database_can_be_migrated_again() {
     rollback_to(&connection, 0).unwrap();
     run_migrations(&connection).unwrap();
 
+    assert_eq!(schema_version(&connection).unwrap(), 11);
+}
+
+#[test]
+fn migration_11_upgrades_v10_with_an_empty_ledger_and_preserves_existing_data() {
+    let connection = Connection::open_in_memory().unwrap();
+    run_migrations(&connection).unwrap();
+    rollback_to(&connection, 10).unwrap();
+    connection
+        .execute(
+            "INSERT INTO schemas (id, name, version, definition, created_at)
+             VALUES ('schema-1', 'Article', 1, '{}', '2026-08-29T15:00:00Z')",
+            [],
+        )
+        .unwrap();
+
+    run_migrations(&connection).unwrap();
+
+    assert_eq!(schema_version(&connection).unwrap(), 11);
+    let schema_name: String = connection
+        .query_row(
+            "SELECT name FROM schemas WHERE id = 'schema-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(schema_name, "Article");
+    let replay_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM execution_replays", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(replay_count, 0);
+}
+
+#[test]
+fn migration_11_is_reversible_and_can_be_reapplied_without_touching_v10_data() {
+    let connection = Connection::open_in_memory().unwrap();
+    run_migrations(&connection).unwrap();
+    connection
+        .execute(
+            "INSERT INTO schemas (id, name, version, definition, created_at)
+             VALUES ('schema-1', 'Article', 1, '{}', '2026-08-29T15:00:00Z')",
+            [],
+        )
+        .unwrap();
+
+    rollback_to(&connection, 10).unwrap();
+
     assert_eq!(schema_version(&connection).unwrap(), 10);
+    let replay_table: Option<String> = connection
+        .query_row(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'execution_replays'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap();
+    let replay_index: Option<String> = connection
+        .query_row(
+            "SELECT name FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_execution_replays_state_claimed_at'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap();
+    assert_eq!(replay_table, None);
+    assert_eq!(replay_index, None);
+    let schema_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM schemas WHERE id = 'schema-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(schema_count, 1);
+
+    run_migrations(&connection).unwrap();
+
+    assert_eq!(schema_version(&connection).unwrap(), 11);
+    connection
+        .prepare("SELECT 1 FROM execution_replays")
+        .unwrap();
+    let schema_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM schemas WHERE id = 'schema-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(schema_count, 1);
+}
+
+#[test]
+fn migration_11_enforces_digest_state_and_identity_constraints() {
+    let connection = Connection::open_in_memory().unwrap();
+    run_migrations(&connection).unwrap();
+    let insert_claimed =
+        |operation: &str, key: &str, digest: &str, token: &str, completed_at: Option<&str>| {
+            connection.execute(
+                "INSERT INTO execution_replays (
+                 operation, version, idempotency_key, input_digest, state, claim_token,
+                 claimed_by, claimed_at, completed_at
+             ) VALUES (?1, 'v1', ?2, ?3, 'claimed', ?4, 'actor-1',
+                       '2026-08-29T15:00:00Z', ?5)",
+                params![operation, key, digest, token, completed_at],
+            )
+        };
+    let digest = "a".repeat(64);
+
+    insert_claimed("edition.create", "key-1", &digest, "token-1", None).unwrap();
+    assert!(insert_claimed("edition.create", "key-1", &digest, "token-2", None).is_err());
+    assert!(insert_claimed("changeset.commit", "key-2", &digest, "token-1", None).is_err());
+    assert!(insert_claimed("edition.create", "key-3", "short", "token-3", None).is_err());
+    assert!(insert_claimed(
+        "edition.create",
+        "key-4",
+        &digest,
+        "token-4",
+        Some("2026-08-29T15:01:00Z")
+    )
+    .is_err());
+    assert!(connection
+        .execute(
+            "INSERT INTO execution_replays (
+                 operation, version, idempotency_key, input_digest, state, claim_token,
+                 claimed_by, claimed_at, failed_at, failure
+             ) VALUES ('edition.create', 'v1', 'key-5', ?1, 'failed', 'token-5',
+                       'actor-1', '2026-08-29T15:00:00Z', '2026-08-29T15:01:00Z', '')",
+            [&digest],
+        )
+        .is_err());
 }
 
 #[test]
@@ -243,7 +376,7 @@ fn concurrent_openers_apply_pending_migration_once() {
     let directory = TempDir::new().unwrap();
     let path = directory.path().join("proof.db");
     let store = SqliteStore::open(&path).unwrap();
-    rollback_to(&store.connection(), 9).unwrap();
+    rollback_to(&store.connection(), 10).unwrap();
     drop(store);
 
     let worker_count = 4;
@@ -262,6 +395,16 @@ fn concurrent_openers_apply_pending_migration_once() {
         .collect::<Vec<_>>();
 
     for handle in handles {
-        assert_eq!(handle.join().unwrap().unwrap(), 10);
+        assert_eq!(handle.join().unwrap().unwrap(), 11);
     }
+
+    let connection = Connection::open(&path).unwrap();
+    let history_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 11",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(history_count, 1);
 }

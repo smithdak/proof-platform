@@ -6,19 +6,25 @@
     "operation": {"type": "string", "const": "changeset.commit"},
     "data": {
       "type": "object",
-      "required": ["changeset"],
+      "required": ["changeset", "objects_count"],
       "properties": {
         "changeset": {
           "type": "object",
-          "required": ["id", "intent", "base_state", "edits"],
+          "required": ["id", "intent", "base_state_digest", "edits", "created_at", "status"],
           "properties": {
             "id": {"type": "string", "format": "uuid"},
             "intent": {"type": "string"},
-            "base_state": {"type": "object"},
-            "edits": {"type": "array"}
-          }
-        }
-      }
+            "base_state_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "edits": {"type": "array"},
+            "created_at": {"type": "string", "format": "date-time"},
+            "status": {"type": "string", "const": "committed"}
+          },
+          "additionalProperties": false
+        },
+        "objects_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }

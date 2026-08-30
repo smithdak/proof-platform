@@ -21,9 +21,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(storage_directory)?;
     }
     let workspace_store = Arc::new(proof_storage::SqliteStore::open(&storage_path)?);
-    let mut server = McpServer::new(registry, identity, workspace_path)
-        .with_approval_store(workspace_store.clone())
-        .with_run_store(workspace_store);
+    let mut server =
+        McpServer::new_with_storage(registry, identity, workspace_path, workspace_store);
     for handler in proof_content::handlers::content_handlers()
         .into_iter()
         .chain(proof_commerce::handlers::commerce_handlers())

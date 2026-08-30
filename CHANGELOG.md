@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Agent Experience Platform
 
+- Tracked AXP Product Edition contracts, model-tier routing, assignment packets,
+  ownership validation, evidence templates, and a populated E0000-E0005 backlog
+  for continuous owner-governed agent swarms.
 - Runnable dual-era MCP stdio server with registry-derived tools, stable workspace identity, structured results, and persisted signed proofs.
 - Signed approval requests and human approve/deny decisions bound to the exact actor, operation, version, input digest, and validity window.
 - Durable SQLite approval requests, decisions, and execution replay records, with terminal trace seals that permit only exact idempotent retries of bound approval evidence.

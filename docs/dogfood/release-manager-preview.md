@@ -143,6 +143,28 @@ the canonical `release-manager-preview/v1` result is the record above. The task
 evaluations are stored beside the runtime's separate budget-completion evaluation
 `01a04f1a-8263-7350-a062-bd2a4b1e7a4d`.
 
+## Repeatable deterministic fixture verification
+
+The checked-in deterministic fixture is the repeatable acceptance path for
+this record. It constructs two independent Release Manager traces from the
+same fixed clock, UUIDs, signing-key bytes, call/response IDs, and terminal
+evaluation ID, then evaluates each directly with the checked-in
+`evals/release-manager-preview-v1.json` policy:
+
+```bash
+rtk cargo test -p proof-agent-runtime two_fixed_release_manager -- --nocapture
+```
+
+The test requires both traces to pass all **10 checks** (10,000 basis points),
+contain `approval_resumed`, contain no failed events, and produce the same
+canonical **trace digest**. It verifies the exact `release.publish::v1` call,
+the signed approval/resume chronology, signed proof, final report references,
+and policy binding without weakening the production trace snapshot.
+
+This is fixture evidence only. It proves deterministic runtime and evaluator
+behavior against scripted data; it does not use a provider credential or
+network and does not establish live-provider availability or model quality.
+
 ## Operator console verification
 
 A second deterministic run exercised the browser approval console against a

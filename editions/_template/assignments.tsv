@@ -1,0 +1,2 @@
+task	wave	status	model	effort	owner	writable_paths	dependencies
+E####-01	W1	pending	gpt-5.6-luna	low	unassigned	TBD: required before assignment	none

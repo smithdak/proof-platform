@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 axum = { version = "0.7", features = ["ws"] }
 proof-kernel = { path = "../proof-kernel" }
+proof-content = { path = "../proof-content" }
 proof-storage = { path = "../proof-storage" }
 serde.workspace = true
 serde_json.workspace = true
@@ -19,6 +20,7 @@ axum = { version = "0.7", features = ["ws"] }
 bytes = "1"
 futures-util = "0.3"
 http-body-util = "0.1"
+tempfile = "3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
 tokio-tungstenite = "0.24"
 tower = { version = "0.5", features = ["util"] }

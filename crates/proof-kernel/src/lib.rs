@@ -34,7 +34,8 @@ pub use delegation::{validate_chain, Delegation, DelegationChain, DelegationErro
 pub use evidence::{Proof, ProofBody, ProofError};
 pub use executor::{
     create_proof, AuditFilter, ExecutionContext, ExecutionEngine, ExecutionError, ExecutionOutcome,
-    ExecutionStore, OperationHandler, RecordingStore,
+    ExecutionReplayClaim, ExecutionReplayClaimResult, ExecutionReplayKey, ExecutionStore,
+    IdempotencyError, IdempotencyPolicy, OperationHandler, RecordingStore,
 };
 pub use identity::{
     generate_keypair, generate_keypair_for, principal_from_keypair, sign, verify, IdentityError,

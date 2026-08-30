@@ -7,9 +7,9 @@ use base64::Engine as _;
 use proof_kernel::{
     canonicalize, digest, principal_from_keypair, AgentRun, AgentRunMode, AgentRunStatus,
     AgentRunStep, AgentRunStepStatus, AgentRunStore, ApprovalExecution, ApprovalGrant,
-    ApprovalOutcome, ApprovalStore, ArtifactKind, ExecutionEngine, Governance, Keypair,
-    OperationHandler, PrincipalId, PrincipalKind, RecordingAgentRunStore, RecordingApprovalStore,
-    Registry, RegistryEntry, RegistryError, SignedApprovalRequest,
+    ApprovalOutcome, ApprovalStore, ArtifactKind, ExecutionEngine, ExecutionStore, Governance,
+    Keypair, OperationHandler, PrincipalId, PrincipalKind, RecordingAgentRunStore,
+    RecordingApprovalStore, Registry, RegistryEntry, RegistryError, SignedApprovalRequest,
 };
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -101,6 +101,30 @@ impl McpServer {
             workspace_path,
             approval_store: Arc::new(RecordingApprovalStore::default()),
             run_store: Arc::new(RecordingAgentRunStore::default()),
+            legacy_protocol_version: None,
+        }
+    }
+
+    /// Creates a server whose execution, approval, and run ledgers share one
+    /// durable store while retaining [`McpServer::new`] for legacy callers.
+    pub fn new_with_storage<S>(
+        registry: Registry,
+        identity: Keypair,
+        workspace_path: PathBuf,
+        storage: Arc<S>,
+    ) -> Self
+    where
+        S: ExecutionStore + ApprovalStore + AgentRunStore + 'static,
+    {
+        let engine = ExecutionEngine::new_with_keypair(registry.clone(), identity.clone())
+            .with_storage(storage.clone());
+        Self {
+            registry,
+            engine,
+            identity,
+            workspace_path,
+            approval_store: storage.clone(),
+            run_store: storage,
             legacy_protocol_version: None,
         }
     }

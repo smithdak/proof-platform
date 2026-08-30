@@ -10,8 +10,8 @@ use axum::{
     Router,
 };
 use proof_kernel::{
-    create_proof, generate_keypair, ExecutionContext, ExecutionEngine, ExecutionError, Keypair,
-    OperationHandler, Registry,
+    generate_keypair, ExecutionContext, ExecutionEngine, ExecutionError, Keypair, OperationHandler,
+    Registry,
 };
 use proof_storage::SqliteStore;
 use serde_json::{json, Value};
@@ -61,20 +61,33 @@ impl WsAppState {
         registry: Registry,
         store: SqliteStore,
     ) -> Self {
-        Self {
+        let keypair = generate_keypair();
+        let shared_store = Arc::new(store);
+        let state = Self {
             workspace_path: workspace_path.into(),
             version: "0.1.0".to_string(),
             registry: registry.clone(),
-            engine: Arc::new(std::sync::RwLock::new(ExecutionEngine::new(
-                registry.clone(),
-            ))),
-            keypair: generate_keypair(),
-            store: Arc::new(store),
-        }
+            engine: Arc::new(std::sync::RwLock::new(
+                ExecutionEngine::new_with_keypair(registry.clone(), keypair.clone())
+                    .with_storage(shared_store.clone()),
+            )),
+            keypair,
+            store: shared_store,
+        };
+        state.register_content_handlers();
+        state
     }
 
     pub fn register_handler(&self, handler: Arc<dyn OperationHandler>) {
         self.engine.write().unwrap().register_handler(handler);
+    }
+
+    /// Registers the finalized content operation adapters through the public
+    /// handler boundary used by all WebSocket callers.
+    pub fn register_content_handlers(&self) {
+        for handler in proof_content::content_handlers() {
+            self.register_handler(handler);
+        }
     }
 }
 
@@ -170,7 +183,7 @@ async fn handle_execute(state: &SharedWsState, params: Value, id: Option<Value>)
         timestamp,
     };
 
-    let result = state.engine.read().unwrap().execute(
+    let result = state.engine.read().unwrap().execute_evidenced(
         &operation,
         &version,
         params.get("input").unwrap_or(&Value::Null),
@@ -178,32 +191,18 @@ async fn handle_execute(state: &SharedWsState, params: Value, id: Option<Value>)
     );
 
     match result {
-        Ok(result) => {
-            let proof_operation = format!("{operation}::{version}");
-            match create_proof(
-                keypair.principal_id,
-                context.delegation_id,
-                &proof_operation,
-                params.get("input").unwrap_or(&Value::Null),
-                &result,
-                timestamp,
-                &keypair,
-            ) {
-                Ok(proof) => {
-                    let proof = serde_json::to_value(&proof).unwrap_or(Value::Null);
-                    json!({
-                        "id": id,
-                        "result": {
-                            "operation": operation,
-                            "version": version,
-                            "status": "executed",
-                            "result": result,
-                            "proof": proof
-                        }
-                    })
+        Ok(outcome) => {
+            let proof = serde_json::to_value(&outcome.proof).unwrap_or(Value::Null);
+            json!({
+                "id": id,
+                "result": {
+                    "operation": operation,
+                    "version": version,
+                    "status": "executed",
+                    "result": outcome.output,
+                    "proof": proof
                 }
-                Err(error) => json_error(-32603, &error.to_string(), id),
-            }
+            })
         }
         Err(error) => execution_error(error, id),
     }
@@ -229,6 +228,12 @@ fn execution_error(error: ExecutionError, id: Option<Value>) -> Value {
         | ExecutionError::Delegation(_) => -32002,
         ExecutionError::Sunset => -32003,
         ExecutionError::BenchmarkExpired { .. } => -32004,
+        ExecutionError::Idempotency(proof_kernel::IdempotencyError::MissingKey)
+        | ExecutionError::Idempotency(proof_kernel::IdempotencyError::InvalidUuidV7) => -32602,
+        ExecutionError::Idempotency(proof_kernel::IdempotencyError::Conflict)
+        | ExecutionError::Idempotency(proof_kernel::IdempotencyError::InProgress)
+        | ExecutionError::Idempotency(proof_kernel::IdempotencyError::Indeterminate) => -32006,
+        ExecutionError::Idempotency(proof_kernel::IdempotencyError::StorageRequired) => -32005,
         ExecutionError::NoHandler(_)
         | ExecutionError::HandlerFailed(_)
         | ExecutionError::EvidenceFailed(_)
@@ -259,5 +264,42 @@ mod tests {
         );
 
         assert_eq!(response["error"]["code"], -32002);
+    }
+
+    #[test]
+    fn idempotency_errors_use_stable_protocol_classes() {
+        for error in [
+            proof_kernel::IdempotencyError::MissingKey,
+            proof_kernel::IdempotencyError::InvalidUuidV7,
+        ] {
+            assert_eq!(
+                execution_error(error.into(), Some(json!(1)))["error"]["code"],
+                -32602
+            );
+        }
+        for error in [
+            proof_kernel::IdempotencyError::Conflict,
+            proof_kernel::IdempotencyError::InProgress,
+            proof_kernel::IdempotencyError::Indeterminate,
+        ] {
+            assert_eq!(
+                execution_error(error.into(), Some(json!(1)))["error"]["code"],
+                -32006
+            );
+        }
+        assert_eq!(
+            execution_error(
+                proof_kernel::IdempotencyError::StorageRequired.into(),
+                Some(json!(1))
+            )["error"]["code"],
+            -32005
+        );
+        assert_eq!(
+            execution_error(
+                ExecutionError::StorageFailed("corrupt".into()),
+                Some(json!(1))
+            )["error"]["code"],
+            -32005
+        );
     }
 }

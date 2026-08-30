@@ -3,6 +3,9 @@
 Proof Platform is an **Agent Experience Platform (AXP)**: the governed runtime and control plane where autonomous software discovers capabilities, acts across domain systems, pauses for signed human decisions, and returns independently verifiable evidence. It is not a DXP or CMS; content governance is one domain alongside commerce, workflow, and analytics. The kernel binds actor, authority, operation, input digest, output digest, and timestamp into every successful proof.
 
 - **Full architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **AXP experience contract:** [contracts/axp-experience.md](contracts/axp-experience.md)
+- **AXP edition backlog:** [editions/BACKLOG.md](editions/BACKLOG.md)
+- **Edition operating guide:** [editions/README.md](editions/README.md)
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **Rust version:** 1.75 or newer
 - **License:** MIT

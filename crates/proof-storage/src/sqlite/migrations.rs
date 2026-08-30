@@ -502,6 +502,54 @@ pub const MIGRATIONS: &[Migration] = &[
             DROP INDEX IF EXISTS idx_agent_run_steps_approval_unique;
             ",
     },
+    Migration {
+        version: 11,
+        description: "create exact execution replay ledger",
+        up: "
+            CREATE TABLE execution_replays (
+                operation TEXT NOT NULL,
+                version TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                input_digest TEXT NOT NULL CHECK (length(input_digest) = 64),
+                state TEXT NOT NULL CHECK (state IN ('claimed', 'completed', 'failed')),
+                claim_token TEXT NOT NULL UNIQUE,
+                claimed_by TEXT NOT NULL,
+                claimed_at TEXT NOT NULL,
+                completed_at TEXT,
+                failed_at TEXT,
+                failure TEXT,
+                output_json TEXT,
+                proof_id TEXT UNIQUE REFERENCES proofs(id),
+                proof_json TEXT,
+                execution_context_id TEXT UNIQUE REFERENCES execution_contexts(id),
+                PRIMARY KEY (operation, version, idempotency_key),
+                CHECK (
+                    (state = 'claimed'
+                     AND completed_at IS NULL AND failed_at IS NULL AND failure IS NULL
+                     AND output_json IS NULL AND proof_id IS NULL AND proof_json IS NULL
+                     AND execution_context_id IS NULL)
+                    OR
+                    (state = 'completed'
+                     AND completed_at IS NOT NULL AND failed_at IS NULL AND failure IS NULL
+                     AND output_json IS NOT NULL AND proof_id IS NOT NULL
+                     AND proof_json IS NOT NULL AND execution_context_id IS NOT NULL)
+                    OR
+                    (state = 'failed'
+                     AND completed_at IS NULL AND failed_at IS NOT NULL
+                     AND failure IS NOT NULL AND length(failure) > 0
+                     AND output_json IS NULL AND proof_id IS NULL AND proof_json IS NULL
+                     AND execution_context_id IS NULL)
+                )
+            );
+
+            CREATE INDEX idx_execution_replays_state_claimed_at
+                ON execution_replays(state, claimed_at);
+            ",
+        down: "
+            DROP INDEX IF EXISTS idx_execution_replays_state_claimed_at;
+            DROP TABLE IF EXISTS execution_replays;
+            ",
+    },
 ];
 
 /// A SQLite-backed store for Proof data.

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use proof_kernel::{ExecutionContext, ExecutionError, OperationHandler};
+use proof_kernel::{ExecutionContext, ExecutionError, IdempotencyPolicy, OperationHandler};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
@@ -17,6 +17,7 @@ const APPROVE: &str = "content.approve";
 const RELEASE: &str = "content.release";
 const RELEASE_PUBLISH: &str = "release.publish";
 const CHANGESET_COMMIT: &str = "changeset.commit";
+const EDITION_CREATE: &str = "edition.create";
 
 #[derive(Debug, Deserialize)]
 struct JsonSchema {
@@ -24,7 +25,7 @@ struct JsonSchema {
     required: Vec<String>,
     #[serde(default)]
     properties: Map<String, Value>,
-    #[serde(default)]
+    #[serde(rename = "additionalProperties", default)]
     additional_properties: bool,
 }
 
@@ -61,17 +62,20 @@ fn registry_schema(
     file_name: &str,
 ) -> Result<Value, ExecutionError> {
     let candidates = [
-        context.workspace_path.join(file_name),
+        context.workspace_path.join("registry").join(file_name),
         context
             .workspace_path
             .join(".proof/registry")
             .join(file_name),
+        context.workspace_path.join("schemas").join(file_name),
         context
             .workspace_path
-            .join("crates/proof-content")
+            .join("crates/proof-content/registry")
             .join(file_name),
-        context.workspace_path.join("schemas").join(file_name),
-        context.workspace_path.join("registry").join(file_name),
+        context
+            .workspace_path
+            .join("crates/proof-content/schemas")
+            .join(file_name),
     ];
     let registry_path = candidates
         .iter()
@@ -114,12 +118,17 @@ impl<T: Serialize> ToHandlerResult for Result<T, ExecutionError> {
 struct GenericContentHandler {
     operation: &'static str,
     schema_file: &'static str,
+    idempotency_policy: IdempotencyPolicy,
     execute_fn: fn(&Value, &ExecutionContext) -> Result<serde_json::Value, ExecutionError>,
 }
 
 impl OperationHandler for GenericContentHandler {
     fn operation(&self) -> &str {
         self.operation
+    }
+
+    fn idempotency_policy(&self) -> IdempotencyPolicy {
+        self.idempotency_policy
     }
 
     fn execute(&self, input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError> {
@@ -173,6 +182,14 @@ fn object_store_dir(context: &ExecutionContext) -> std::path::PathBuf {
     context.workspace_path.join(".proof/data/objects")
 }
 
+fn changeset_store_dir(context: &ExecutionContext) -> std::path::PathBuf {
+    context.workspace_path.join(".proof/data/changesets")
+}
+
+fn edition_store_dir(context: &ExecutionContext) -> std::path::PathBuf {
+    context.workspace_path.join(".proof/data/editions")
+}
+
 fn save_object(context: &ExecutionContext, object: &Object) -> Result<(), ExecutionError> {
     let dir = object_store_dir(context);
     std::fs::create_dir_all(&dir).map_err(|error| {
@@ -183,6 +200,49 @@ fn save_object(context: &ExecutionContext, object: &Object) -> Result<(), Execut
         .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
     std::fs::write(&path, serialized)
         .map_err(|error| ExecutionError::HandlerFailed(format!("failed to save object: {error}")))
+}
+
+fn remove_object(context: &ExecutionContext, id: Uuid) -> Result<(), ExecutionError> {
+    let path = object_store_dir(context).join(format!("{id}.json"));
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|error| {
+            ExecutionError::HandlerFailed(format!("failed to delete object {id}: {error}"))
+        })?;
+    }
+    Ok(())
+}
+
+fn save_changeset(
+    context: &ExecutionContext,
+    changeset: &crate::changeset::ChangeSet,
+) -> Result<(), ExecutionError> {
+    let dir = changeset_store_dir(context);
+    std::fs::create_dir_all(&dir).map_err(|error| {
+        ExecutionError::HandlerFailed(format!("failed to create changeset store: {error}"))
+    })?;
+    let serialized = serde_json::to_string_pretty(changeset)
+        .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
+    std::fs::write(dir.join(format!("{}.json", changeset.id)), serialized).map_err(|error| {
+        ExecutionError::HandlerFailed(format!(
+            "failed to save changeset {}: {error}",
+            changeset.id
+        ))
+    })
+}
+
+fn save_edition(
+    context: &ExecutionContext,
+    edition: &crate::edition::Edition,
+) -> Result<(), ExecutionError> {
+    let dir = edition_store_dir(context);
+    std::fs::create_dir_all(&dir).map_err(|error| {
+        ExecutionError::HandlerFailed(format!("failed to create edition store: {error}"))
+    })?;
+    let serialized = serde_json::to_string_pretty(edition)
+        .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
+    std::fs::write(dir.join(format!("{}.json", edition.id)), serialized).map_err(|error| {
+        ExecutionError::HandlerFailed(format!("failed to save edition {}: {error}", edition.id))
+    })
 }
 
 fn load_object(context: &ExecutionContext, id: Uuid) -> Result<Object, ExecutionError> {
@@ -343,10 +403,8 @@ fn execute_changeset_commit(
 ) -> Result<serde_json::Value, ExecutionError> {
     let request: ChangesetCommitRequest = serde_json::from_value(input.clone())
         .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
-    let changeset_path = context.workspace_path.join(format!(
-        ".proof/data/changesets/{}.json",
-        request.changeset_id
-    ));
+    let changeset_path =
+        changeset_store_dir(context).join(format!("{}.json", request.changeset_id));
     let contents = std::fs::read_to_string(&changeset_path).map_err(|error| {
         ExecutionError::HandlerFailed(format!(
             "failed to load changeset {}: {error}",
@@ -356,23 +414,68 @@ fn execute_changeset_commit(
     let changeset: crate::changeset::ChangeSet = serde_json::from_str(&contents)
         .map_err(|error| ExecutionError::HandlerFailed(format!("invalid changeset: {error}")))?;
     let mut base_state = load_base_state(context)?;
+    let base_object_ids: Vec<_> = base_state.keys().copied().collect();
     let schemas = load_all_schemas(context)?;
-    let result_state = changeset
-        .commit(&schemas, &mut base_state)
+    let (committed_changeset, result_state) = changeset
+        .commit_with_result(&schemas, &mut base_state)
         .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
     for object in result_state.values() {
         save_object(context, object)?;
     }
-    let committed_at = chrono::Utc::now();
+    for object_id in base_object_ids {
+        if !result_state.contains_key(&object_id) {
+            remove_object(context, object_id)?;
+        }
+    }
+    save_changeset(context, &committed_changeset)?;
     Ok(json!({
-        "changeset_id": request.changeset_id,
-        "committed_at": committed_at,
+        "changeset": committed_changeset,
         "objects_count": result_state.len(),
     }))
 }
 
 #[derive(Debug, Deserialize)]
 struct ChangesetCommitRequest {
+    #[serde(rename = "idempotency_key")]
+    _idempotency_key: Uuid,
+    changeset_id: Uuid,
+    #[serde(default)]
+    _notes: Option<String>,
+}
+
+fn execute_edition_create(
+    input: &Value,
+    context: &ExecutionContext,
+) -> Result<serde_json::Value, ExecutionError> {
+    let request: EditionCreateRequest = serde_json::from_value(input.clone())
+        .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))?;
+    let changeset_path =
+        changeset_store_dir(context).join(format!("{}.json", request.changeset_id));
+    let contents = std::fs::read_to_string(&changeset_path).map_err(|error| {
+        ExecutionError::HandlerFailed(format!(
+            "failed to load changeset {}: {error}",
+            request.changeset_id
+        ))
+    })?;
+    let changeset: crate::changeset::ChangeSet = serde_json::from_str(&contents)
+        .map_err(|error| ExecutionError::HandlerFailed(format!("invalid changeset: {error}")))?;
+    if changeset.status != crate::changeset::ChangeSetStatus::Committed {
+        return Err(input_error(format!(
+            "changeset {} is not committed",
+            request.changeset_id
+        )));
+    }
+
+    let objects = load_base_state(context)?.into_values().collect();
+    let edition = crate::edition::Edition::new(request.changeset_id, objects);
+    save_edition(context, &edition)?;
+    Ok(json!({"edition": edition}))
+}
+
+#[derive(Debug, Deserialize)]
+struct EditionCreateRequest {
+    #[serde(rename = "idempotency_key")]
+    _idempotency_key: Uuid,
     changeset_id: Uuid,
 }
 
@@ -381,6 +484,9 @@ fn load_base_state(
 ) -> Result<crate::changeset::BaseState, ExecutionError> {
     let dir = object_store_dir(context);
     let mut state = crate::changeset::BaseState::new();
+    if !dir.exists() {
+        return Ok(state);
+    }
     let entries = std::fs::read_dir(&dir).map_err(|error| {
         ExecutionError::HandlerFailed(format!("failed to read object store: {error}"))
     })?;
@@ -425,37 +531,50 @@ pub fn content_handlers() -> Vec<Arc<dyn OperationHandler>> {
         Arc::new(GenericContentHandler {
             operation: SCHEMA_CREATE,
             schema_file: "content/schema-create.input.json",
+            idempotency_policy: IdempotencyPolicy::None,
             execute_fn: execute_schema_create,
         }),
         Arc::new(GenericContentHandler {
             operation: OBJECT_CREATE,
             schema_file: "content/object-create.input.json",
+            idempotency_policy: IdempotencyPolicy::None,
             execute_fn: execute_object_create,
         }),
         Arc::new(GenericContentHandler {
             operation: OBJECT_EDIT,
             schema_file: "content/object-edit.input.json",
+            idempotency_policy: IdempotencyPolicy::None,
             execute_fn: execute_object_edit,
         }),
         Arc::new(GenericContentHandler {
             operation: APPROVE,
             schema_file: "content/approve.input.json",
+            idempotency_policy: IdempotencyPolicy::None,
             execute_fn: execute_approve,
         }),
         Arc::new(GenericContentHandler {
             operation: RELEASE,
             schema_file: "content/release.input.json",
+            idempotency_policy: IdempotencyPolicy::None,
             execute_fn: execute_release,
         }),
         Arc::new(GenericContentHandler {
             operation: RELEASE_PUBLISH,
             schema_file: "content/release-publish.input.json",
+            idempotency_policy: IdempotencyPolicy::None,
             execute_fn: execute_release_publish,
         }),
         Arc::new(GenericContentHandler {
             operation: CHANGESET_COMMIT,
             schema_file: "content/changeset-commit.input.json",
+            idempotency_policy: IdempotencyPolicy::RequiredUuidV7ExactReplay,
             execute_fn: execute_changeset_commit,
+        }),
+        Arc::new(GenericContentHandler {
+            operation: EDITION_CREATE,
+            schema_file: "content/edition-create.input.json",
+            idempotency_policy: IdempotencyPolicy::RequiredUuidV7ExactReplay,
+            execute_fn: execute_edition_create,
         }),
     ]
 }
@@ -496,6 +615,7 @@ mod tests {
             "release.input.json",
             "release-publish.input.json",
             "changeset-commit.input.json",
+            "edition-create.input.json",
         ] {
             let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .parent()
@@ -549,8 +669,9 @@ mod tests {
     }
 
     #[test]
-    fn exposes_seven_lifecycle_handlers() {
-        let operations: Vec<_> = content_handlers()
+    fn exposes_eight_handlers_with_exact_replay_only_for_mutations() {
+        let handlers = content_handlers();
+        let operations: Vec<_> = handlers
             .iter()
             .map(|handler| handler.operation().to_string())
             .collect();
@@ -564,8 +685,83 @@ mod tests {
                 "content.release".to_string(),
                 "release.publish".to_string(),
                 "changeset.commit".to_string(),
+                "edition.create".to_string(),
             ]
         );
+        let replay_operations: Vec<_> = handlers
+            .iter()
+            .filter(|handler| {
+                handler.idempotency_policy() == IdempotencyPolicy::RequiredUuidV7ExactReplay
+            })
+            .map(|handler| handler.operation())
+            .collect();
+        assert_eq!(
+            replay_operations,
+            vec!["changeset.commit", "edition.create"]
+        );
+    }
+
+    #[test]
+    fn target_input_schemas_reject_unknown_fields() {
+        let (ctx, _dir) = test_context();
+        for (handler_index, input) in [
+            (
+                6,
+                json!({
+                    "idempotency_key": uuid::Uuid::now_v7(),
+                    "changeset_id": uuid::Uuid::now_v7(),
+                    "unexpected": true,
+                }),
+            ),
+            (
+                7,
+                json!({
+                    "idempotency_key": uuid::Uuid::now_v7(),
+                    "changeset_id": uuid::Uuid::now_v7(),
+                    "unexpected": true,
+                }),
+            ),
+        ] {
+            assert!(content_handlers()[handler_index]
+                .execute(&input, &ctx)
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn resolves_input_schema_from_initialized_workspace_registry() {
+        let dir = TempDir::new().unwrap();
+        let registry_dir = dir.path().join(".proof/registry/content");
+        std::fs::create_dir_all(&registry_dir).unwrap();
+        let root_schema = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("registry/content/schema-create.input.json");
+        std::fs::copy(root_schema, registry_dir.join("schema-create.input.json")).unwrap();
+        let context = ExecutionContext {
+            actor: PrincipalId::now(),
+            principal_kind: Some(proof_kernel::PrincipalKind::Agent),
+            delegation_id: None,
+            delegation_chain: None,
+            workspace_path: dir.path().to_path_buf(),
+            timestamp: chrono::Utc::now(),
+        };
+
+        let result = content_handlers()[0]
+            .execute(
+                &json!({
+                    "id": uuid::Uuid::now_v7(),
+                    "name": "Article",
+                    "version": 1,
+                    "fields": [{"name": "title", "field_type": "text", "required": true, "localized": false}],
+                    "created_at": chrono::Utc::now().to_rfc3339(),
+                }),
+                &context,
+            )
+            .unwrap();
+        assert_eq!(result["operation"], "schema.create");
     }
 
     #[test]

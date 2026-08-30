@@ -3,6 +3,7 @@ use anyhow::{bail, Context, Result};
 use proof_kernel::{Benchmark, BenchmarkResult, BenchmarkRunner, ExecutionContext, RegistryEntry};
 use proof_storage::SqliteStore;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 pub fn cmd_benchmark_run(
     cli: &Cli,
@@ -23,7 +24,8 @@ pub fn cmd_benchmark_run(
         .with_context(|| format!("operation not found: {operation} {version}"))?
         .clone();
     let benchmark = benchmark_contract(&entry, threshold_ms)?;
-    let engine = build_engine(registry)?;
+    let store = Arc::new(open_store(&ws.root)?);
+    let engine = build_engine(registry, ws.keypair.clone(), store.clone())?;
     let context = ExecutionContext {
         actor: ws.actor,
         principal_kind: Some(proof_kernel::PrincipalKind::Agent),
@@ -34,7 +36,6 @@ pub fn cmd_benchmark_run(
     };
     let runner = BenchmarkRunner;
     let mut results = Vec::with_capacity(runs as usize);
-    let store = open_store(&ws.root)?;
     for _ in 0..runs {
         let result = runner
             .run(

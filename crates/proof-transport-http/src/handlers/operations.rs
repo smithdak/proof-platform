@@ -5,12 +5,11 @@ use super::errors::{execution_error_response, internal_error};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
     Json,
 };
-use proof_kernel::{create_proof, ExecutionContext, ExecutionError};
+use proof_kernel::ExecutionContext;
 use serde_json::{json, Value};
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 pub(crate) async fn execute_operation(
     State(state): State<SharedState>,
@@ -29,37 +28,24 @@ pub(crate) async fn execute_operation(
         timestamp: chrono::Utc::now(),
     };
 
-    let result = match state
+    let outcome = match state
         .engine
         .read()
         .unwrap()
-        .execute(&name, &version, &body, &context)
+        .execute_evidenced(&name, &version, &body, &context)
     {
-        Ok(result) => result,
+        Ok(outcome) => outcome,
         Err(error) => return Err(execution_error_response(&error)),
     };
 
-    let proof_operation = format!("{name}::{version}");
-    let proof = match create_proof(
-        keypair.principal_id,
-        context.delegation_id,
-        &proof_operation,
-        &body,
-        &result,
-        context.timestamp,
-        &keypair,
-    ) {
-        Ok(proof) => proof,
-        Err(error) => return Err(internal_error(error.to_string())),
-    };
-
-    let proof = serde_json::to_value(&proof).map_err(|error| internal_error(error.to_string()))?;
+    let proof =
+        serde_json::to_value(&outcome.proof).map_err(|error| internal_error(error.to_string()))?;
 
     Ok(Json(json!({
         "operation": name,
         "version": version,
         "status": "executed",
-        "result": result,
+        "result": outcome.output,
         "proof": proof,
     })))
 }

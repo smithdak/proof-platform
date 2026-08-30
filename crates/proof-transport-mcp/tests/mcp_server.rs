@@ -1,9 +1,14 @@
+use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use base64::Engine as _;
+use proof_content::{
+    ChangeSet, ChangeSetEdit, FieldType, Object, ObjectCreateEdit, ObjectDeleteEdit,
+    SchemaDefinition, SchemaField,
+};
 use proof_kernel::{
     generate_keypair, generate_keypair_for, principal_from_keypair, AgentRun, AgentRunMode,
     AgentRunStatus, AgentRunStep, AgentRunStepStatus, AgentRunStore, ApprovalOutcome,
@@ -11,6 +16,7 @@ use proof_kernel::{
     Proof, RecordingAgentRunStore, RecordingApprovalStore, Registry, RegistryEntry,
     SignedApprovalDecision, SignedApprovalRequest, VersionStatus,
 };
+use proof_storage::SqliteStore;
 use proof_transport_mcp::{load_workspace_keypair, load_workspace_registry, McpServer};
 use serde_json::{json, Value};
 
@@ -150,6 +156,100 @@ fn server(workspace: &TestWorkspace) -> (McpServer, proof_kernel::Keypair) {
     let mut server = McpServer::new(registry, identity.clone(), workspace.path().to_path_buf());
     server.register_handler(Arc::new(EchoHandler));
     (server, identity)
+}
+
+fn copy_repository_registry(workspace: &TestWorkspace) {
+    let repository_registry = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("registry");
+    copy_directory(
+        &repository_registry,
+        &workspace.path().join(".proof/registry"),
+    );
+    copy_directory(&repository_registry, &workspace.path().join("registry"));
+}
+
+fn content_server(
+    workspace: &TestWorkspace,
+) -> (
+    McpServer,
+    proof_kernel::Keypair,
+    Arc<SqliteStore>,
+    ChangeSet,
+    Object,
+) {
+    copy_repository_registry(workspace);
+    let schema = SchemaDefinition::new(
+        "Article",
+        1,
+        vec![SchemaField {
+            name: "title".to_string(),
+            field_type: FieldType::Text,
+            required: true,
+            localized: false,
+            default_value: None,
+        }],
+    );
+    let schema_directory = workspace.path().join(".proof/data/schemas");
+    std::fs::create_dir_all(&schema_directory).unwrap();
+    std::fs::write(
+        schema_directory.join(format!("{}-{}.json", schema.id, schema.version)),
+        serde_json::to_string(&schema).unwrap(),
+    )
+    .unwrap();
+
+    let existing = Object::create(&schema, "en-US", json!({"title": "Existing"})).unwrap();
+    let created = Object::create(&schema, "en-US", json!({"title": "Created"})).unwrap();
+    let object_directory = workspace.path().join(".proof/data/objects");
+    std::fs::create_dir_all(&object_directory).unwrap();
+    std::fs::write(
+        object_directory.join(format!("{}.json", existing.id)),
+        serde_json::to_string(&existing).unwrap(),
+    )
+    .unwrap();
+
+    let base_state = BTreeMap::from([(existing.id, existing.clone())]);
+    let mut changeset = ChangeSet::new(
+        "Replace object",
+        &base_state,
+        vec![
+            ChangeSetEdit::ObjectCreate(ObjectCreateEdit { object: created }),
+            ChangeSetEdit::ObjectDelete(ObjectDeleteEdit {
+                object_id: existing.id,
+                expected_revision: existing.revision,
+            }),
+        ],
+    );
+    changeset
+        .transition_to(proof_content::ChangeSetStatus::Submitted)
+        .unwrap();
+    changeset
+        .transition_to(proof_content::ChangeSetStatus::Approved)
+        .unwrap();
+    let changeset_directory = workspace.path().join(".proof/data/changesets");
+    std::fs::create_dir_all(&changeset_directory).unwrap();
+    std::fs::write(
+        changeset_directory.join(format!("{}.json", changeset.id)),
+        serde_json::to_string(&changeset).unwrap(),
+    )
+    .unwrap();
+
+    let identity = generate_keypair();
+    let registry = load_workspace_registry(workspace.path()).unwrap();
+    let store = Arc::new(SqliteStore::in_memory().unwrap());
+    let mut server = McpServer::new_with_storage(
+        registry,
+        identity.clone(),
+        workspace.path().to_path_buf(),
+        store.clone(),
+    );
+    for handler in proof_content::content_handlers() {
+        server.register_handler(handler);
+    }
+    (server, identity, store, changeset, existing)
 }
 
 fn approval_server(
@@ -299,6 +399,199 @@ fn tool_calls_reuse_identity_and_persist_verifiable_proofs() {
         assert_eq!(step.run_id, run.id);
     }
     assert_eq!(run_store.list_agent_runs().unwrap().len(), 2);
+}
+
+#[test]
+fn governed_content_tools_replay_original_proof_and_preserve_run_metadata() {
+    let workspace = TestWorkspace::new();
+    let (mut server, identity, store, changeset, existing) = content_server(&workspace);
+    let commit_key = uuid::Uuid::now_v7();
+    let commit = |id, arguments| {
+        modern_request(
+            id,
+            "tools/call",
+            json!({
+                "name": "proof_content_v1_changeset_commit",
+                "arguments": arguments,
+            }),
+        )
+    };
+    let first = server
+        .handle_message(commit(
+            1,
+            json!({
+                "notes": "first commit",
+                "changeset_id": changeset.id,
+                "idempotency_key": commit_key,
+            }),
+        ))
+        .unwrap();
+    assert_eq!(first["result"]["isError"], false);
+    assert_eq!(
+        first["result"]["structuredContent"]["operation"],
+        "changeset.commit"
+    );
+    let first_output = first["result"]["structuredContent"].clone();
+    let first_proof = first["result"]["_meta"][EVIDENCE_META_KEY]["proof"].clone();
+    let first_run = first["result"]["_meta"][RUN_META_KEY].clone();
+    let deleted_path = workspace
+        .path()
+        .join(".proof/data/objects")
+        .join(format!("{}.json", existing.id));
+    let object_count_after_first = std::fs::read_dir(workspace.path().join(".proof/data/objects"))
+        .unwrap()
+        .count();
+    assert_eq!(object_count_after_first, 1);
+    assert_eq!(first_run["run"]["status"], "succeeded");
+    assert_eq!(first_run["step"]["status"], "succeeded");
+    let first_proof: proof_kernel::Proof = serde_json::from_value(first_proof.clone()).unwrap();
+    assert_eq!(first_proof.body.actor, identity.principal_id);
+    first_proof
+        .verify(&identity.signing_key.verifying_key())
+        .unwrap();
+
+    let retry = server
+        .handle_message(commit(
+            2,
+            json!({
+                "idempotency_key": commit_key,
+                "changeset_id": changeset.id,
+                "notes": "first commit",
+            }),
+        ))
+        .unwrap();
+    assert_eq!(retry["result"]["structuredContent"], first_output);
+    assert_eq!(
+        retry["result"]["_meta"][EVIDENCE_META_KEY]["proof"],
+        serde_json::to_value(&first_proof).unwrap()
+    );
+    assert_eq!(
+        std::fs::read_dir(workspace.path().join(".proof/data/objects"))
+            .unwrap()
+            .count(),
+        object_count_after_first
+    );
+    assert_eq!(
+        store
+            .list_proofs_for_operation("changeset.commit", Some("v1"))
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(store.list_agent_runs().unwrap().len(), 2);
+    assert!(!deleted_path.exists());
+
+    let conflict = server
+        .handle_message(commit(
+            3,
+            json!({
+                "idempotency_key": commit_key,
+                "changeset_id": changeset.id,
+                "notes": "different input",
+            }),
+        ))
+        .unwrap();
+    assert_eq!(conflict["result"]["isError"], true);
+    assert!(conflict["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("already bound to different input"));
+    assert_eq!(
+        std::fs::read_dir(workspace.path().join(".proof/data/objects"))
+            .unwrap()
+            .count(),
+        object_count_after_first
+    );
+    assert_eq!(
+        store
+            .list_proofs_for_operation("changeset.commit", Some("v1"))
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let edition_key = uuid::Uuid::now_v7();
+    let edition = |id, arguments| {
+        modern_request(
+            id,
+            "tools/call",
+            json!({
+                "name": "proof_content_v1_edition_create",
+                "arguments": arguments,
+            }),
+        )
+    };
+    let edition_first = server
+        .handle_message(edition(
+            4,
+            json!({
+                "changeset_id": changeset.id,
+                "idempotency_key": edition_key,
+            }),
+        ))
+        .unwrap();
+    assert_eq!(edition_first["result"]["isError"], false);
+    let edition_output = edition_first["result"]["structuredContent"].clone();
+    let edition_proof = edition_first["result"]["_meta"][EVIDENCE_META_KEY]["proof"].clone();
+    let edition_id = edition_output["data"]["edition"]["id"].as_str().unwrap();
+    let edition_count = std::fs::read_dir(workspace.path().join(".proof/data/editions"))
+        .unwrap()
+        .count();
+    assert_eq!(edition_count, 1);
+
+    let edition_retry = server
+        .handle_message(edition(
+            5,
+            json!({
+                "idempotency_key": edition_key,
+                "changeset_id": changeset.id,
+            }),
+        ))
+        .unwrap();
+    assert_eq!(edition_retry["result"]["structuredContent"], edition_output);
+    assert_eq!(
+        edition_retry["result"]["_meta"][EVIDENCE_META_KEY]["proof"],
+        edition_proof
+    );
+    assert_eq!(
+        std::fs::read_dir(workspace.path().join(".proof/data/editions"))
+            .unwrap()
+            .count(),
+        edition_count
+    );
+    assert_eq!(
+        store
+            .list_proofs_for_operation("edition.create", Some("v1"))
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(workspace
+        .path()
+        .join(".proof/data/editions")
+        .join(format!("{edition_id}.json"))
+        .exists());
+
+    let edition_conflict = server
+        .handle_message(edition(
+            6,
+            json!({
+                "idempotency_key": edition_key,
+                "changeset_id": existing.id,
+            }),
+        ))
+        .unwrap();
+    assert_eq!(edition_conflict["result"]["isError"], true);
+    assert!(edition_conflict["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("already bound to different input"));
+    assert_eq!(
+        std::fs::read_dir(workspace.path().join(".proof/data/editions"))
+            .unwrap()
+            .count(),
+        edition_count
+    );
 }
 
 #[test]
@@ -757,7 +1050,7 @@ fn workspace_registry_loader_accepts_the_full_platform_registry() {
     copy_directory(&repository_registry, &workspace_registry);
 
     let registry = load_workspace_registry(workspace.path()).unwrap();
-    assert_eq!(registry.operations().len(), 20);
+    assert_eq!(registry.operations().len(), 21);
     for entry in registry.operations() {
         assert!(serde_json::from_str::<Value>(&entry.input_schema).is_ok());
         assert!(serde_json::from_str::<Value>(&entry.output_schema).is_ok());

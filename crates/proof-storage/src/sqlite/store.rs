@@ -3,7 +3,10 @@
 use super::migrations::run_migrations;
 use crate::StorageError;
 use chrono::{DateTime, Utc};
-use proof_kernel::{AuditFilter, ExecutionContext, ExecutionStore, Proof};
+use proof_kernel::{
+    AuditFilter, ExecutionContext, ExecutionOutcome, ExecutionReplayClaim,
+    ExecutionReplayClaimResult, ExecutionStore, Proof,
+};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -122,6 +125,33 @@ impl ExecutionStore for SqliteStore {
         }
         Ok(contexts)
     }
+
+    fn claim_execution_replay(
+        &self,
+        claim: &ExecutionReplayClaim,
+    ) -> Result<ExecutionReplayClaimResult, String> {
+        SqliteStore::claim_execution_replay(self, claim).map_err(|error| error.to_string())
+    }
+
+    fn complete_execution_replay(
+        &self,
+        claim: &ExecutionReplayClaim,
+        context: &ExecutionContext,
+        outcome: &ExecutionOutcome,
+    ) -> Result<(), String> {
+        SqliteStore::complete_execution_replay(self, claim, context, outcome)
+            .map_err(|error| error.to_string())
+    }
+
+    fn fail_execution_replay(
+        &self,
+        claim: &ExecutionReplayClaim,
+        failed_at: DateTime<Utc>,
+        failure: &str,
+    ) -> Result<(), String> {
+        SqliteStore::fail_execution_replay(self, claim, failed_at, failure)
+            .map_err(|error| error.to_string())
+    }
 }
 
 impl SqliteStore {
@@ -139,6 +169,7 @@ impl SqliteStore {
     /// Opens an in-memory database (for testing).
     pub fn in_memory() -> Result<Self, StorageError> {
         let conn = Connection::open_in_memory()?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),

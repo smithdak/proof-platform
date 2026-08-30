@@ -5,8 +5,7 @@ mod server;
 pub use server::{load_workspace_keypair, load_workspace_registry, McpServer, McpServerError};
 
 use proof_kernel::{
-    create_proof, generate_keypair, ApprovalGrant, ExecutionEngine, ExecutionError, Principal,
-    Registry, RegistryEntry,
+    ApprovalGrant, ExecutionEngine, ExecutionError, Principal, Registry, RegistryEntry,
 };
 
 const TOOL_PAGE_SIZE: usize = 20;
@@ -230,28 +229,21 @@ pub fn handle_tool_call(
     actor: proof_kernel::PrincipalId,
     workspace_path: std::path::PathBuf,
 ) -> McpToolResult {
-    let keypair = generate_keypair();
-    handle_tool_call_signed(call, engine, actor, workspace_path, &keypair, None)
+    handle_tool_call_signed(call, engine, actor, workspace_path, None)
 }
 
 /// Handles an MCP tool call using a stable Proof identity.
 ///
-/// The supplied keypair becomes both the executing actor and the signer of the
-/// returned proof, allowing clients to verify identity continuity across calls.
+/// The supplied keypair identifies the executing actor. The engine must have
+/// been constructed with the same keypair so its evidenced proof has matching
+/// actor and signer identity.
 pub fn handle_tool_call_with_keypair(
     call: &McpToolCall,
     engine: &ExecutionEngine,
     keypair: &proof_kernel::Keypair,
     workspace_path: std::path::PathBuf,
 ) -> McpToolResult {
-    handle_tool_call_signed(
-        call,
-        engine,
-        keypair.principal_id,
-        workspace_path,
-        keypair,
-        None,
-    )
+    handle_tool_call_signed(call, engine, keypair.principal_id, workspace_path, None)
 }
 
 /// Handles an MCP tool call authorized by an exact signed human approval.
@@ -268,7 +260,6 @@ pub fn handle_tool_call_with_approval(
         engine,
         keypair.principal_id,
         workspace_path,
-        keypair,
         Some((approval, trusted_approver)),
     )
 }
@@ -278,7 +269,6 @@ fn handle_tool_call_signed(
     engine: &ExecutionEngine,
     actor: proof_kernel::PrincipalId,
     workspace_path: std::path::PathBuf,
-    keypair: &proof_kernel::Keypair,
     approval: Option<(&ApprovalGrant, &Principal)>,
 ) -> McpToolResult {
     let Some(entry) = engine
@@ -303,7 +293,7 @@ fn handle_tool_call_signed(
     };
 
     let execution = match approval {
-        Some((approval, trusted_approver)) => engine.execute_with_approval(
+        Some((approval, trusted_approver)) => engine.execute_with_approval_evidenced(
             &entry.operation,
             &entry.version,
             &call.arguments,
@@ -311,11 +301,14 @@ fn handle_tool_call_signed(
             approval,
             trusted_approver,
         ),
-        None => engine.execute(&entry.operation, &entry.version, &call.arguments, &context),
+        None => {
+            engine.execute_evidenced(&entry.operation, &entry.version, &call.arguments, &context)
+        }
     };
 
     match execution {
-        Ok(output) => {
+        Ok(outcome) => {
+            let output = outcome.output;
             if let Err(error) = validate_value(&schema_value(entry, &entry.output_schema), &output)
             {
                 return McpToolResult::error(format!(
@@ -323,25 +316,10 @@ fn handle_tool_call_signed(
                     entry.operation, error
                 ));
             } else {
-                let proof_operation = format!("{}::{}", entry.operation, entry.version);
-                return match create_proof(
-                    keypair.principal_id,
-                    context.delegation_id,
-                    &proof_operation,
-                    &call.arguments,
-                    &output,
-                    context.timestamp,
-                    &keypair,
-                ) {
-                    Ok(proof) => match serde_json::to_value(proof) {
-                        Ok(proof_value) => McpToolResult::execution(output, proof_value),
-                        Err(error) => McpToolResult::error(format!(
-                            "Failed to encode proof from {}: {}",
-                            entry.operation, error
-                        )),
-                    },
+                return match serde_json::to_value(outcome.proof) {
+                    Ok(proof_value) => McpToolResult::execution(output, proof_value),
                     Err(error) => McpToolResult::error(format!(
-                        "Failed to generate proof for {}: {}",
+                        "Failed to encode proof from {}: {}",
                         entry.operation, error
                     )),
                 };

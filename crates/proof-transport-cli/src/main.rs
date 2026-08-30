@@ -5,7 +5,7 @@ pub use workspace::{load_workspace_json, save_workspace_json, Workspace};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use proof_kernel::{ExecutionContext, ExecutionEngine, ExecutionError, OperationHandler, Registry};
+use proof_kernel::{principal_from_keypair, ExecutionEngine, Registry};
 use proof_storage::SqliteStore;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -43,9 +43,19 @@ enum Command {
         #[arg(short, long)]
         intent: String,
     },
+    ChangesetCommit {
+        #[arg(short, long)]
+        changeset_id: String,
+        #[arg(long)]
+        idempotency_key: String,
+        #[arg(long)]
+        notes: Option<String>,
+    },
     EditionCreate {
         #[arg(short, long)]
         changeset_id: String,
+        #[arg(long)]
+        idempotency_key: String,
     },
     ReleasePublish {
         #[arg(short, long)]
@@ -278,114 +288,17 @@ pub(crate) fn open_content_store(root: &Path) -> Result<proof_storage::ContentAd
     .map_err(anyhow::Error::from)
 }
 
-#[derive(Clone)]
-struct ContentOperationHandler {
-    operation: String,
-}
-
-impl OperationHandler for ContentOperationHandler {
-    fn operation(&self) -> &str {
-        &self.operation
-    }
-
-    fn execute(&self, input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError> {
-        execute_content_operation(&self.operation, input, context)
-            .map_err(|error| ExecutionError::HandlerFailed(error.to_string()))
-    }
-}
-
-fn execute_content_operation(
-    operation: &str,
-    input: &Value,
-    context: &ExecutionContext,
-) -> Result<Value, anyhow::Error> {
-    let root = context.workspace_path.clone();
-    match operation {
-        "schema.create" => {
-            let name = input["name"]
-                .as_str()
-                .context("input missing required string: name")?;
-            let fields = input.get("fields").cloned().unwrap_or(Value::Array(vec![]));
-            let schema = build_schema(name, &fields)?;
-            let schema_json = serde_json::to_value(&schema)?;
-            save_workspace_json(&root, "schemas", &schema.id.to_string(), &schema_json)?;
-            Ok(serde_json::json!({"schema_id": schema.id.to_string()}))
-        }
-        "object.create" => {
-            let schema_id = input["schema_id"]
-                .as_str()
-                .context("input missing required string: schema_id")?;
-            let locale = input["locale"].as_str().unwrap_or("en-US");
-            let content = input
-                .get("data")
-                .cloned()
-                .context("input missing required field: data")?;
-            let schema: proof_content::schema::SchemaDefinition =
-                serde_json::from_value(load_workspace_json(&root, "schemas", schema_id)?)?;
-            schema.validate_object(&content)?;
-            let object = proof_content::object::Object::create(&schema, locale, content)?;
-            let object_json = serde_json::to_value(&object)?;
-            save_workspace_json(&root, "objects", &object.id.to_string(), &object_json)?;
-            Ok(serde_json::json!({"object_id": object.id.to_string()}))
-        }
-        "changeset.create" => {
-            let intent = input["intent"]
-                .as_str()
-                .context("input missing required string: intent")?;
-            let base_state: std::collections::BTreeMap<uuid::Uuid, proof_content::object::Object> =
-                Default::default();
-            let changeset = proof_content::ChangeSet::new(intent, &base_state, vec![]);
-            let changeset_json = serde_json::to_value(&changeset)?;
-            save_workspace_json(
-                &root,
-                "changesets",
-                &changeset.id.to_string(),
-                &changeset_json,
-            )?;
-            Ok(serde_json::json!({"changeset_id": changeset.id.to_string()}))
-        }
-        _ => anyhow::bail!("no local implementation for operation: {operation}"),
-    }
-}
-
-fn build_schema(name: &str, fields: &Value) -> Result<proof_content::schema::SchemaDefinition> {
-    let mut schema_fields = vec![];
-    if let Value::Array(entries) = fields {
-        for field in entries {
-            let field_name = field["name"]
-                .as_str()
-                .context("field missing required string: name")?;
-            let field_type = match field["field_type"].as_str().unwrap_or("text") {
-                "text" => proof_content::schema::FieldType::Text,
-                "rich_text" => proof_content::schema::FieldType::RichText,
-                "number" => proof_content::schema::FieldType::Number,
-                "boolean" => proof_content::schema::FieldType::Boolean,
-                "date" => proof_content::schema::FieldType::Date,
-                "date_time" => proof_content::schema::FieldType::DateTime,
-                "json" => proof_content::schema::FieldType::Json,
-                "reference" => proof_content::schema::FieldType::Reference,
-                unknown => anyhow::bail!("unknown field_type: {unknown}"),
-            };
-            schema_fields.push(proof_content::schema::SchemaField {
-                name: field_name.to_string(),
-                field_type,
-                required: field["required"].as_bool().unwrap_or(false),
-                localized: field["localized"].as_bool().unwrap_or(false),
-                default_value: field.get("default").cloned(),
-            });
-        }
-    }
-    let schema = proof_content::schema::SchemaDefinition::new(name.to_string(), 1, schema_fields);
-    schema.validate()?;
-    Ok(schema)
-}
-
-pub(crate) fn build_engine(registry: Registry) -> Result<ExecutionEngine> {
-    let mut engine = ExecutionEngine::new(registry);
-    for operation in ["schema.create", "object.create", "changeset.create"] {
-        engine.register_handler(Arc::new(ContentOperationHandler {
-            operation: operation.to_string(),
-        }));
+pub(crate) fn build_engine(
+    registry: Registry,
+    keypair: proof_kernel::Keypair,
+    store: Arc<SqliteStore>,
+) -> Result<ExecutionEngine> {
+    store
+        .save_principal(&principal_from_keypair(&keypair))
+        .map_err(anyhow::Error::from)?;
+    let mut engine = ExecutionEngine::new_with_keypair(registry, keypair).with_storage(store);
+    for handler in proof_content::content_handlers() {
+        engine.register_handler(handler);
     }
     Ok(engine)
 }
@@ -405,9 +318,20 @@ fn main() -> Result<()> {
         Command::ChangesetCreate { intent } => {
             commands::content::cmd_changeset_create(&cli, intent)?
         }
-        Command::EditionCreate { changeset_id } => {
-            commands::content::cmd_edition_create(&cli, changeset_id)?
-        }
+        Command::ChangesetCommit {
+            changeset_id,
+            idempotency_key,
+            notes,
+        } => commands::content::cmd_changeset_commit(
+            &cli,
+            changeset_id,
+            idempotency_key,
+            notes.as_deref(),
+        )?,
+        Command::EditionCreate {
+            changeset_id,
+            idempotency_key,
+        } => commands::content::cmd_edition_create(&cli, changeset_id, idempotency_key)?,
         Command::ReleasePublish {
             edition_id,
             environment,
@@ -711,6 +635,28 @@ mod tests {
             r#"{"operation":"schema.create","domain":"content","version":"v1","action":"content:schema_create","description":"Create a content Schema definition","input_schema":"content/schema-create.input.json","output_schema":"content/schema-create.output.json","required_authority":"delegation-grant","governance":"agent-executable","idempotency":"required-uuidv7","consequence":"content-mutation","evidence_contract":"operation-effect-v1","benchmark":"B1"}"#,
         )
         .unwrap();
+        std::fs::copy(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("registry/content/schema-create.input.json"),
+            registry_dir.join("schema-create.input.json"),
+        )
+        .unwrap();
+        let benchmark_input = serde_json::to_string(&SchemaDefinition::new(
+            "test".to_string(),
+            1,
+            vec![proof_content::SchemaField {
+                name: "title".to_string(),
+                field_type: proof_content::FieldType::Text,
+                required: true,
+                localized: false,
+                default_value: None,
+            }],
+        ))
+        .unwrap();
 
         let run_args = Cli::parse_from([
             "proof",
@@ -725,7 +671,7 @@ mod tests {
             "--runs",
             "2",
             "--input",
-            r#"{"name":"test","version":1,"fields":[{"name":"title","field_type":"text","required":true,"localized":false}]}"#,
+            &benchmark_input,
         ]);
         commands::benchmark::cmd_benchmark_run(
             &run_args,
@@ -733,7 +679,7 @@ mod tests {
             "v1",
             1000,
             2,
-            r#"{"name":"test","version":1,"fields":[{"name":"title","field_type":"text","required":true,"localized":false}]}"#,
+            &benchmark_input,
         )
         .unwrap();
 

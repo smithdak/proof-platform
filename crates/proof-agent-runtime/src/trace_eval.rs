@@ -1658,9 +1658,10 @@ fn push_issue(issues: &mut Vec<Value>, code: &'static str, details: Value) {
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
+    use ed25519_dalek::SigningKey;
     use proof_kernel::{
-        create_proof, generate_keypair, generate_keypair_for, principal_from_keypair, AgentLimits,
-        AgentRunMode, Keypair,
+        create_proof, generate_keypair, generate_keypair_for, principal_from_keypair, sign,
+        AgentLimits, AgentRunMode, Keypair, PrincipalId,
     };
 
     use super::*;
@@ -1669,14 +1670,22 @@ mod tests {
     const VERSION: &str = "v1";
 
     fn release_arguments() -> Value {
-        json!({"environment": "preview", "version_label": "2026.08.29"})
+        json!({"environment": "preview", "version_label": "2026.08.29-rc1"})
     }
 
     fn release_output() -> Value {
         json!({
-            "release_id": "rel_preview_1",
-            "edition_id": "edition_preview_1",
-            "status": "published"
+            "operation": "release.publish",
+            "data": {
+                "release": {
+                    "id": "018f0000-0000-7000-8000-000000000020",
+                    "edition_id": "018f0000-0000-7000-8000-000000000021",
+                    "environment": "preview",
+                    "published_at": "2026-08-29T20:00:00Z",
+                    "published_by": "018f0000-0000-7000-8000-000000000001"
+                },
+                "version_label": "2026.08.29-rc1"
+            }
         })
     }
 
@@ -1685,43 +1694,41 @@ mod tests {
     }
 
     fn release_policy() -> DeterministicTraceEvaluator {
-        let mut policy = TraceEvaluationPolicy::new(
-            vec![ExpectedToolCall::new(
-                OPERATION,
-                VERSION,
-                release_arguments(),
-                true,
-            )],
-            false,
-        );
-        policy.required_final_output_references = vec![
-            FinalOutputReference {
-                call_index: 0,
-                source: FinalOutputSource::Arguments,
-                pointer: Some("/environment".to_string()),
-            },
-            FinalOutputReference {
-                call_index: 0,
-                source: FinalOutputSource::Arguments,
-                pointer: Some("/version_label".to_string()),
-            },
-            FinalOutputReference {
-                call_index: 0,
-                source: FinalOutputSource::Output,
-                pointer: Some("/release_id".to_string()),
-            },
-            FinalOutputReference {
-                call_index: 0,
-                source: FinalOutputSource::Output,
-                pointer: Some("/edition_id".to_string()),
-            },
-            FinalOutputReference {
-                call_index: 0,
-                source: FinalOutputSource::ProofId,
-                pointer: None,
-            },
-        ];
+        let policy: TraceEvaluationPolicy = serde_json::from_str(include_str!(
+            "../../../evals/release-manager-preview-v1.json"
+        ))
+        .unwrap();
         DeterministicTraceEvaluator::new(policy).unwrap()
+    }
+
+    fn fixture_time() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-08-29T20:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    fn fixture_uuid(number: u16) -> Uuid {
+        Uuid::parse_str(&format!("018f0000-0000-7{number:03x}-8000-000000000000")).unwrap()
+    }
+
+    fn fixture_keypair(number: u16, kind: PrincipalKind, at: DateTime<Utc>) -> Keypair {
+        Keypair {
+            principal_id: PrincipalId::new(fixture_uuid(number)),
+            kind,
+            created_at: at,
+            signing_key: SigningKey::from_bytes(&[number as u8; 32]),
+        }
+    }
+
+    fn signed_bytes<T: Serialize>(value: &T, keypair: &Keypair) -> Vec<u8> {
+        sign(
+            keypair,
+            proof_kernel::canonicalize_serialized(value)
+                .unwrap()
+                .as_bytes(),
+        )
+        .to_bytes()
+        .to_vec()
     }
 
     fn agent(at: DateTime<Utc>, tools: Vec<AgentTool>) -> AgentDefinition {
@@ -1796,8 +1803,9 @@ mod tests {
         let decided_at = at + Duration::seconds(3);
         let executed_at = at + Duration::seconds(5);
         let mut step = AgentRunStep::new(run.id, ordinal, OPERATION, VERSION, input, at).unwrap();
+        step.id = fixture_uuid(5);
         step.start(at + Duration::seconds(1)).unwrap();
-        let request = SignedApprovalRequest::create(
+        let mut request = SignedApprovalRequest::create(
             OPERATION,
             VERSION,
             input,
@@ -1806,9 +1814,11 @@ mod tests {
             actor,
         )
         .unwrap();
+        request.body.id = fixture_uuid(6);
+        request.signature = signed_bytes(&request.body, actor);
         step.wait_for_approval(request.body.id, requested_at)
             .unwrap();
-        let decision = SignedApprovalDecision::create(
+        let mut decision = SignedApprovalDecision::create(
             &request,
             ApprovalOutcome::Approved,
             Some("approved for preview".to_string()),
@@ -1816,9 +1826,12 @@ mod tests {
             approver,
         )
         .unwrap();
+        decision.body.id = fixture_uuid(7);
+        decision.body.request_digest = request.digest().unwrap();
+        decision.signature = signed_bytes(&decision.body, approver);
         step.resume_from_approval(at + Duration::seconds(4))
             .unwrap();
-        let proof = create_proof(
+        let mut proof = create_proof(
             actor.principal_id,
             None,
             &proof_operation(OPERATION, VERSION),
@@ -1828,6 +1841,8 @@ mod tests {
             actor,
         )
         .unwrap();
+        proof.body.id = fixture_uuid(8);
+        proof = proof.sign(actor).unwrap();
         step.succeed(output.clone(), proof.clone(), at + Duration::seconds(6))
             .unwrap();
         let execution = ApprovalExecution {
@@ -1877,8 +1892,10 @@ mod tests {
 
         fn push(&mut self, kind: AgentRunEventKind, data: Value) {
             let sequence = u32::try_from(self.events.len()).unwrap();
-            self.events
-                .push(AgentRunEvent::create(self.run_id, sequence, kind, data, self.at).unwrap());
+            let mut event =
+                AgentRunEvent::create(self.run_id, sequence, kind, data, self.at).unwrap();
+            event.id = fixture_uuid(30 + sequence as u16);
+            self.events.push(event);
             self.at += Duration::milliseconds(1);
         }
 
@@ -2001,7 +2018,7 @@ mod tests {
             }
             self.push(
                 AgentRunEventKind::Completed,
-                json!({"output": output, "evaluation_id": Uuid::now_v7()}),
+                json!({"output": output, "evaluation_id": fixture_uuid(50)}),
             );
             self.events
         }
@@ -2020,13 +2037,15 @@ mod tests {
     }
 
     fn release_fixture() -> ReleaseFixture {
-        let at = Utc::now();
-        let actor = generate_keypair();
-        let approver = generate_keypair_for(PrincipalKind::Human);
+        let at = fixture_time();
+        let actor = fixture_keypair(1, PrincipalKind::Agent, at);
+        let approver = fixture_keypair(2, PrincipalKind::Human, at);
         let actor_principal = principal_from_keypair(&actor);
         let approver_principal = principal_from_keypair(&approver);
-        let agent = release_agent(at);
+        let mut agent = release_agent(at);
+        agent.id = fixture_uuid(3);
         let mut run = started_run(&actor, &agent, at);
+        run.id = fixture_uuid(4);
         run.wait_for_input(at + Duration::seconds(3)).unwrap();
         let arguments = release_arguments();
         let (step, approval) = approved_step(
@@ -2043,11 +2062,11 @@ mod tests {
         let mut events = EventBuilder::new(&run, &agent, at);
         events.tool_turn(&step, &arguments, Some(&approval), "release");
         let final_output = format!(
-            "Release {} for edition {} published to preview as 2026.08.29 with proof {}.",
-            step.output.as_ref().unwrap()["release_id"]
+            "Release {} for edition {} published to preview as 2026.08.29-rc1 with proof {}.",
+            step.output.as_ref().unwrap()["data"]["release"]["id"]
                 .as_str()
                 .unwrap(),
-            step.output.as_ref().unwrap()["edition_id"]
+            step.output.as_ref().unwrap()["data"]["release"]["edition_id"]
                 .as_str()
                 .unwrap(),
             step.proof.as_ref().unwrap().body.id,
@@ -2067,7 +2086,7 @@ mod tests {
     }
 
     fn evaluate_release(fixture: &ReleaseFixture) -> AgentRunEvaluation {
-        release_policy()
+        let mut evaluation = release_policy()
             .evaluate(
                 &fixture.run,
                 &fixture.agent,
@@ -2079,7 +2098,9 @@ mod tests {
                 "release-manager-eval/v1",
                 fixture.at + Duration::seconds(9),
             )
-            .unwrap()
+            .unwrap();
+        evaluation.id = fixture_uuid(51);
+        evaluation
     }
 
     fn check_passed(evaluation: &AgentRunEvaluation, name: &str) -> bool {
@@ -2193,6 +2214,59 @@ mod tests {
     }
 
     #[test]
+    fn two_fixed_release_manager_runs_match_checked_in_policy_and_trace_digest() {
+        let first = release_fixture();
+        let second = release_fixture();
+        let first_evaluation = evaluate_release(&first);
+        let second_evaluation = evaluate_release(&second);
+
+        for (fixture, evaluation) in [(&first, &first_evaluation), (&second, &second_evaluation)] {
+            assert_eq!(evaluation.outcome, AgentEvaluationOutcome::Passed);
+            assert_eq!(evaluation.score_bps, Some(10_000));
+            assert_eq!(evaluation.metrics["passed_checks"], 10);
+            assert_eq!(evaluation.metrics["total_checks"], 10);
+            assert!(evaluation.metrics["checks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|check| check["passed"] == true));
+            assert!(fixture
+                .events
+                .iter()
+                .any(|event| event.kind == AgentRunEventKind::ApprovalResumed));
+            assert!(fixture.events.iter().all(|event| {
+                !matches!(
+                    event.kind,
+                    AgentRunEventKind::ToolFailed
+                        | AgentRunEventKind::Failed
+                        | AgentRunEventKind::BudgetExceeded
+                )
+            }));
+            assert!(check_passed(evaluation, "no_failure_events"));
+        }
+
+        let trace_digest = &first_evaluation.metrics["binding"]["trace_digest"];
+        assert_eq!(
+            trace_digest,
+            &second_evaluation.metrics["binding"]["trace_digest"]
+        );
+        assert_eq!(
+            trace_digest,
+            "b14a94ed884b758f9503fdb95f85a65bd9d384d56aa13130ffe181fb69deae34"
+        );
+        assert_eq!(first_evaluation.id, fixture_uuid(51));
+        assert_eq!(second_evaluation.id, fixture_uuid(51));
+        assert_eq!(
+            first_evaluation.metrics["binding"]["policy_digest"],
+            second_evaluation.metrics["binding"]["policy_digest"]
+        );
+        assert_eq!(
+            first_evaluation.metrics["binding"]["policy_digest"],
+            "1e33747b44100727056c00407103deedf2b0c852349fd6489aa71d4246569f33"
+        );
+    }
+
+    #[test]
     fn missing_required_final_report_values_fails() {
         let mut fixture = release_fixture();
         let terse_output = "Preview release published.";
@@ -2216,7 +2290,7 @@ mod tests {
         assert_eq!(evaluation.outcome, AgentEvaluationOutcome::Failed);
         assert!(!check_passed(&evaluation, "final_output_references"));
         assert!(check_passed(&evaluation, "lifecycle_integrity"));
-        assert!(metrics_text(&evaluation).contains("rel_preview_1"));
+        assert!(metrics_text(&evaluation).contains("018f0000-0000-7000-8000-000000000020"));
     }
 
     #[test]

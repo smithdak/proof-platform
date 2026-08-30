@@ -3,14 +3,18 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
+use proof_content::{
+    BaseState, ChangeSet, ChangeSetEdit, FieldType, Object, ObjectCreateEdit, SchemaDefinition,
+    SchemaField,
+};
 use proof_kernel::{
     create_proof, generate_keypair_for, ExecutionContext, ExecutionError, Governance,
-    OperationHandler, PrincipalKind, Registry, RegistryEntry, VersionStatus,
+    OperationHandler, PrincipalKind, Proof, Registry, RegistryEntry, VersionStatus,
 };
 use proof_storage::SqliteStore;
 use proof_transport_http::{router, router_with_limits, AppState, HttpLimits, RateLimitConfig};
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use tower::ServiceExt;
 
 struct EchoHandler;
@@ -276,6 +280,132 @@ fn analytics_state() -> (Arc<AppState>, tempfile::TempDir) {
     )
 }
 
+fn content_state() -> (Arc<AppState>, tempfile::TempDir) {
+    let temp = tempfile::TempDir::new().unwrap();
+    let registry_dir = temp.path().join(".proof/registry/content");
+    std::fs::create_dir_all(&registry_dir).unwrap();
+    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    for file in [
+        "changeset-commit.json",
+        "changeset-commit.input.json",
+        "changeset-commit.output.json",
+        "edition-create.json",
+        "edition-create.input.json",
+        "edition-create.output.json",
+    ] {
+        std::fs::copy(
+            repository_root.join("registry/content").join(file),
+            registry_dir.join(file),
+        )
+        .unwrap();
+    }
+    for directory in ["changesets", "editions", "objects", "schemas"] {
+        std::fs::create_dir_all(temp.path().join(".proof/data").join(directory)).unwrap();
+    }
+    let state = Arc::new(AppState::new(temp.path().to_string_lossy()).unwrap());
+    assert!(temp
+        .path()
+        .join(".proof/data/proofs/proofs.sqlite3")
+        .exists());
+    (state, temp)
+}
+
+fn write_content_record<T: serde::Serialize>(workspace: &Path, kind: &str, id: &str, value: &T) {
+    let directory = workspace.join(".proof/data").join(kind);
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(
+        directory.join(format!("{id}.json")),
+        serde_json::to_string_pretty(value).unwrap(),
+    )
+    .unwrap();
+}
+
+fn save_approved_changeset_with_object(workspace: &Path) -> ChangeSet {
+    let schema = SchemaDefinition::new(
+        "Article",
+        1,
+        vec![SchemaField {
+            name: "title".to_string(),
+            field_type: FieldType::Text,
+            required: true,
+            localized: false,
+            default_value: None,
+        }],
+    );
+    let object = Object::create(&schema, "en-US", json!({"title": "Hello"})).unwrap();
+    let mut changeset = ChangeSet::new(
+        "Create article",
+        &BaseState::new(),
+        vec![ChangeSetEdit::ObjectCreate(ObjectCreateEdit { object })],
+    );
+    changeset
+        .transition_to(proof_content::changeset::ChangeSetStatus::Submitted)
+        .unwrap();
+    changeset
+        .transition_to(proof_content::changeset::ChangeSetStatus::Approved)
+        .unwrap();
+    write_content_record(
+        workspace,
+        "schemas",
+        &format!("{}-{}", schema.id, schema.version),
+        &schema,
+    );
+    write_content_record(
+        workspace,
+        "changesets",
+        &changeset.id.to_string(),
+        &changeset,
+    );
+    changeset
+}
+
+fn save_committed_changeset(workspace: &Path) -> ChangeSet {
+    let mut changeset = ChangeSet::new("Snapshot", &BaseState::new(), Vec::new());
+    for status in [
+        proof_content::changeset::ChangeSetStatus::Submitted,
+        proof_content::changeset::ChangeSetStatus::Approved,
+        proof_content::changeset::ChangeSetStatus::Committed,
+    ] {
+        changeset.transition_to(status).unwrap();
+    }
+    write_content_record(
+        workspace,
+        "changesets",
+        &changeset.id.to_string(),
+        &changeset,
+    );
+    changeset
+}
+
+fn json_file_count(path: &Path) -> usize {
+    std::fs::read_dir(path)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| {
+                    entry.path().extension().and_then(|value| value.to_str()) == Some("json")
+                })
+                .count()
+        })
+        .unwrap_or_default()
+}
+
+fn response_proof(body: &Value, operation: &str, state: &AppState) -> Proof {
+    let proof: Proof = serde_json::from_value(body["proof"].clone()).unwrap();
+    assert_eq!(proof.body.operation, format!("{operation}::v1"));
+    assert_eq!(proof.body.actor, state.keypair.principal_id);
+    assert_eq!(
+        proof.verify(&state.keypair.signing_key.verifying_key()),
+        Ok(())
+    );
+    assert_eq!(state.store.load_proof(&proof.body.id).unwrap(), proof);
+    proof
+}
+
 fn registry() -> Registry {
     Registry::new(vec![
         registry_entry("test.echo", Governance::AgentExecutable),
@@ -299,6 +429,29 @@ async fn response_json(
         .body(Body::from(
             body.map(|body| body.to_string()).unwrap_or_default(),
         ))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
+    (status, json)
+}
+
+async fn response_json_raw(
+    app: axum::Router,
+    method: &str,
+    uri: &str,
+    body: &str,
+) -> (StatusCode, Value) {
+    let request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
         .unwrap();
     let response = app.oneshot(request).await.unwrap();
     let status = response.status();
@@ -851,6 +1004,173 @@ async fn capabilities_lists_registry_operations() {
             ]
         })
     );
+}
+
+#[tokio::test]
+async fn content_capabilities_discover_both_governed_mutations() {
+    let (state, _workspace) = content_state();
+
+    let (status, body) = response_json(router(state), "GET", "/capabilities", None).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let operations = body["operations"].as_array().unwrap();
+    for operation in ["changeset.commit", "edition.create"] {
+        assert!(operations.iter().any(|entry| {
+            entry["name"] == operation
+                && entry["version"] == "v1"
+                && entry["domain"] == "content"
+                && entry["governance"] == "agent-executable"
+        }));
+    }
+}
+
+#[tokio::test]
+async fn changeset_commit_replays_original_http_outcome_and_conflicts_before_mutation() {
+    let (state, workspace) = content_state();
+    let changeset = save_approved_changeset_with_object(workspace.path());
+    let idempotency_key = uuid::Uuid::now_v7();
+    let first_request = format!(
+        r#"{{"idempotency_key":"{idempotency_key}","changeset_id":"{}","notes":"reviewed"}}"#,
+        changeset.id
+    );
+
+    let (status, first) = response_json_raw(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/changeset.commit/v1",
+        &first_request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(first["operation"], "changeset.commit");
+    assert_eq!(first["version"], "v1");
+    assert_eq!(first["status"], "executed");
+    assert_eq!(first["result"]["operation"], "changeset.commit");
+    assert_eq!(first["result"]["data"]["objects_count"], 1);
+    assert_eq!(first["result"]["data"]["changeset"]["status"], "committed");
+    let original_proof = response_proof(&first, "changeset.commit", &state);
+    let object_dir = workspace.path().join(".proof/data/objects");
+    let changeset_path = workspace
+        .path()
+        .join(".proof/data/changesets")
+        .join(format!("{}.json", changeset.id));
+    let committed_record = std::fs::read(&changeset_path).unwrap();
+    assert_eq!(json_file_count(&object_dir), 1);
+
+    let reordered_request = format!(
+        r#"{{"notes":"reviewed","changeset_id":"{}","idempotency_key":"{idempotency_key}"}}"#,
+        changeset.id
+    );
+    let (status, replay) = response_json_raw(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/changeset.commit/v1",
+        &reordered_request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["result"], first["result"]);
+    assert_eq!(replay["proof"], first["proof"]);
+    assert_eq!(
+        response_proof(&replay, "changeset.commit", &state),
+        original_proof
+    );
+    assert_eq!(json_file_count(&object_dir), 1);
+    assert_eq!(std::fs::read(&changeset_path).unwrap(), committed_record);
+
+    let changed_request = format!(
+        r#"{{"idempotency_key":"{idempotency_key}","changeset_id":"{}","notes":"changed"}}"#,
+        changeset.id
+    );
+    let (status, conflict) = response_json_raw(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/changeset.commit/v1",
+        &changed_request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        conflict["error"],
+        "idempotency failed: idempotency key is already bound to different input"
+    );
+    assert_eq!(json_file_count(&object_dir), 1);
+    assert_eq!(std::fs::read(changeset_path).unwrap(), committed_record);
+}
+
+#[tokio::test]
+async fn edition_create_replays_original_http_outcome_and_conflicts_before_mutation() {
+    let (state, workspace) = content_state();
+    let changeset = save_committed_changeset(workspace.path());
+    let idempotency_key = uuid::Uuid::now_v7();
+    let first_request = format!(
+        r#"{{"idempotency_key":"{idempotency_key}","changeset_id":"{}"}}"#,
+        changeset.id
+    );
+
+    let (status, first) = response_json_raw(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/edition.create/v1",
+        &first_request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(first["operation"], "edition.create");
+    assert_eq!(first["version"], "v1");
+    assert_eq!(first["status"], "executed");
+    assert_eq!(first["result"]["operation"], "edition.create");
+    assert_eq!(
+        first["result"]["data"]["edition"]["changeset_id"],
+        changeset.id.to_string()
+    );
+    let original_proof = response_proof(&first, "edition.create", &state);
+    let edition_dir = workspace.path().join(".proof/data/editions");
+    assert_eq!(json_file_count(&edition_dir), 1);
+
+    let reordered_request = format!(
+        r#"{{"changeset_id":"{}","idempotency_key":"{idempotency_key}"}}"#,
+        changeset.id
+    );
+    let (status, replay) = response_json_raw(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/edition.create/v1",
+        &reordered_request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay["result"], first["result"]);
+    assert_eq!(replay["proof"], first["proof"]);
+    assert_eq!(
+        response_proof(&replay, "edition.create", &state),
+        original_proof
+    );
+    assert_eq!(json_file_count(&edition_dir), 1);
+
+    let changed_request = format!(
+        r#"{{"idempotency_key":"{idempotency_key}","changeset_id":"{}"}}"#,
+        uuid::Uuid::now_v7()
+    );
+    let (status, conflict) = response_json_raw(
+        router(state.clone()),
+        "POST",
+        "/v1/operations/edition.create/v1",
+        &changed_request,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        conflict["error"],
+        "idempotency failed: idempotency key is already bound to different input"
+    );
+    assert_eq!(json_file_count(&edition_dir), 1);
 }
 
 #[tokio::test]

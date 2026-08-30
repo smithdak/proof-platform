@@ -35,7 +35,7 @@ Optional fields use `#[serde(default)]`. Adding new fields must follow this patt
 
 ## ExecutionContext
 
-Located in `crates/proof-kernel/src/executor.rs`.
+Located in `crates/proof-kernel/src/executor/context.rs`.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -84,6 +84,105 @@ Located in `crates/proof-kernel/src/approval.rs`.
 - `ExecutionEngine::execute_evidenced` and `execute_with_approval_evidenced` return `ExecutionOutcome { output, proof }` so runtimes do not reconstruct transport-local evidence.
 - `ApprovalExecution.executed_at` equals its signed proof timestamp; recovery and evaluation reject mismatches.
 - Approval decisions are single-use at the transport layer: a completed approval request replays its persisted `ApprovalExecution` instead of executing again.
+
+## Exact Execution Replay
+
+Replay types and policy are defined in `crates/proof-kernel/src/executor/store.rs`,
+and re-exported from `crates/proof-kernel/src/executor/mod.rs` and
+`crates/proof-kernel/src/lib.rs`:
+
+```rust
+pub enum IdempotencyPolicy {
+    None,
+    RequiredUuidV7ExactReplay,
+}
+
+pub struct ExecutionReplayKey {
+    pub operation: String,
+    pub version: String,
+    pub idempotency_key: Uuid,
+}
+
+pub struct ExecutionReplayClaim {
+    pub key: ExecutionReplayKey,
+    pub input_digest: ContentDigest,
+    pub claim_token: Uuid,
+    pub claimed_by: PrincipalId,
+    pub claimed_at: DateTime<Utc>,
+}
+
+pub enum ExecutionReplayClaimResult {
+    Acquired,
+    Completed(ExecutionOutcome),
+    Conflict,
+    InProgress,
+    Failed,
+    Unsupported,
+}
+```
+
+`OperationHandler::idempotency_policy` defaults to `None`; only
+`edition.create::v1` and `changeset.commit::v1` opt in during E0000. The
+default preserves compatibility for existing handlers. `ExecutionStore` adds
+these object-safe, default-compatible methods (implemented by `SqliteStore`
+and `RecordingStore`):
+
+```rust
+fn claim_execution_replay(
+    &self,
+    claim: &ExecutionReplayClaim,
+) -> Result<ExecutionReplayClaimResult, String>;
+fn complete_execution_replay(
+    &self,
+    claim: &ExecutionReplayClaim,
+    context: &ExecutionContext,
+    outcome: &ExecutionOutcome,
+) -> Result<(), String>;
+fn fail_execution_replay(
+    &self,
+    claim: &ExecutionReplayClaim,
+    failed_at: DateTime<Utc>,
+    failure: &str,
+) -> Result<(), String>;
+```
+
+The methods are implemented in `crates/proof-storage/src/sqlite/replay.rs`
+and delegated by `crates/proof-storage/src/sqlite/store.rs`.
+
+`ExecutionEngine::execute_operation` in
+`crates/proof-kernel/src/executor/engine.rs` is the shared path for
+`execute`, `execute_evidenced`, `execute_with_approval`, and
+`execute_with_approval_evidenced`. For an opted-in handler it performs
+authorization/governance/lifecycle/delegation checks first; requires a
+top-level string `idempotency_key` that is UUIDv7; canonicalizes the complete
+input and computes the domain-separated `ArtifactKind::OperationInput`
+digest; requires durable compatible storage; and claims the tuple before the
+benchmark gate and handler entry. Canonical JSON equivalence, not caller byte
+order, defines exact input equality.
+
+`Acquired` is the sole path allowed to benchmark, mutate, and create proof.
+`Completed` returns the stored canonical output and the original proof ID,
+body, and signature after structural operation/input/output-digest checks;
+the handler is not invoked and no evidence is minted. `Conflict` is a
+different input for the tuple, `InProgress` is a retryable busy conflict, and
+`Failed` is an indeterminate prior attempt. `Unsupported` and absent durable
+storage fail before handler entry. Benchmark, handler, and evidence failures
+never produce a completed replay and acquired claims are best-effort marked
+`failed`. A completion failure leaves the claim `claimed` and the tuple
+blocked; it is not transitioned to `failed`.
+
+`complete_execution_replay` atomically writes the execution context, proof,
+canonical output, serialized original proof, and completed ledger state. It
+validates the claimant/token, tuple, input digest, proof operation, actor,
+delegation/timestamp, and output digest. Equal completion retries are
+idempotent; a different completion is a storage conflict. Domain mutation is
+outside this transaction because the public handler boundary does not expose
+a shared transaction.
+
+Claims in `claimed` or `failed` state never expire, lease-steal, delete, or
+automatically re-execute. A crash can leave a claimed row after mutation;
+operators must reconcile the domain and then use a new UUIDv7 key. This is
+the fail-closed recovery policy approved by D-E0000-006.
 
 ## Agent Run Contracts
 
@@ -148,9 +247,24 @@ Located in `crates/proof-kernel/src/agent.rs` and implemented by
 | `HandlerFailed` | 500 |
 | `EvidenceFailed` | 500 |
 | `BenchmarkExpired` | 409 |
+| `Idempotency(MissingKey)` | 400 |
+| `Idempotency(InvalidUuidV7)` | 400 |
+| `Idempotency(Conflict)` | 409 |
+| `Idempotency(InProgress)` | 409 |
+| `Idempotency(Indeterminate)` | 409 |
+| `Idempotency(StorageRequired)` | 503 |
 | `StorageFailed` | 500 |
 
-Every new variant must be registered in this table AND mapped in `crates/proof-transport-http/src/lib.rs` (`execution_error_response`). Adding a variant without the HTTP mapping is an integration defect.
+`IdempotencyError` and the nested `ExecutionError::Idempotency(#[from]
+IdempotencyError)` are defined in `crates/proof-kernel/src/executor/error.rs`.
+The HTTP mapping is exhaustive in
+`crates/proof-transport-http/src/handlers/errors.rs` (`execution_error_response`):
+invalid input is 400, tuple conflict/in-progress/indeterminate is 409, and
+durable storage required is 503. Corruption, serialization, transaction, and
+other storage failures remain `StorageFailed`/500. WebSocket mapping is
+exhaustive in `crates/proof-transport-ws/src/lib.rs`: invalid input is
+`-32602`, conflict/in-progress/indeterminate is `-32006`, and storage/internal
+classes (including storage required) are `-32005`.
 
 ## ExecutionStore Trait
 
@@ -160,13 +274,16 @@ Implemented by `SqliteStore` (proof-storage) and `RecordingStore` (kernel test h
 |---|---|
 | `save_proof` | `(&self, &Proof) -> Result<(), String>` |
 | `save_execution_context` | `(&self, &ExecutionContext) -> Result<String, String>` |
-| `load_delegation` | `(&self, &Uuid) -> Result<Option<DelegationGrant>, String>` (default impl: `Ok(None)`) |
+| `load_delegation` | `(&self, &Uuid) -> Result<Option<Delegation>, String>` (default impl: `Ok(None)`) |
+| `claim_execution_replay` | `(&self, &ExecutionReplayClaim) -> Result<ExecutionReplayClaimResult, String>` (default: `Unsupported`) |
+| `complete_execution_replay` | `(&self, &ExecutionReplayClaim, &ExecutionContext, &ExecutionOutcome) -> Result<(), String>` (default: unsupported-store error) |
+| `fail_execution_replay` | `(&self, &ExecutionReplayClaim, DateTime<Utc>, &str) -> Result<(), String>` (default: unsupported-store error) |
 
 Adding a method must provide a default implementation so existing implementors keep compiling.
 
 ## SQLite Schema
 
-Migrations live in `crates/proof-storage/src/sqlite/migrations.rs`. Current version: **10**.
+Migrations live in `crates/proof-storage/src/sqlite/migrations.rs`. Current version: **11**.
 
 | Version | Contents |
 |---|---|
@@ -180,5 +297,22 @@ Migrations live in `crates/proof-storage/src/sqlite/migrations.rs`. Current vers
 | 8 | agent runs, attempts, checkpoints, and evaluations |
 | 9 | immutable agent definitions, append-only run events, and optional run-to-agent linkage |
 | 10 | unique single-use approval-request bindings for agent run steps |
+| 11 | exact execution replay ledger (`execution_replays`) |
+
+Migration 11 is appended (never edits an earlier migration), with description
+`create exact execution replay ledger`. Its `execution_replays` table is keyed
+by `(operation, version, idempotency_key)` and contains `input_digest`, state
+(`claimed`, `completed`, or `failed`), unique `claim_token`, claimant/time,
+completion/failure times and message, canonical `output_json`, unique
+`proof_id` plus duplicated immutable `proof_json`, and unique
+`execution_context_id` references. SQLite checks the 64-character digest,
+valid state, and mutually exclusive nullable columns for each state; an index
+on `(state, claimed_at)` supports inspection. UUIDv7 shape and digest
+correctness remain application validations. The completion transaction
+inserts context and proof and transitions the row atomically. The v10 upgrade
+creates an empty ledger; no historical executions are backfilled. The down
+migration drops only the replay index and table. Operational rollback requires
+quiescing writers, preserving/exporting the ledger, and reverting opted-in
+policy before returning to v10.
 
 New migrations append sequentially. Never edit, reorder, or duplicate existing migrations.

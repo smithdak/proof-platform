@@ -1,0 +1,223 @@
+{
+  "name": "content-v1-governed-walking-skeleton",
+  "cases": [
+    {
+      "id": "content-schema-create-v1",
+      "operation": "schema.create",
+      "version": "v1",
+      "domain": "content",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["schema.create"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "id": "0192f2af-47c8-7aaa-8aaa-000000000001",
+        "name": "Conformance Article",
+        "version": 1,
+        "fields": [
+          {
+            "name": "title",
+            "field_type": "text",
+            "required": true,
+            "localized": false,
+            "default_value": null
+          }
+        ],
+        "created_at": "2026-08-29T12:00:00Z"
+      },
+      "approval": "none",
+      "replay": "none",
+      "expected": [
+        {"pointer": "/data/name", "value": "Conformance Article"},
+        {"pointer": "/data/version", "value": 1}
+      ]
+    },
+    {
+      "id": "content-object-create-v1",
+      "operation": "object.create",
+      "version": "v1",
+      "domain": "content",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["object.create"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "schema": "$schema",
+        "locale": "en-US",
+        "content": {"title": "Original title"}
+      },
+      "approval": "none",
+      "replay": "none",
+      "expected": [
+        {"pointer": "/data/object/status", "value": "draft"},
+        {"pointer": "/data/object/content/title", "value": "Original title"}
+      ]
+    },
+    {
+      "id": "content-object-edit-v1",
+      "operation": "object.edit",
+      "version": "v1",
+      "domain": "content",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["object.edit"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "object_id": "$primary_object_id",
+        "edits": {"title": "Edited title"}
+      },
+      "approval": "none",
+      "replay": "none",
+      "expected": [
+        {"pointer": "/data/object/status", "value": "draft"},
+        {"pointer": "/data/object/content/title", "value": "Edited title"},
+        {"pointer": "/data/previous_revision", "value": 1}
+      ]
+    },
+    {
+      "id": "content-approve-v1",
+      "operation": "content.approve",
+      "version": "v1",
+      "domain": "content",
+      "governance": "human-only",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["content.approve"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "object_id": "$primary_object_id",
+        "notes": "Approve the conformance object"
+      },
+      "approval": "signed-human",
+      "replay": "none",
+      "expected": [
+        {"pointer": "/data/status", "value": "approved"},
+        {"pointer": "/data/object/status", "value": "approved"}
+      ]
+    },
+    {
+      "id": "content-changeset-commit-v1",
+      "operation": "changeset.commit",
+      "version": "v1",
+      "domain": "content",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["changeset.commit"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "notes": "Commit the conformance ChangeSet",
+        "changeset_id": "$changeset_id",
+        "idempotency_key": "$commit_key"
+      },
+      "approval": "none",
+      "replay": "exact-original",
+      "retry_input": {
+        "idempotency_key": "$commit_key",
+        "changeset_id": "$changeset_id",
+        "notes": "Commit the conformance ChangeSet"
+      },
+      "conflict_input": {
+        "idempotency_key": "$commit_key",
+        "changeset_id": "$changeset_id",
+        "notes": "Changed notes must conflict"
+      },
+      "expected": [
+        {"pointer": "/data/changeset/status", "value": "committed"},
+        {"pointer": "/data/objects_count", "value": 2}
+      ]
+    },
+    {
+      "id": "content-edition-create-v1",
+      "operation": "edition.create",
+      "version": "v1",
+      "domain": "content",
+      "governance": "agent-executable",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["edition.create"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "changeset_id": "$changeset_id",
+        "idempotency_key": "$edition_key"
+      },
+      "approval": "none",
+      "replay": "exact-original",
+      "retry_input": {
+        "idempotency_key": "$edition_key",
+        "changeset_id": "$changeset_id"
+      },
+      "conflict_input": {
+        "idempotency_key": "$edition_key",
+        "changeset_id": "$different_changeset_id"
+      },
+      "expected": [
+        {"pointer": "/data/edition/changeset_id", "value": "$changeset_id"}
+      ]
+    },
+    {
+      "id": "content-release-v1",
+      "operation": "content.release",
+      "version": "v1",
+      "domain": "content",
+      "governance": "human-only",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["content.release"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "object_id": "$committed_object_id",
+        "edition_id": "$edition_id",
+        "environment": "preview",
+        "notes": "Release the committed conformance object"
+      },
+      "approval": "signed-human",
+      "replay": "none",
+      "expected": [
+        {"pointer": "/data/status", "value": "published"},
+        {"pointer": "/data/object/status", "value": "published"},
+        {"pointer": "/data/release/edition_id", "value": "$edition_id"}
+      ]
+    },
+    {
+      "id": "content-release-publish-v1",
+      "operation": "release.publish",
+      "version": "v1",
+      "domain": "content",
+      "governance": "human-only",
+      "idempotency": "required-uuidv7",
+      "authority": {
+        "kind": "delegation-grant",
+        "allowed_operations": ["release.publish"],
+        "allowed_domains": ["content"]
+      },
+      "input": {
+        "environment": "preview",
+        "version_label": "AXP-E0000-conformance"
+      },
+      "approval": "signed-human",
+      "replay": "none",
+      "expected": [
+        {"pointer": "/data/version_label", "value": "AXP-E0000-conformance"},
+        {"pointer": "/data/release/environment", "value": "preview"}
+      ]
+    }
+  ]
+}

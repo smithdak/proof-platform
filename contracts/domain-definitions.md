@@ -20,21 +20,85 @@ Each domain has a definition block with:
 
 **Name:** `content`
 **Crate:** `proof-content`
-**Status:** complete
+**Status:** in-progress
 **Thesis:** Governed creation, editing, approval, and release of structured content objects with signed evidence for every transition.
 
 ### Operations
 
-| Operation | Governance | Consequence |
-|---|---|---|
-| `schema.create` | agent-executable | content-mutation |
-| `object.create` | agent-executable | content-mutation |
-| `object.edit` | agent-executable | content-mutation |
-| `content.approve` | human-only | content-approval |
-| `content.release` | human-only | content-release |
-| `changeset.commit` | agent-executable | content-mutation |
-| `release.publish` | human-only | content-release |
-| `edition.create` | agent-executable | content-mutation |
+The governed Content v1 registry is frozen at exactly these eight operations.
+Every row is active; `changeset.create` is not a governed operation.
+
+| Operation | Version | Status | Governance | Consequence |
+|---|---|---|---|---|
+| `schema.create` | `v1` | active | agent-executable | content-mutation |
+| `object.create` | `v1` | active | agent-executable | content-mutation |
+| `object.edit` | `v1` | active | agent-executable | content-mutation |
+| `content.approve` | `v1` | active | human-only | content-approval |
+| `content.release` | `v1` | active | human-only | content-release |
+| `changeset.commit` | `v1` | active | agent-executable | content-mutation |
+| `release.publish` | `v1` | active | human-only | content-release |
+| `edition.create` | `v1` | active | agent-executable | content-mutation |
+
+### Content v1 mutation contract
+
+`edition.create::v1` accepts an object with required UUIDv7
+`idempotency_key` and required UUID `changeset_id`. Its canonical output is:
+
+```json
+{
+  "operation": "edition.create",
+  "data": {
+    "edition": {
+      "id": "<uuid>",
+      "changeset_id": "<uuid>",
+      "objects": [],
+      "created_at": "<rfc3339 timestamp>",
+      "content_digest": "sha256:<hex>"
+    }
+  }
+}
+```
+
+`changeset.commit::v1` accepts an object with required UUIDv7
+`idempotency_key`, required UUID `changeset_id`, and optional string `notes`.
+Its canonical output is:
+
+```json
+{
+  "operation": "changeset.commit",
+  "data": {
+    "changeset": {
+      "id": "<uuid>",
+      "intent": "<string>",
+      "base_state_digest": "sha256:<hex>",
+      "edits": [],
+      "created_at": "<rfc3339 timestamp>",
+      "status": "committed"
+    },
+    "objects_count": 0
+  }
+}
+```
+
+For each operation version, the idempotency tuple is
+`(operation, version, idempotency_key)`. The UUIDv7 key is bound to the
+canonical JSON of the complete input, including the key itself. Repeating a
+completed call with the same tuple and byte-equivalent canonical input MUST
+return the original persisted output and signed proof without executing the
+mutation again. Reusing the tuple with different canonical input MUST fail as
+an idempotency conflict before mutation. Failed calls do not create a completed
+replay record.
+
+Content snapshot identifiers (`base_state_digest`, edition `content_digest`,
+and existing content-domain digest fields) remain algorithm-qualified SHA-256
+for v1 compatibility. Kernel proof input/output digests remain the canonical
+BLAKE3-256 `ContentDigest` values defined by `contracts/kernel-api.md`. Changing
+content snapshot identifiers requires a later, explicitly versioned contract.
+
+`changeset.create` may remain a local authoring helper that prepares a
+ChangeSet. It MUST NOT appear in the governed registry or eight-operation
+conformance surface and MUST NOT mint a Proof claiming an unregistered
+`changeset.create::v1` execution.
 
 ### Non-goals
 
@@ -48,6 +112,7 @@ Each domain has a definition block with:
 |---|---|---|---|
 | 1 | 2026-08-27 | Domain 1 scoped as Content Governance, 8-operation surface | Walking skeleton from architecture doc; first domain proves kernel generality |
 | 2 | 2026-08-28 | Wave 10 completes Domain 1: full registry coverage, handlers, HTTP, idempotency | Domain 1 is production-ready for the governance narrative |
+| 3 | 2026-08-29 | D-E0000-005 freezes exactly eight active v1 operations and the `edition.create` / `changeset.commit` replay and output contracts | The prior complete status overstated seven-handler implementation coverage; Gate B preserves names and SHA-256 snapshot compatibility while closing governed execution without adding `changeset.create` as operation nine. |
 
 ---
 

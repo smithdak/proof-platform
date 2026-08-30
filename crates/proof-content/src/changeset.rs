@@ -215,10 +215,22 @@ impl ChangeSet {
     }
 
     pub fn commit(
-        mut self,
+        self,
         schemas: &[SchemaDefinition],
         base_state: &mut BaseState,
     ) -> Result<BaseState, ContentError> {
+        self.commit_with_result(schemas, base_state)
+            .map(|(_, state)| state)
+    }
+
+    /// Commits the ChangeSet and returns the committed record with the next
+    /// object state. `commit` remains available for callers that only need the
+    /// resulting state.
+    pub fn commit_with_result(
+        mut self,
+        schemas: &[SchemaDefinition],
+        base_state: &mut BaseState,
+    ) -> Result<(Self, BaseState), ContentError> {
         self.validate(schemas, base_state)?;
         if self.status != ChangeSetStatus::Approved {
             return Err(ContentError::ChangesetNotApproved {
@@ -232,7 +244,7 @@ impl ChangeSet {
             Ok(next_state) => {
                 *base_state = next_state.clone();
                 self.status = ChangeSetStatus::Committed;
-                Ok(next_state)
+                Ok((self, next_state))
             }
             Err(error) => {
                 *base_state = candidate;

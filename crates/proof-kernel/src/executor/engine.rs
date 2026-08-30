@@ -1,9 +1,13 @@
 //! The ExecutionEngine implementation.
 
 use super::context::ExecutionContext;
-use super::error::ExecutionError;
-use super::store::{ExecutionStore, OperationHandler};
+use super::error::{ExecutionError, IdempotencyError};
+use super::store::{
+    ExecutionReplayClaim, ExecutionReplayClaimResult, ExecutionReplayKey, ExecutionStore,
+    IdempotencyPolicy, OperationHandler,
+};
 use crate::approval::ApprovalGrant;
+use crate::canonical::{canonicalize, digest, ArtifactKind};
 use crate::delegation::DelegationError;
 use crate::evidence::{Proof, ProofError};
 use crate::identity::{Principal, PrincipalId, PrincipalKind};
@@ -239,38 +243,103 @@ impl ExecutionEngine {
             chain.validate(context.actor, context.timestamp)?;
         }
 
+        let handler = self
+            .handlers
+            .get(operation)
+            .ok_or_else(|| ExecutionError::NoHandler(operation.to_string()))?;
+
+        let replay_claim = match handler.idempotency_policy() {
+            IdempotencyPolicy::None => None,
+            IdempotencyPolicy::RequiredUuidV7ExactReplay => {
+                let claim = self.execution_replay_claim(operation, version, input, context)?;
+                let storage = self
+                    .storage
+                    .as_ref()
+                    .ok_or(IdempotencyError::StorageRequired)?;
+                match storage
+                    .claim_execution_replay(&claim)
+                    .map_err(ExecutionError::StorageFailed)?
+                {
+                    ExecutionReplayClaimResult::Acquired => Some(claim),
+                    ExecutionReplayClaimResult::Completed(outcome) => {
+                        self.validate_replayed_outcome(&claim, &outcome)?;
+                        return Ok(InternalExecutionOutcome {
+                            output: outcome.output,
+                            proof: Some(outcome.proof),
+                        });
+                    }
+                    ExecutionReplayClaimResult::Conflict => {
+                        return Err(IdempotencyError::Conflict.into())
+                    }
+                    ExecutionReplayClaimResult::InProgress => {
+                        return Err(IdempotencyError::InProgress.into())
+                    }
+                    ExecutionReplayClaimResult::Failed => {
+                        return Err(IdempotencyError::Indeterminate.into())
+                    }
+                    ExecutionReplayClaimResult::Unsupported => {
+                        return Err(IdempotencyError::StorageRequired.into())
+                    }
+                }
+            }
+        };
+
         if let Some(benchmark_id) = &entry.benchmark {
             if let Some(storage) = &self.storage {
-                let latest_proof = storage
-                    .latest_proof_for_operation(operation, version)
-                    .map_err(ExecutionError::StorageFailed)?;
+                let latest_proof = match storage.latest_proof_for_operation(operation, version) {
+                    Ok(proof) => proof,
+                    Err(error) => {
+                        let error = ExecutionError::StorageFailed(error);
+                        return Err(self.fail_acquired_claim(
+                            replay_claim.as_ref(),
+                            context.timestamp,
+                            error,
+                        ));
+                    }
+                };
                 if latest_proof
                     .as_ref()
                     .is_some_and(|proof| proof.is_expired(context.timestamp))
                 {
-                    return Err(ExecutionError::BenchmarkExpired {
+                    let error = ExecutionError::BenchmarkExpired {
                         benchmark: benchmark_id.clone(),
                         proof_id: latest_proof
                             .expect("expired proof checked above")
                             .body
                             .id
                             .to_string(),
-                    });
+                    };
+                    return Err(self.fail_acquired_claim(
+                        replay_claim.as_ref(),
+                        context.timestamp,
+                        error,
+                    ));
                 }
             }
         }
 
-        let handler = self
-            .handlers
-            .get(operation)
-            .ok_or_else(|| ExecutionError::NoHandler(operation.to_string()))?;
-
-        let output = handler.execute(input, context)?;
-        let proof = if evidence_required || self.storage.is_some() {
-            Some(
-                self.create_operation_proof(operation, version, input, &output, context)
-                    .map_err(|error| ExecutionError::EvidenceFailed(error.to_string()))?,
-            )
+        let output = match handler.execute(input, context) {
+            Ok(output) => output,
+            Err(error) => {
+                return Err(self.fail_acquired_claim(
+                    replay_claim.as_ref(),
+                    context.timestamp,
+                    error,
+                ))
+            }
+        };
+        let proof = if evidence_required || self.storage.is_some() || replay_claim.is_some() {
+            match self.create_operation_proof(operation, version, input, &output, context) {
+                Ok(proof) => Some(proof),
+                Err(error) => {
+                    let error = ExecutionError::EvidenceFailed(error.to_string());
+                    return Err(self.fail_acquired_claim(
+                        replay_claim.as_ref(),
+                        context.timestamp,
+                        error,
+                    ));
+                }
+            }
         } else {
             None
         };
@@ -279,7 +348,20 @@ impl ExecutionEngine {
             operation_span.set_proof_id(proof.body.id.to_string());
         }
 
-        if let Some(storage) = &self.storage {
+        if let Some(claim) = replay_claim.as_ref() {
+            let outcome = ExecutionOutcome {
+                output: output.clone(),
+                proof: proof
+                    .as_ref()
+                    .expect("exact replay always creates a proof")
+                    .clone(),
+            };
+            self.storage
+                .as_ref()
+                .expect("exact replay requires storage")
+                .complete_execution_replay(claim, context, &outcome)
+                .map_err(ExecutionError::StorageFailed)?;
+        } else if let Some(storage) = &self.storage {
             storage
                 .save_execution_context(context)
                 .map_err(ExecutionError::StorageFailed)?;
@@ -289,6 +371,88 @@ impl ExecutionEngine {
         }
 
         Ok(InternalExecutionOutcome { output, proof })
+    }
+
+    fn execution_replay_claim(
+        &self,
+        operation: &str,
+        version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+    ) -> Result<ExecutionReplayClaim, ExecutionError> {
+        let idempotency_key = input
+            .get("idempotency_key")
+            .ok_or(IdempotencyError::MissingKey)?
+            .as_str()
+            .ok_or(IdempotencyError::InvalidUuidV7)?;
+        let idempotency_key =
+            Uuid::parse_str(idempotency_key).map_err(|_| IdempotencyError::InvalidUuidV7)?;
+        if idempotency_key.get_version_num() != 7 {
+            return Err(IdempotencyError::InvalidUuidV7.into());
+        }
+        let input = canonicalize(input)
+            .map_err(|error| ExecutionError::EvidenceFailed(error.to_string()))?;
+        Ok(ExecutionReplayClaim {
+            key: ExecutionReplayKey {
+                operation: operation.to_string(),
+                version: version.to_string(),
+                idempotency_key,
+            },
+            input_digest: digest(ArtifactKind::OperationInput, &input),
+            claim_token: Uuid::now_v7(),
+            claimed_by: context.actor,
+            claimed_at: context.timestamp,
+        })
+    }
+
+    fn validate_replayed_outcome(
+        &self,
+        claim: &ExecutionReplayClaim,
+        outcome: &ExecutionOutcome,
+    ) -> Result<(), ExecutionError> {
+        let expected_operation = format!("{}::{}", claim.key.operation, claim.key.version);
+        if outcome.proof.body.operation != expected_operation {
+            return Err(ExecutionError::StorageFailed(
+                "stored replay proof operation does not match the claim".to_string(),
+            ));
+        }
+        if outcome.proof.body.input_digest != claim.input_digest {
+            return Err(ExecutionError::StorageFailed(
+                "stored replay proof input digest does not match the claim".to_string(),
+            ));
+        }
+        let output = canonicalize(&outcome.output).map_err(|_| {
+            ExecutionError::StorageFailed(
+                "stored replay output could not be canonicalized".to_string(),
+            )
+        })?;
+        if outcome.proof.body.output_digest != digest(ArtifactKind::OperationOutput, &output) {
+            return Err(ExecutionError::StorageFailed(
+                "stored replay proof output digest does not match the output".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn fail_acquired_claim(
+        &self,
+        claim: Option<&ExecutionReplayClaim>,
+        failed_at: DateTime<Utc>,
+        error: ExecutionError,
+    ) -> ExecutionError {
+        let Some(claim) = claim else {
+            return error;
+        };
+        let storage = self
+            .storage
+            .as_ref()
+            .expect("an acquired replay claim always has storage");
+        match storage.fail_execution_replay(claim, failed_at, &error.to_string()) {
+            Ok(()) => error,
+            Err(failure) => ExecutionError::StorageFailed(format!(
+                "failed to record indeterminate execution after {error}: {failure}"
+            )),
+        }
     }
 
     pub(crate) fn create_operation_proof(

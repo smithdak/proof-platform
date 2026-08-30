@@ -17,6 +17,9 @@ pub mod commerce;
 pub mod commerce_tests;
 mod methods;
 mod migrations;
+mod replay;
+#[cfg(test)]
+mod replay_tests;
 mod store;
 #[cfg(test)]
 pub mod tests;

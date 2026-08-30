@@ -1,7 +1,7 @@
 # Proof Platform: Foundational Architecture
 
-**Status:** Draft — project-owner review required
-**Date:** 2026-08-27
+**Status:** Active — aligned to the owner-approved AXP contract and E0000 freeze
+**Date:** 2026-08-29
 **Supersedes:** Proof CMS implementation (archived as reference)
 
 ## What Proof is
@@ -36,8 +36,8 @@ those two experiences before adding more domain breadth.
 ├──────────────────────────────────────────────────────────┤
 │ Agent Runtime: models · tools · budgets · durable runs     │
 ├─────────────┬─────────────┬─────────────┬───────────────┤
-│   Content   │  Analytics  │  Commerce   │   Workflow    │
-│  Governance │  & Insight  │  & Orders   │  & Approvals  │
+│   Content   │  Commerce   │  Workflow   │   Analytics   │
+│  Governance │  & Orders   │ & Approvals │   & Insight   │
 │  (domain 1) │  (domain 2) │  (domain 3) │   (domain 4)  │
 ├─────────────┴─────────────┴─────────────┴───────────────┤
 │              Evidence & Audit Kernel                      │
@@ -74,8 +74,8 @@ operation means adding a JSON row. The runtime discovers capabilities at startup
   "version": "v1",
   "action": "content:object_create",
   "description": "Create one immutable Object with typed fields",
-  "input_schema": "content/operations/object-create.input.json",
-  "output_schema": "content/operations/object-create.output.json",
+  "input_schema": "content/object-create.input.json",
+  "output_schema": "content/object-create.output.json",
   "required_authority": "delegation-grant",
   "governance": "agent-executable",
   "idempotency": "required-uuidv7",
@@ -85,9 +85,22 @@ operation means adding a JSON row. The runtime discovers capabilities at startup
 }
 ```
 
-Registry entries are versioned. Old entries are never removed — they are
-deprecated. The runtime loads the registry from disk, discovers all available
-operations, and generates the HTTP, MCP, and CLI surfaces automatically.
+Registry entries are versioned. Omitted lifecycle status means `active`; old
+entries are retained and may transition to `deprecated` and then `sunset`. The
+root `registry/` tree is the distributable source of operation metadata and
+schemas. The runtime loads registry data from disk for discovery and policy.
+Each peer transport derives its exposed schema and annotations from that data
+and routes execution through the same kernel engine; transport adapters still
+own their protocol wiring and tests.
+
+The Content v1 registry is frozen at exactly eight active operations:
+`schema.create`, `object.create`, `object.edit`, `content.approve`,
+`content.release`, `changeset.commit`, `release.publish`, and `edition.create`.
+Their versions, governance, consequences, and operation-specific wire contracts
+are canonical in `contracts/domain-definitions.md`. In particular,
+`content.approve` has consequence `content-approval`. `changeset.create` is only
+a local authoring helper: it is not registered, does not expand conformance to a
+ninth operation, and does not produce governed proof.
 
 ### Evidence & Audit Kernel
 
@@ -101,7 +114,7 @@ operations, and generates the HTTP, MCP, and CLI surfaces automatically.
 
 ### Domain Modules
 
-Each domain (content, analytics, commerce, workflow) is a self-contained module
+Each domain (content, commerce, workflow, analytics) is a self-contained module
 that:
 
 1. Registers its operations in the shared registry
@@ -203,9 +216,10 @@ These constraints are non-negotiable. Any change that violates one is rejected.
 
 ### D1. Registry is data, not code
 
-Operations are defined in JSON manifests. Adding an operation never requires
-recompilation of the kernel. Domain modules register at startup by reading
-their manifest files.
+Operations are described in JSON manifests rather than a kernel enum. Adding an
+operation does not require recompiling the kernel, but its owning domain and
+transport adapters still need compatible handlers and protocol wiring. Domain
+modules register handlers against operations discovered from registry data.
 
 ### D2. Evidence is structural, not optional
 
@@ -229,15 +243,25 @@ do not patch the kernel, bypass the evidence pipeline, or add private paths.
 
 ### D6. Idempotency is required for mutations
 
-Every mutating operation requires an idempotency key. Retrying a completed
-mutation with the same key returns the original result. Retrying with a
-different key or input fails explicitly.
+Every mutating operation requires a contract-defined idempotency key. For
+`edition.create::v1` and `changeset.commit::v1`, the input field is the required
+UUIDv7 `idempotency_key`, scoped by operation and version and bound to the
+canonical complete input. Retrying a completed mutation with the same key and
+canonical input returns the original persisted output and signed proof without
+executing again. Reusing the same scoped key with different canonical input
+fails before mutation. The exact v1 inputs and `{operation,data}` outputs are
+defined in `contracts/domain-definitions.md`.
 
 ### D7. Canonical JSON is the wire format
 
-All structured data uses RFC 8785 canonical JSON. Digests are
-algorithm-qualified (BLAKE3-256). This ensures byte-identical serialization
-across all transports and implementations.
+All structured wire data uses RFC 8785 canonical JSON. Kernel evidence digests,
+including signed Proof input and output digests, are algorithm-qualified
+BLAKE3-256 values. Content-domain snapshot identifiers remain
+algorithm-qualified SHA-256 for v1 compatibility; this includes ChangeSet base
+state digests and Edition content digests. Migrating those identifiers requires
+a later, explicitly versioned contract. These rules ensure byte-identical
+evidence serialization across transports without silently changing existing
+content identities.
 
 ### D8. Storage is pluggable
 
@@ -301,7 +325,9 @@ A capability that cannot meet its benchmark does not close.
 
 ## Walking skeleton (first milestone)
 
-The smallest working system that proves every layer:
+The smallest working system that proves every layer. A local
+`changeset.create` helper may prepare the ChangeSet used by step 4, but it is
+not a governed registry operation and produces no governed Proof:
 
 1. `proof init` — initialize a Workspace with embedded SQLite
 2. `proof schema create` — define a content Schema
@@ -311,8 +337,10 @@ The smallest working system that proves every layer:
 6. `proof release publish` — release to an Environment
 7. `proof verify` — independently verify the Release evidence
 
-Every step produces a signed Proof. The entire loop runs from a single binary
-with zero external dependencies. MCP tools are auto-generated from the registry.
+Every governed operation in the loop produces a signed Proof. The entire loop
+runs from a single binary with zero external dependencies. Peer transports
+derive operation discovery and schemas from the registry and execute through
+the same kernel path.
 
 ## What we leave behind
 

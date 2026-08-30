@@ -1458,6 +1458,7 @@ name = "proof-agent-runtime"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "ed25519-dalek",
  "jsonschema",
  "proof-kernel",
  "reqwest",
@@ -1505,9 +1506,11 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "jsonschema",
+ "proof-content",
  "proof-kernel",
  "serde",
  "serde_json",
+ "tempfile",
  "uuid",
 ]
 
@@ -1616,6 +1619,7 @@ dependencies = [
  "bytes",
  "chrono",
  "http-body-util",
+ "proof-content",
  "proof-kernel",
  "proof-storage",
  "rusqlite",
@@ -1657,10 +1661,12 @@ dependencies = [
  "chrono",
  "futures-util",
  "http-body-util",
+ "proof-content",
  "proof-kernel",
  "proof-storage",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
  "tower",

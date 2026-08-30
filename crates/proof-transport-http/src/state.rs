@@ -588,7 +588,12 @@ impl AppState {
         store: SqliteStore,
     ) -> Self {
         let shared_store = Arc::new(store);
-        let mut engine = ExecutionEngine::new(registry);
+        let keypair = generate_keypair();
+        let mut engine = ExecutionEngine::new_with_keypair(registry, keypair.clone())
+            .with_storage(shared_store.clone());
+        for handler in proof_content::content_handlers() {
+            engine.register_handler(handler);
+        }
         for operation in [
             "catalog.create",
             "catalog.update",
@@ -627,7 +632,7 @@ impl AppState {
             workspace_path: workspace_path.into(),
             version: "0.1.0".to_string(),
             engine: Arc::new(RwLock::new(engine)),
-            keypair: generate_keypair(),
+            keypair,
             store: shared_store,
         }
     }

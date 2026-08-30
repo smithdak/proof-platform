@@ -1,21 +1,66 @@
 #!/usr/bin/env bash
-# Run tests for a crate and its dependents only. Usage: scripts/test-scoped.sh <crate-name>
+# Test one changed workspace package plus every reverse transitive workspace
+# dependent. Usage: scripts/test-scoped.sh <package> [--list]
 set -euo pipefail
 
-crate="${1:?usage: test-scoped.sh <crate-name>}"
+package="${1:-}"
+mode="${2:-}"
 
-case "$crate" in
-  proof-kernel)        packages="-p proof-kernel" ;;
-  proof-content)       packages="-p proof-content -p proof-transport-http -p proof-transport-mcp -p proof-transport-cli" ;;
-  proof-commerce)      packages="-p proof-commerce" ;;
-  proof-workflow)      packages="-p proof-workflow" ;;
-  proof-analytics)     packages="-p proof-analytics" ;;
-  proof-storage)       packages="-p proof-storage -p proof-kernel -p proof-transport-http -p proof-transport-cli" ;;
-  proof-transport-http) packages="-p proof-transport-http" ;;
-  proof-transport-mcp) packages="-p proof-transport-mcp" ;;
-  proof-transport-cli) packages="-p proof-transport-cli" ;;
-  *) echo "unknown crate: $crate" >&2; exit 1 ;;
-esac
+if [[ -z "$package" || ( -n "$mode" && "$mode" != "--list" ) ]]; then
+  echo "usage: scripts/test-scoped.sh <package> [--list]" >&2
+  exit 2
+fi
 
-echo "==> testing: $packages"
-rtk cargo test $packages
+workspace_packages=()
+declare -A workspace_set=()
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  candidate="${line%% *}"
+  workspace_packages+=("$candidate")
+  workspace_set["$candidate"]=1
+done < <(
+  rtk cargo tree --workspace --depth 0 --prefix none
+)
+
+if [[ -z "${workspace_set[$package]:-}" ]]; then
+  echo "unknown workspace package: $package" >&2
+  exit 2
+fi
+
+declare -A impacted=()
+while IFS= read -r line; do
+  candidate="${line%% *}"
+  if [[ -n "${workspace_set[$candidate]:-}" ]]; then
+    impacted["$candidate"]=1
+  fi
+done < <(
+  rtk cargo tree \
+    --workspace \
+    --invert "$package" \
+    --prefix none \
+    --edges normal,build,dev \
+    --all-features
+)
+
+selected=()
+package_args=()
+for candidate in "${workspace_packages[@]}"; do
+  if [[ -n "${impacted[$candidate]:-}" ]]; then
+    selected+=("$candidate")
+    package_args+=("-p" "$candidate")
+  fi
+done
+
+if [[ ${#selected[@]} -eq 0 ]]; then
+  echo "cargo did not return an impact set for: $package" >&2
+  exit 1
+fi
+
+echo "changed package: $package"
+echo "impacted packages (${#selected[@]}): ${selected[*]}"
+
+if [[ "$mode" == "--list" ]]; then
+  exit 0
+fi
+
+rtk cargo test "${package_args[@]}"

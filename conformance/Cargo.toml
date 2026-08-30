@@ -12,3 +12,7 @@ serde_json.workspace = true
 jsonschema.workspace = true
 uuid.workspace = true
 proof-kernel = { path = "../crates/proof-kernel" }
+
+[dev-dependencies]
+proof-content = { path = "../crates/proof-content" }
+tempfile = "3"

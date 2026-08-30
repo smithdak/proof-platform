@@ -1,10 +1,9 @@
 use proof_kernel::{
-    ExecutionContext, ExecutionEngine, ExecutionError, Governance, PrincipalId, Registry,
-    RegistryEntry,
+    ExecutionContext, ExecutionEngine, ExecutionError, Governance, Registry, RegistryEntry,
 };
 use proof_transport_mcp::{
-    handle_tool_call, list_tools, tool_annotations, tools_from_registry, McpCursorError,
-    McpToolAnnotations, McpToolCall,
+    handle_tool_call_with_keypair, list_tools, tool_annotations, tools_from_registry,
+    McpCursorError, McpToolAnnotations, McpToolCall,
 };
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -269,31 +268,41 @@ fn registry_entries() -> Vec<RegistryEntry> {
     ]
 }
 
-fn engine() -> ExecutionEngine {
+fn engine() -> (ExecutionEngine, proof_kernel::Keypair) {
     let registry = Registry::new(registry_entries()).unwrap();
-    let mut engine = ExecutionEngine::new(registry.clone());
+    let keypair = proof_kernel::generate_keypair();
+    let mut engine = ExecutionEngine::new_with_keypair(registry.clone(), keypair.clone());
     engine.register_handler(Arc::new(EchoHandler {
         operation: "test.echo".to_string(),
     }));
-    engine
+    (engine, keypair)
 }
 
-fn commerce_engine(workspace_path: &Path) -> (ExecutionEngine, Registry, String, String) {
+fn commerce_engine(
+    workspace_path: &Path,
+) -> (
+    ExecutionEngine,
+    Registry,
+    String,
+    String,
+    proof_kernel::Keypair,
+) {
     let mut entries = registry_entries();
     entries.extend(commerce_registry_entries());
     let registry = Registry::new(entries).unwrap();
-    let mut engine = ExecutionEngine::new(registry.clone());
+    let keypair = proof_kernel::generate_keypair();
+    let mut engine = ExecutionEngine::new_with_keypair(registry.clone(), keypair.clone());
     engine.register_handler(Arc::new(EchoHandler {
         operation: "test.echo".to_string(),
     }));
     engine.register_handler(Arc::new(CatalogCreateHandler));
-    let catalog = handle_tool_call(
+    let catalog = handle_tool_call_with_keypair(
         &call(
             "proof_commerce_v1_catalog_create",
             json!({"name": "Default catalog"}),
         ),
         &engine,
-        PrincipalId::now(),
+        &keypair,
         workspace_path.to_path_buf(),
     );
     assert!(!catalog.is_error, "{}", catalog.content[0].text);
@@ -304,13 +313,13 @@ fn commerce_engine(workspace_path: &Path) -> (ExecutionEngine, Registry, String,
     engine.register_handler(Arc::new(OrderCreateHandler {
         catalog_id: catalog_id.clone(),
     }));
-    let order = handle_tool_call(
+    let order = handle_tool_call_with_keypair(
         &call(
             "proof_commerce_v1_order_create",
             json!({"lines": [{"catalog_id": catalog_id, "name": "catalog", "quantity": 1}]}),
         ),
         &engine,
-        PrincipalId::now(),
+        &keypair,
         workspace_path.to_path_buf(),
     );
     assert!(!order.is_error, "{}", order.content[0].text);
@@ -319,7 +328,7 @@ fn commerce_engine(workspace_path: &Path) -> (ExecutionEngine, Registry, String,
         .unwrap()
         .to_string();
     engine.register_handler(Arc::new(OrderApproveHandler));
-    (engine, registry, catalog_id, order_id)
+    (engine, registry, catalog_id, order_id, keypair)
 }
 
 fn commerce_registry_entries() -> Vec<RegistryEntry> {
@@ -407,11 +416,11 @@ fn generated_tools_match_registry_schemas() {
 
 #[test]
 fn agent_executable_tool_succeeds_through_mcp_flow() {
-    let engine = engine();
-    let result = handle_tool_call(
+    let (engine, keypair) = engine();
+    let result = handle_tool_call_with_keypair(
         &call("proof_content_v1_test_echo", json!({"message": "hello"})),
         &engine,
-        PrincipalId::now(),
+        &keypair,
         PathBuf::from("/tmp/proof-mcp-test"),
     );
 
@@ -555,15 +564,15 @@ fn commerce_lifecycle_is_executable_and_approval_is_human_only() {
         "proof-mcp-commerce-{}",
         uuid::Uuid::now_v7().simple()
     ));
-    let (engine, registry, _catalog_id, order_id) = commerce_engine(&workspace_path);
+    let (engine, registry, _catalog_id, order_id, keypair) = commerce_engine(&workspace_path);
 
-    let approval = handle_tool_call(
+    let approval = handle_tool_call_with_keypair(
         &call(
             "proof_commerce_v1_order_approve",
             json!({"order_id": order_id}),
         ),
         &engine,
-        PrincipalId::now(),
+        &keypair,
         workspace_path.clone(),
     );
     assert!(approval.is_error);
@@ -585,11 +594,11 @@ fn commerce_lifecycle_is_executable_and_approval_is_human_only() {
 
 #[test]
 fn mcp_rejects_human_only_tool_before_handler_dispatch() {
-    let engine = engine();
-    let result = handle_tool_call(
+    let (engine, keypair) = engine();
+    let result = handle_tool_call_with_keypair(
         &call("proof_content_v1_test_human_only", json!({"confirm": true})),
         &engine,
-        PrincipalId::now(),
+        &keypair,
         PathBuf::from("/tmp/proof-mcp-test"),
     );
 
@@ -602,22 +611,22 @@ fn mcp_rejects_human_only_tool_before_handler_dispatch() {
 
 #[test]
 fn mcp_validates_input_and_output_against_registry_schemas() {
-    let base_engine = engine();
-    let invalid_input = handle_tool_call(
+    let (base_engine, base_keypair) = engine();
+    let invalid_input = handle_tool_call_with_keypair(
         &call("proof_content_v1_test_echo", json!({"message": ""})),
         &base_engine,
-        PrincipalId::now(),
+        &base_keypair,
         PathBuf::from("/tmp/proof-mcp-test"),
     );
     assert!(invalid_input.is_error);
     assert!(invalid_input.content[0].text.contains("Invalid input"));
 
-    let mut invalid_engine = engine();
+    let (mut invalid_engine, invalid_keypair) = engine();
     invalid_engine.register_handler(Arc::new(BadOutputHandler));
-    let invalid_output = handle_tool_call(
+    let invalid_output = handle_tool_call_with_keypair(
         &call("proof_content_v1_test_echo", json!({"message": "hello"})),
         &invalid_engine,
-        PrincipalId::now(),
+        &invalid_keypair,
         PathBuf::from("/tmp/proof-mcp-test"),
     );
     assert!(invalid_output.is_error);
@@ -626,11 +635,11 @@ fn mcp_validates_input_and_output_against_registry_schemas() {
 
 #[test]
 fn mcp_rejects_unknown_tool() {
-    let engine = engine();
-    let result = handle_tool_call(
+    let (engine, keypair) = engine();
+    let result = handle_tool_call_with_keypair(
         &call("proof_content_v1_missing", json!({})),
         &engine,
-        PrincipalId::now(),
+        &keypair,
         PathBuf::from("/tmp/proof-mcp-test"),
     );
 

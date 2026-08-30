@@ -1,0 +1,117 @@
+# AXP Edition Backlog
+
+This is the ranked, assignable backlog for the Agent Experience Platform (AXP).
+An edition is a product outcome with a fixed acceptance policy, not a loose
+collection of code tasks. Only one edition has active writers at a time. Each
+edition is executed by one orchestrator plus at most three concurrent workers;
+the orchestrator owns integration, root files, contracts, and release gates.
+
+## Assignment contract
+
+Every assignment must name one owner, exclusive paths, dependencies, a bounded
+budget, and an evidence-producing acceptance check. Workers do not commit,
+push, or edit another owner's paths. Shared/root paths, migrations, public
+contracts, security, and integration are orchestrator-owned unless explicitly
+assigned to one worker for the whole wave. Recommended tiers are
+`gpt-5.6-luna` for bounded read-only or mechanical work, `gpt-5.6-terra` for
+normal implementation, and `gpt-5.6-sol` only for contracts, security, or
+cross-crate integration.
+
+E0000 has frozen task packets and may be dispatched after Gate A. E0001-E0005
+rows are ranked candidates: a low-cost discovery worker expands them into an
+owner-approved charter, assignments, and exact task packets before any writer
+starts.
+
+## Ranked editions
+
+### AXP-E0000 — One Product Truth
+
+**Outcome:** A repeatable, auditable swarm can ship the complete walking
+skeleton with tracked planning records, reconciled contracts, automated test
+impact, safe repository hygiene, and deterministic release-manager evidence.
+
+**Exit evidence:** approved security-remediation record; tracked edition
+artifacts; reverse-dependency scoped-test report; reconciled domain and kernel
+contract diff; governed `edition.create` and `changeset.commit` conformance;
+deterministic release-manager evaluation; owner sign-off.
+
+| ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0000-01 | Establish edition records and wave status protocol | none | `editions/AXP-E0000/**` | Eight required artifacts are tracked and status schema is complete | low | `gpt-5.6-luna` |
+| E0000-02 | Remediate tracked `.proof` key/config/database exposure without deleting files; rotate or quarantine only with owner approval | E0000-01 | `.gitignore`, `.proof/**` (security owner) | Owner decision, permissions/secret scan, and recovery note; files remain present | critical | `gpt-5.6-sol` |
+| E0000-03 | Make swarm launcher ownership-aware and emit handoff/evidence status | E0000-01 | `scripts/swarm.sh` | Dry-run shows root + three-worker assignment, rejects overlap, emits status | medium | `gpt-5.6-terra` |
+| E0000-04 | Replace scoped-test map with reverse dependency impact automation | E0000-01 | `scripts/test-scoped.sh` | Cargo-graph report proves changed package plus dependents are selected | medium | `gpt-5.6-terra` |
+| E0000-05 | Reconcile architecture, kernel API, domain definitions, registry, and implementation drift | E0000-01 | `contracts/**`, `ARCHITECTURE.md` (contract owner) | Decision log and zero unexplained operation/name/status mismatches | high | `gpt-5.6-sol` |
+| E0000-13 | Design shared exact-output/proof replay and its storage migration | E0000-05 | read-only kernel/storage; unique handoff | API/migration, atomicity, conflict, recovery, and test plan ready for Gate B | critical | `gpt-5.6-sol` |
+| E0000-14 | Implement approved execution replay API and engine policy | E0000-13 | `crates/proof-kernel/**` | Same key/input returns the original proof; conflicts fail before handler entry | critical | `gpt-5.6-sol` |
+| E0000-16 | Implement migration 11 and SQLite replay ledger | E0000-13 | `crates/proof-storage/**` | Claim/complete/fail concurrency and migration round trips pass | critical | `gpt-5.6-sol` |
+| E0000-15 | Map idempotency errors in HTTP and WebSocket peers | E0000-13 | HTTP/WS transport crates | Exhaustive mappings and transport tests cover 400/409/503 behavior | high | `gpt-5.6-luna` |
+| E0000-18 | Reconcile the canonical kernel contract with approved replay API and migration 11 | E0000-14,15,16 | `contracts/kernel-api.md` | Public shapes, mappings, paths, and schema version match the approved implementation | medium | `gpt-5.6-luna` |
+| E0000-06 | Implement governed `edition.create` and finish `changeset.commit` in the content/registry layer | E0000-14,15,16,18 | `crates/proof-content/**`, `registry/content/**`, `schemas/content/**` | Registry, handler, proof, idempotency, and content tests pass | high | `gpt-5.6-terra` |
+| E0000-10 | Route the two operations through the CLI without a legacy bypass | E0000-06 | `crates/proof-transport-cli/**` | CLI tests prove engine dispatch and persisted evidence | high | `gpt-5.6-terra` |
+| E0000-11 | Verify HTTP peer behavior for the two operations | E0000-06 | `crates/proof-transport-http/**` | Tower tests cover discovery, execution, errors, and proof output | high | `gpt-5.6-terra` |
+| E0000-12 | Verify MCP peer behavior for the two operations | E0000-06 | `crates/proof-transport-mcp/**` | MCP tests cover registry-derived tools, execution, and evidence | high | `gpt-5.6-terra` |
+| E0000-17 | Verify WebSocket peer behavior and original-proof replay for the two operations | E0000-06 | `crates/proof-transport-ws/**` | WS tests cover discovery, execution, errors, and identical proof replay | high | `gpt-5.6-terra` |
+| E0000-07 | Add executable walking-skeleton conformance vectors for all eight content operations | E0000-10,11,12,17 | `conformance/**` | Clean run verifies operation/version, authority, proof, and replay invariants | high | `gpt-5.6-terra` |
+| E0000-08 | Harden deterministic Release Manager automation and publish its evaluation fixture | E0000-07 | `crates/proof-agent-runtime/**`, `docs/dogfood/**`, `evals/**` | Repeated run has identical trace digest, approval pause/resume, and 10/10 evaluation | medium | `gpt-5.6-terra` |
+| E0000-09 | Integrate, run scoped and quiescent workspace verification, and record owner release decision | E0000-02..08,10..18 | root manifests/release records (orchestrator) | Evidence index, risk disposition, full final gate, and dated owner approval | high | `gpt-5.6-sol` |
+
+### AXP-E0001 — One Live Agent Does Real Work
+
+**Outcome:** A real model completes a bounded release journey, pauses for
+signed human approval, resumes durably, and publishes a verified preview.
+
+| ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0001-01 | Define live release-manager contract and sealed evaluation policy | E0000 | `evals/**`, `contracts/**` | Versioned policy rejects unknown fields and binds trace digest | high | `gpt-5.6-sol` |
+| E0001-02 | Provider-backed model/tool continuation and failure recovery | E0001-01 | `crates/proof-agent-runtime/**` | Live run pauses, resumes same step, never blindly replays mutation | high | `gpt-5.6-terra` |
+| E0001-03 | Preview release adapter with safe side-effect boundary | E0001-01 | `crates/proof-content/**` release paths | Preview artifact and signed proof match requested version | high | `gpt-5.6-terra` |
+| E0001-04 | Live dogfood and independent verification | E0001-02,03 | `docs/dogfood/**` | Fresh workspace, approval chronology, proof verification, cost report | critical | `gpt-5.6-sol` |
+
+### AXP-E0002 — One Human Oversees Many Runs
+
+**Outcome:** An operator can inspect, approve, deny, revoke, resume, and audit
+multiple governed runs from one authenticated control plane.
+
+| ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0002-01 | Define operator run-list, approval, revocation, and audit contract | E0001 | `contracts/**`, `schemas/**` | Contract covers authority, pagination, and terminal states | high | `gpt-5.6-sol` |
+| E0002-02 | Add batch run/approval query APIs | E0002-01 | `crates/proof-transport-http/**` | Tower integration tests cover auth, filtering, and pagination | high | `gpt-5.6-terra` |
+| E0002-03 | Build operator console surfaces | E0002-01 | new operator-UI path reserved by the charter | Browser evidence shows pending, decision, and audit state | medium | `gpt-5.6-terra` |
+| E0002-04 | Cross-run budget, revoke, and audit verification | E0002-02,03 | `crates/proof-agent-runtime/**`, `evals/**` | Concurrent runs stop on revoke and retain append-only evidence | critical | `gpt-5.6-sol` |
+
+### AXP-E0003 — Governed Agent Teams
+
+**Outcome:** A parent run can safely fan out work to bounded child agents,
+aggregate budgets/evidence, cancel work, and evaluate the task tree.
+
+| ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0003-01 | Specify parent/child run and work-item DAG contract | E0002 | `contracts/**` | Versioned topology, delegation, lease, and cancellation rules | critical | `gpt-5.6-sol` |
+| E0003-02 | Persist child-run topology, leases, and narrowed delegation contracts | E0003-01 | `crates/proof-kernel/**`, `crates/proof-storage/**` in dependency-ordered waves | Storage and authority tests bind parent, child, lease, and delegation | critical | `gpt-5.6-sol` |
+| E0003-03 | Runtime coordination, heartbeats, aggregate limits, and crash recovery | E0003-02 | `crates/proof-agent-runtime/**` | Restart/reclaim tests show no duplicate mutation and enforce tree budgets | critical | `gpt-5.6-terra` |
+| E0003-04 | Task-tree evaluation and swarm operator view | E0003-03 | `evals/**` plus the charter-reserved operator-UI path | Sealed evaluation catches missing/late/unauthorized child evidence | high | `gpt-5.6-terra` |
+
+### AXP-E0004 — Production Workspaces
+
+**Outcome:** AXP supports durable, recoverable, observable multi-tenant
+workspaces with production storage and key handling.
+
+| ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0004-01 | PostgreSQL storage parity and migration discipline | E0003 | `crates/proof-storage/**` | Round-trip and migration tests pass against PostgreSQL | critical | `gpt-5.6-terra` |
+| E0004-02 | Workspace auth, isolation, and tenancy boundaries | E0004-01 | auth/transport paths | Cross-workspace access tests fail closed | critical | `gpt-5.6-sol` |
+| E0004-03 | Backup/restore, key rotation, secrets, and recovery runbook | E0004-01 | ops/docs/security paths | Restore drill verifies proofs and rotated identities | critical | `gpt-5.6-sol` |
+| E0004-04 | Observability, metering, SLOs, and failover | E0004-01,02 | `crates/proof-observability/**` | Load report, dashboards, and declared SLO evidence | high | `gpt-5.6-terra` |
+
+### AXP-E0005 — Extensible, High-Volume AXP
+
+**Outcome:** External builders can add registry operations through SDKs and
+run measured high-volume governed workloads without kernel modification.
+
+| ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0005-01 | Stable registry extension and validator contract | E0004 | `contracts/**`, registry tooling | Third-party operation loads without kernel enum/code change | high | `gpt-5.6-sol` |
+| E0005-02 | TypeScript and Python SDKs for discovery/execution/evidence | E0005-01 | SDK directories | SDK conformance runs match HTTP/MCP proofs | medium | `gpt-5.6-terra` |
+| E0005-03 | Batch approval and high-volume execution controls | E0003, E0004 | runtime/transport paths | 50K-object benchmark meets declared latency/error/budget targets | critical | `gpt-5.6-terra` |
+| E0005-04 | Ecosystem example connector and independent verifier | E0005-01,02 | examples/conformance paths | External package produces offline-verifiable proof | high | `gpt-5.6-terra` |

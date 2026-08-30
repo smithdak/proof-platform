@@ -159,6 +159,32 @@ fn changeset_commit_applies_create_update_and_delete_atomically() {
 }
 
 #[test]
+fn changeset_commit_with_result_preserves_committed_record() {
+    let (schema, mut state, existing) = base_state();
+    let mut changeset = ChangeSet::new(
+        "Delete article",
+        &state,
+        vec![ChangeSetEdit::ObjectDelete(ObjectDeleteEdit {
+            object_id: existing.id,
+            expected_revision: existing.revision,
+        })],
+    );
+    changeset
+        .transition_to(proof_content::ChangeSetStatus::Submitted)
+        .unwrap();
+    changeset
+        .transition_to(proof_content::ChangeSetStatus::Approved)
+        .unwrap();
+
+    let changeset_id = changeset.id;
+    let (committed, next_state) = changeset.commit_with_result(&[schema], &mut state).unwrap();
+    assert_eq!(committed.status, proof_content::ChangeSetStatus::Committed);
+    assert_eq!(committed.id, changeset_id);
+    assert!(next_state.is_empty());
+    assert!(state.is_empty());
+}
+
+#[test]
 fn changeset_validation_catches_every_invalid_edit() {
     let (schema, state, existing) = base_state();
     let duplicate = existing.clone();
