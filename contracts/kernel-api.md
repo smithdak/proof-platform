@@ -281,13 +281,10 @@ Implemented by `SqliteStore` (proof-storage) and `RecordingStore` (kernel test h
 
 Adding a method must provide a default implementation so existing implementors keep compiling.
 
-### PROPOSED AXP-E0001 version-aware handler methods (Gate B pending)
+### Version-aware handler methods (active; added by AXP-E0001)
 
-This subsection is not active kernel contract. `ExecutionEngine` currently
-selects handlers and `idempotency_policy()` by operation name, so two versions
-of one operation cannot safely select different replay behavior. If the owner
-approves AXP-E0001 Gate B B2, `OperationHandler` gains default-compatible
-version-aware hooks:
+`ExecutionEngine` selects handlers by operation name, so version-specific
+behavior uses these default-compatible `OperationHandler` hooks:
 
 ```rust
 fn idempotency_policy_for(&self, version: &str) -> IdempotencyPolicy {
@@ -306,8 +303,8 @@ fn execute_versioned(
 
 The engine calls these methods only after normal registry, authority,
 governance, lifecycle, and delegation checks. Existing implementations retain
-their exact behavior through the defaults. `release.publish` can then preserve
-v1's `None` policy while v2 selects `RequiredUuidV7ExactReplay`.
+their exact behavior through the defaults. `release.publish` preserves v1's
+`None` policy while v2 selects `RequiredUuidV7ExactReplay`.
 
 The E0001 live entry path additionally requires
 `ExecutionContext.delegation_id=Some(id)` and a matching chain. It loads that
@@ -317,16 +314,14 @@ row, default/`None`/wildcard/unbounded scope, or any scope other than exactly
 `allowed_domains=["content"]` before provider credential access. This is a
 journey-specific strictness rule; it does not narrow legacy engine callers.
 
-This proposal does not change a shared struct, error, proof, or approval. W2
-kernel `E0001-06` and storage `E0001-07` are prerequisites for W3
-E0001-02/E0001-03. W4 CLI `E0001-08` instead depends on W3 plus W2 and consumes
-the runtime seam; it is not a W3 prerequisite. Nothing here is approved merely
-because it is documented.
+This addition did not change a shared struct, error, proof, or approval.
+AXP-E0001 Gate B approved it, E0001-06 implemented it, and the compatibility
+tests require legacy handlers to retain the default operation-wide behavior.
 
 ## SQLite Schema
 
 Migrations live in `crates/proof-storage/src/sqlite/migrations.rs`. Current
-active version: **11**.
+active version: **12**.
 
 | Version | Contents |
 |---|---|
@@ -341,17 +336,17 @@ active version: **11**.
 | 9 | immutable agent definitions, append-only run events, and optional run-to-agent linkage |
 | 10 | unique single-use approval-request bindings for agent run steps |
 | 11 | exact execution replay ledger (`execution_replays`) |
+| 12 | strict structured delegation scope persistence (`delegations.scope_json`) |
 
-### PROPOSED AXP-E0001 SQLite v12 (Gate B pending)
+### SQLite v12 delegation scope (active; added by AXP-E0001)
 
-This subsection is not active storage contract. If Gate B B2/B6 are approved,
-append migration v12; never edit or reorder versions 1-11. V12 adds
+Migration v12 is appended after versions 1-11 and adds
 `scope_json TEXT NOT NULL DEFAULT '{}'` to `delegations`. The default preserves
 legacy rows, but `{}` is unbounded and MUST fail the E0001 live journey.
 New/updated E0001 grants persist and strictly decode the complete
 `Delegation.scope`, including exact operation and domain lists.
 
-`SqliteStore` MUST override `ExecutionStore::load_delegation` and reconstruct
+`SqliteStore` overrides `ExecutionStore::load_delegation` and reconstructs
 all legacy delegation fields plus `scope_json`. Storage first decodes through a
 storage-local `#[serde(deny_unknown_fields)]` DTO with only optional
 `allowed_operations`, `allowed_domains`, and `resource_scope`; malformed JSON,
@@ -360,13 +355,12 @@ NOT change the shared kernel `DelegationScope` deserializer globally. `{}` is
 valid only as a legacy row. The E0001 grant requires singleton operation/domain
 lists and no structured `resource_scope` key.
 
-CLI grant/save/load MUST round-trip this field. The v12 down path removes only
+CLI grant/save/load round-trips this field. The v12 down path removes only
 this column, preserves all legacy rows/columns, and restores version 11 while
 writers are quiescent. Required tests cover v11-to-v12 upgrade, legacy `{}`
 default, exact scope round trip, known optional resource scope, malformed and
 unknown-key scope, E0001 resource-scope rejection, missing/revoked/expired
-grants, operation/domain mismatch, and loaded-grant engine enforcement. Until
-approval and implementation, version 11 remains the canonical active schema.
+grants, operation/domain mismatch, and loaded-grant engine enforcement.
 
 Migration 11 is appended (never edits an earlier migration), with description
 `create exact execution replay ledger`. Its `execution_replays` table is keyed

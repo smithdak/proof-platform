@@ -100,14 +100,15 @@ ChangeSet. It MUST NOT appear in the governed registry or eight-operation
 conformance surface and MUST NOT mint a Proof claiming an unregistered
 `changeset.create::v1` execution.
 
-### PROPOSED AXP-E0001 Content addition (Gate B pending)
+### AXP-E0001 Content addition (active implementation; Gate C pending)
 
-This subsection is not active domain contract. If the project owner approves
-AXP-E0001 Gate B B1/B2, Content adds an active `release.publish::v2` alongside
-the unchanged active v1 row. It remains the same governed operation, so the v1
-eight-operation name surface does not gain a ninth operation.
+AXP-E0001 Gate B approved and implemented active `release.publish::v2`
+alongside the unchanged active v1 row. It remains the same governed operation,
+so the v1 eight-operation name surface does not gain a ninth operation. The
+edition's live journey and Gate C remain pending; that does not make the
+shipped registry row or its API prerequisites provisional.
 
-| RegistryEntry field | Proposed exact value |
+| RegistryEntry field | Exact value |
 |---|---|
 | `operation` | `release.publish` |
 | `domain` | `content` |
@@ -122,7 +123,7 @@ eight-operation name surface does not gain a ninth operation.
 | `consequence` | `content-release` |
 | `evidence_contract` | `operation-effect-v1` |
 | `benchmark` | `B1` |
-| `status` | `active` only after Gate B implementation and registry activation |
+| `status` | `active` |
 | `deprecated_since` | null |
 | `replacement_operation` | null |
 
@@ -135,7 +136,7 @@ engine's original proof. Canonical request, manifest, artifact, output, proof,
 replay, recovery, and evaluation shapes are defined in
 `contracts/release-manager-live-v1.md`.
 
-This proposal requires the default-compatible version-aware handler API,
+This active row uses the default-compatible version-aware handler API,
 SQLite v12 delegation-scope persistence, `SqliteStore::load_delegation`, and
 CLI exact-scope grant/load plus preflight-before-credential behavior noted
 there. The live path requires an explicit delegation ID whose loaded grant has
@@ -143,9 +144,8 @@ exactly `allowed_operations=["release.publish"]` and
 `allowed_domains=["content"]`; chain-only, default, wildcard, or unbounded
 scope is invalid, and structured `resource_scope` is forbidden for this exact
 grant. V12 storage rejects unknown scope keys locally without changing the
-shared kernel deserializer. Until Gate B and all prerequisite implementations
-exist, no v2 registry row is active and E0001 workers MUST NOT emulate v2 by
-changing v1 or by adding an unapproved ninth operation.
+shared kernel deserializer. V1 remains active and unchanged; do not emulate v2
+by changing v1 or by adding a ninth Content operation.
 
 ### Non-goals
 
@@ -161,6 +161,7 @@ changing v1 or by adding an unapproved ninth operation.
 | 2 | 2026-08-28 | Wave 10 completes Domain 1: full registry coverage, handlers, HTTP, idempotency | Domain 1 is production-ready for the governance narrative |
 | 3 | 2026-08-29 | D-E0000-005 freezes exactly eight active v1 operations and the `edition.create` / `changeset.commit` replay and output contracts | The prior complete status overstated seven-handler implementation coverage; Gate B preserves names and SHA-256 snapshot compatibility while closing governed execution without adding `changeset.create` as operation nine. |
 | P-E0001-1 | 2026-08-30 | **PROPOSED, Gate B pending:** add `release.publish::v2` without changing v1 | The live preview needs existing-edition identity, exact replay, a durable local artifact, and original-proof binding; changing v1 would break callers. |
+| E0001-2 | 2026-08-30 | Gate B approved and implementation activated `release.publish::v2`; v1 remains unchanged; E0001 Gate C remains pending | The registry, schemas, version-aware handler, exact replay, immutable local artifact, and delegation-scope prerequisites now pass their scoped and reverse-impact gates. |
 
 ---
 

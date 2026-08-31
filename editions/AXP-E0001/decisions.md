@@ -428,3 +428,30 @@ source-sensitive host/readiness barrier. The host CLI passes 81/81, and the
 exact retained 10/10 packet, `next_argv`, and binding digest replay with both
 provider variables unset. No historical workspace, credential, provider call,
 live v2 run, artifact, failure, or charge was created or changed.
+
+## D-E0001-015 — Canonical contracts reflect implemented Gate B state
+
+Status: implemented documentation correction · Date: 2026-08-30 · Decision owner: orchestrator
+
+Read-only preparation for the next edition found that the canonical kernel and
+Content-domain contracts still labeled implemented E0001 prerequisites as
+Gate B proposals. `kernel-api.md` named migration 11 current despite appended
+and tested migration 12, and the frozen live contract still called conditional
+B5 inactive after D-E0001-010 activated its prerequisites.
+
+E0001-18 synchronizes status, not behavior. The kernel contract now records the
+active default-compatible version-aware hooks, current schema version 12,
+strict stored delegation scope, and `SqliteStore::load_delegation`. The Content
+contract records active `release.publish::v2` alongside unchanged v1 and adds a
+dated activation decision without rewriting the original proposal row. The
+live contract records implemented B1-B4/B6 and satisfied B5 prerequisites,
+while remaining explicit that execution is stopped at credential availability,
+zero provider attempts, and pending Gate C. Its pre-implementation rationale
+remains preserved as the immutable decision record.
+
+No Rust, registry, schema, migration, policy, API, readiness packet, historical
+workspace, credential, provider call, live v2 run, artifact, failure, charge,
+or Gate C state changes. E0001-18 adds W13, moves live dogfood to W14 and
+integration to W15, and repeats the source-sensitive host/readiness barrier.
+The host CLI passes 81/81 and the exact retained 10/10 packet, `next_argv`, and
+binding digest replay with both provider variables unset.

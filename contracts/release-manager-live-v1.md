@@ -1,7 +1,7 @@
 # Release Manager Live Preview Contract v1
 
-**Status:** APPROVED for AXP-E0001 Gate B (B1-B4 and B6); B5 is conditionally
-approved and remains inactive until every recorded prerequisite passes
+**Status:** APPROVED and implemented for AXP-E0001 Gate B (B1-B4 and B6);
+B5 prerequisites pass and execution is stopped at the unavailable credential
 **Contract ID:** `proof-release-manager-live/v1`
 **Operation recommendation:** `release.publish::v2`
 **Policy:** `evals/release-manager-live-v1.json`
@@ -9,13 +9,19 @@ approved and remains inactive until every recorded prerequisite passes
 **Last updated:** 2026-08-30
 
 This is the approved Gate B contract for the AXP-E0001 live Release Manager
-preview. It freezes a local-only, synthetic journey. B1-B4 and B6 authorize
-the scoped implementation described here. They do not authorize credential
-access, a paid request, an external deployment, or a production publication.
-B5 remains conditional on the recorded W2-W4 and deterministic-preflight
-prerequisites.
+preview. It freezes a local-only, synthetic journey. B1-B4 and B6 are
+implemented. The recorded deterministic, implementation, host, and readiness
+prerequisites activate B5, but no credential is currently available and no
+provider attempt has occurred. B5 authorizes only the already frozen direct
+request once that credential boundary is satisfied; it never authorizes an
+external deployment or production publication.
 
-## Owner decisions requested
+The design rationale below intentionally preserves its pre-implementation
+tense as the immutable Gate B decision record. Current canonical API, registry,
+and migration status is reflected in `kernel-api.md` and
+`domain-definitions.md`; D-E0001-010 records B5 activation.
+
+## Approved owner decisions
 
 | ID | Decision | Recommendation | Effect of approval |
 |---|---|---|---|
