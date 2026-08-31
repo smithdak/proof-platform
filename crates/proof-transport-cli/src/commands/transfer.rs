@@ -1,11 +1,12 @@
+use super::secure_fs::SecureDirectory;
 use crate::{load_registry, open_content_store, open_store, Cli, Workspace};
 use anyhow::{bail, Context, Result};
 use proof_kernel::{Delegation, Principal, PrincipalId, Proof};
 use proof_storage::{SqliteStore, StorageError};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Component, Path};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct WorkspaceArchive {
@@ -40,6 +41,12 @@ pub struct ExportedBlobReference {
     pub artifact_kind: String,
     pub artifact_id: String,
     pub created_at: String,
+}
+
+struct ImportedWorkspaceFile {
+    subdirectory: String,
+    name: String,
+    value: Value,
 }
 
 fn load_exported_principal(row: (String, String, Vec<u8>, String)) -> Result<ExportedPrincipal> {
@@ -291,33 +298,147 @@ fn add_directory_to_archive(
     Ok(())
 }
 
-fn read_archive_files(
-    archive: &mut tar::Archive<flate2::read::GzDecoder<std::fs::File>>,
-) -> Result<Vec<(String, String, Value)>> {
+fn validate_archive_component(component: &str) -> Result<()> {
+    if component.is_empty()
+        || component == "."
+        || component == ".."
+        || component.contains('/')
+        || component.contains('\\')
+    {
+        bail!("unsafe workspace archive path component");
+    }
+    Ok(())
+}
+
+fn read_import_archive(input: &Path) -> Result<(WorkspaceArchive, Vec<ImportedWorkspaceFile>)> {
+    let input_file = std::fs::File::open(input)
+        .with_context(|| format!("cannot open import archive: {}", input.display()))?;
+    let decoder = flate2::read::GzDecoder::new(input_file);
+    let mut archive = tar::Archive::new(decoder);
+    let mut manifest_bytes = None;
     let mut files = Vec::new();
+    let mut seen_files = HashSet::new();
     for entry in archive.entries()? {
         let mut entry = entry?;
-        let path = entry
-            .path()?
-            .components()
-            .map(|component| component.as_os_str().to_string_lossy().to_string())
-            .collect::<Vec<_>>();
-        if path.len() != 3 || path[0] != "workspace-data" {
+        let path = entry.path()?.into_owned();
+        let mut ordinary = Vec::new();
+        for component in path.components() {
+            match component {
+                Component::Normal(component) => ordinary.push(component),
+                Component::CurDir => {}
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                    bail!("unsafe workspace archive path: {}", path.display())
+                }
+            }
+        }
+
+        if ordinary.len() == 1 && ordinary[0] == "manifest.json" {
+            if !entry.header().entry_type().is_file() {
+                bail!("workspace archive manifest must be a regular file");
+            }
+            if manifest_bytes.is_some() {
+                bail!("workspace archive contains duplicate manifest.json entries");
+            }
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes)?;
+            manifest_bytes = Some(bytes);
             continue;
+        }
+
+        if ordinary
+            .first()
+            .is_none_or(|component| *component != "workspace-data")
+        {
+            continue;
+        }
+        if entry.header().entry_type().is_dir() && ordinary.len() <= 2 {
+            continue;
+        }
+        if ordinary.len() != 3 || !entry.header().entry_type().is_file() {
+            bail!("invalid workspace-data archive entry: {}", path.display());
+        }
+        let subdirectory = ordinary[1]
+            .to_str()
+            .context("workspace archive subdirectory is not valid UTF-8")?;
+        let name = ordinary[2]
+            .to_str()
+            .context("workspace archive filename is not valid UTF-8")?;
+        validate_archive_component(subdirectory)?;
+        validate_archive_component(name)?;
+        if Path::new(name)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            != Some("json")
+            || Path::new(name)
+                .file_stem()
+                .is_none_or(|stem| stem.is_empty())
+        {
+            bail!("workspace archive data file must have a non-empty .json name");
+        }
+        if !seen_files.insert((subdirectory.to_string(), name.to_string())) {
+            bail!("duplicate workspace archive data file: {subdirectory}/{name}");
         }
         let mut contents = String::new();
         entry.read_to_string(&mut contents)?;
         let value = serde_json::from_str(&contents)?;
-        files.push((path[1].clone(), path[2].clone(), value));
+        files.push(ImportedWorkspaceFile {
+            subdirectory: subdirectory.to_string(),
+            name: name.to_string(),
+            value,
+        });
     }
-    Ok(files)
+    let manifest_bytes = manifest_bytes.context("archive missing manifest.json")?;
+    let manifest = serde_json::from_slice(&manifest_bytes)?;
+    Ok((manifest, files))
 }
 
-fn import_workspace_files(root: &Path, files: Vec<(String, String, Value)>) -> Result<()> {
-    for (subdirectory, id, value) in files {
-        let directory = root.join(".proof/data").join(subdirectory);
-        std::fs::create_dir_all(&directory)?;
-        std::fs::write(directory.join(id), serde_json::to_string_pretty(&value)?)?;
+fn preflight_workspace_files(
+    manifest: &WorkspaceArchive,
+    files: &[ImportedWorkspaceFile],
+) -> Result<()> {
+    let mut proofs = HashMap::with_capacity(manifest.proofs.len());
+    for proof in &manifest.proofs {
+        if proofs.insert(proof.body.id, proof).is_some() {
+            bail!("duplicate exported proof ID: {}", proof.body.id);
+        }
+    }
+    for file in files {
+        if file.subdirectory != "proofs" {
+            continue;
+        }
+        let proof: Proof = serde_json::from_value(file.value.clone())
+            .with_context(|| format!("invalid workspace proof file: {}", file.name))?;
+        let expected_name = format!("{}.json", proof.body.id);
+        if file.name != expected_name {
+            bail!(
+                "workspace proof filename {} does not match proof {}",
+                file.name,
+                proof.body.id
+            );
+        }
+        let expected = proofs.get(&proof.body.id).with_context(|| {
+            format!(
+                "workspace proof {} is not present in the signed archive manifest",
+                proof.body.id
+            )
+        })?;
+        if **expected != proof || serde_json::to_value(*expected)? != file.value {
+            bail!(
+                "workspace proof {} differs from the signed archive manifest",
+                proof.body.id
+            );
+        }
+    }
+    Ok(())
+}
+
+fn import_workspace_files(root: &Path, files: &[ImportedWorkspaceFile]) -> Result<()> {
+    let proof_directory = SecureDirectory::open(&root.join(".proof"))?;
+    let data_directory = proof_directory.open_child("data")?;
+    for file in files {
+        let directory = data_directory.ensure_child(&file.subdirectory)?;
+        let bytes = serde_json::to_vec_pretty(&file.value)?;
+        directory.replace_file(&file.name, &bytes)?;
     }
     Ok(())
 }
@@ -420,31 +541,16 @@ pub fn cmd_import(cli: &Cli, input: &Path) -> Result<()> {
     let store = open_store(&workspace.root)?;
     let cas = open_content_store(&workspace.root)?;
 
-    let input_file = std::fs::File::open(input)
-        .with_context(|| format!("cannot open import archive: {}", input.display()))?;
-    let decoder = flate2::read::GzDecoder::new(input_file);
-    let mut manifest_bytes = Vec::new();
-    {
-        let mut archive = tar::Archive::new(decoder);
-        for entry in archive.entries()? {
-            let mut entry = entry?;
-            let path = entry.path()?;
-            if path == Path::new("manifest.json") {
-                entry.read_to_end(&mut manifest_bytes)?;
-                break;
-            }
-        }
-    }
-    if manifest_bytes.is_empty() {
-        bail!("archive missing manifest.json");
-    }
-    let manifest: WorkspaceArchive = serde_json::from_slice(&manifest_bytes)?;
+    let (manifest, files) = read_import_archive(input)?;
     if manifest.format_version != 1 {
         bail!(
             "unsupported archive format version: {}",
             manifest.format_version
         );
     }
+    let registry: Vec<proof_kernel::RegistryEntry> =
+        serde_json::from_value(manifest.registry.clone())?;
+    preflight_workspace_files(&manifest, &files)?;
 
     let imported_principals = preflight_exported_principals(&store, &manifest.principals)?;
     let imported_principal_ids = imported_principals
@@ -495,14 +601,10 @@ pub fn cmd_import(cli: &Cli, input: &Path) -> Result<()> {
         store_exported_blob(&cas, blob)?;
     }
 
-    let registry: Vec<proof_kernel::RegistryEntry> = serde_json::from_value(manifest.registry)?;
     store.save_registry(&registry)?;
 
-    let mut files_archive =
-        tar::Archive::new(flate2::read::GzDecoder::new(std::fs::File::open(input)?));
-    let files = read_archive_files(&mut files_archive)?;
     let workspace_file_count = files.len();
-    import_workspace_files(&workspace.root, files)?;
+    import_workspace_files(&workspace.root, &files)?;
 
     println!(
         "{}",

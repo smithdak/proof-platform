@@ -362,3 +362,41 @@ readiness replay barrier to the new source revision. Both checks then passed in
 host context: the locked CLI suite was 72/72 and the credential-free replay
 returned the exact retained 10/10 packet and binding digest with both provider
 variables unset. The paid boundary remains closed.
+
+## D-E0001-013 — Workspace archive extraction is contained and manifest-bound
+
+Status: implemented protective correction · Date: 2026-08-30 · Decision owner: orchestrator
+
+Continued credential-free transfer audit found four connected trust failures.
+Import opened the archive once for the first manifest and again after durable
+writes for workspace data, permitting input substitution. It converted member
+paths to strings and joined them without rejecting `..`, so a raw tar member
+could escape `.proof/data` into private workspace controls. Final writes
+followed target directory/leaf links. Workspace proof JSON also had no exact
+binding to the signed and verified manifest proof set.
+
+E0001-16 treats the archive as one immutable input snapshot. One stream must
+contain exactly one regular manifest; every workspace-data entry is
+preflighted for ordinary safe components, exact depth/type, UTF-8 JSON name,
+and unique destination before archive-specific persistence. Manifest proof IDs
+are unique, and any proof file must have the exact ID filename and exact JSON
+value of its manifest proof.
+
+Contained data writes now walk already-open directory descriptors. Exact bytes
+are written and synced to a same-directory `0600` temporary file, atomically
+renamed over the leaf, followed by directory sync and exact reread. This
+replaces a link leaf itself without following its external target and rejects
+a symlinked directory component. Adversarial coverage proves raw parent
+traversal leaves the keypair/principal state unchanged, symlink targets receive
+no write, absent/drifted proof files persist nothing, and safe link-leaf
+replacement does not alter external files. Compatible imports remain green and
+the host CLI suite passes 78/78.
+
+This does not change archive format v1 or claim an archive-size ceiling or one
+cross-database/CAS/filesystem transaction. Those require separate contracts.
+No retained packet mutation, credential read, provider call, live v2 run,
+artifact, failure, or charge is authorized. E0001-16 adds W11, moves live
+dogfood to W12 and integration to W13, and requires the exact immutable
+readiness replay once more after the final source tree. That replay passed with
+both provider variables unset, returning the exact retained 10/10 packet,
+`next_argv`, and binding digest; the paid boundary remains closed.

@@ -810,6 +810,205 @@ mod tests {
     }
 
     #[test]
+    fn export_and_import_preserve_manifest_bound_proof_file() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("bound-proof.tar.gz");
+        let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&source_args).unwrap();
+        let source_workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
+        let proof = source_workspace
+            .make_proof(
+                "test.operation",
+                "v1",
+                &serde_json::json!({"bound": true}),
+                &serde_json::json!({"ok": true}),
+            )
+            .unwrap();
+        source_workspace.save_proof(&proof).unwrap();
+        commands::transfer::cmd_export(&source_args, archive.path()).unwrap();
+        let target_args = Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&target_args).unwrap();
+
+        commands::transfer::cmd_import(&target_args, archive.path()).unwrap();
+
+        let stored = open_store(&target.path().to_path_buf())
+            .unwrap()
+            .load_proof(&proof.body.id)
+            .unwrap();
+        assert_eq!(stored, proof);
+        let file: Proof = serde_json::from_slice(
+            &std::fs::read(
+                target
+                    .path()
+                    .join(format!(".proof/data/proofs/{}.json", proof.body.id)),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(file, proof);
+    }
+
+    #[test]
+    fn import_rejects_parent_traversal_without_mutating_keypair_or_store() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("parent-traversal.tar.gz");
+        let init_args = Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&init_args).unwrap();
+        let keypair_path = target.path().join(".proof/keypair.json");
+        let original_keypair = std::fs::read(&keypair_path).unwrap();
+        let store = open_store(&target.path().to_path_buf()).unwrap();
+        let original_principals: u64 = store
+            .connection()
+            .query_row("SELECT COUNT(*) FROM principals", [], |row| row.get(0))
+            .unwrap();
+        let manifest = empty_workspace_archive();
+        create_archive_with_workspace_json(
+            archive.path(),
+            &manifest,
+            "workspace-data/../keypair.json",
+            &serde_json::json!({"compromised": true}),
+            true,
+        )
+        .unwrap();
+
+        let error = commands::transfer::cmd_import(&init_args, archive.path()).unwrap_err();
+
+        assert!(error.to_string().contains("unsafe workspace archive path"));
+        assert_eq!(std::fs::read(keypair_path).unwrap(), original_keypair);
+        let reloaded_principals: u64 = store
+            .connection()
+            .query_row("SELECT COUNT(*) FROM principals", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(reloaded_principals, original_principals);
+    }
+
+    #[cfg(target_family = "unix")]
+    #[test]
+    fn import_rejects_symlinked_data_subdirectory_without_external_write() {
+        use std::os::unix::fs::symlink;
+
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let outside = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("symlink-target.tar.gz");
+        let init_args = Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&init_args).unwrap();
+        let schemas = target.path().join(".proof/data/schemas");
+        std::fs::remove_dir(&schemas).unwrap();
+        symlink(outside.path(), &schemas).unwrap();
+        let record_name = format!("{}.json", uuid::Uuid::now_v7());
+        create_archive_with_workspace_json(
+            archive.path(),
+            &empty_workspace_archive(),
+            &format!("workspace-data/schemas/{record_name}"),
+            &serde_json::json!({"safe": true}),
+            false,
+        )
+        .unwrap();
+
+        let error = commands::transfer::cmd_import(&init_args, archive.path()).unwrap_err();
+
+        assert!(error.to_string().contains("must not be a symbolic link"));
+        assert!(!outside.child(record_name).exists());
+    }
+
+    #[test]
+    fn import_rejects_workspace_proof_absent_from_signed_manifest() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("unbound-proof.tar.gz");
+        let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&source_args).unwrap();
+        let source_workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
+        let proof = source_workspace
+            .make_proof(
+                "test.operation",
+                "v1",
+                &serde_json::json!({"forged": false}),
+                &serde_json::json!({"ok": true}),
+            )
+            .unwrap();
+        create_archive_with_workspace_json(
+            archive.path(),
+            &empty_workspace_archive(),
+            &format!("workspace-data/proofs/{}.json", proof.body.id),
+            &serde_json::to_value(&proof).unwrap(),
+            false,
+        )
+        .unwrap();
+        let init_args = Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&init_args).unwrap();
+
+        let error = commands::transfer::cmd_import(&init_args, archive.path()).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("is not present in the signed archive manifest"));
+        assert_eq!(
+            open_store(&target.path().to_path_buf())
+                .unwrap()
+                .proof_count()
+                .unwrap(),
+            0
+        );
+        assert!(!target
+            .child(".proof/data/proofs")
+            .child(format!("{}.json", proof.body.id))
+            .exists());
+    }
+
+    #[test]
+    fn import_rejects_workspace_proof_bytes_different_from_manifest() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("drifted-proof.tar.gz");
+        let source_args = Cli::parse_from(["proof", "-w", source.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&source_args).unwrap();
+        let source_workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
+        let proof = source_workspace
+            .make_proof(
+                "test.operation",
+                "v1",
+                &serde_json::json!({"drifted": false}),
+                &serde_json::json!({"ok": true}),
+            )
+            .unwrap();
+        let mut manifest = empty_workspace_archive();
+        manifest.proofs.push(proof.clone());
+        let mut drifted = serde_json::to_value(&proof).unwrap();
+        drifted["unbound_archive_field"] = serde_json::json!(true);
+        create_archive_with_workspace_json(
+            archive.path(),
+            &manifest,
+            &format!("workspace-data/proofs/{}.json", proof.body.id),
+            &drifted,
+            false,
+        )
+        .unwrap();
+        let init_args = Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&init_args).unwrap();
+
+        let error = commands::transfer::cmd_import(&init_args, archive.path()).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("differs from the signed archive manifest"));
+        assert_eq!(
+            open_store(&target.path().to_path_buf())
+                .unwrap()
+                .proof_count()
+                .unwrap(),
+            0
+        );
+        assert!(!target
+            .child(".proof/data/proofs")
+            .child(format!("{}.json", proof.body.id))
+            .exists());
+    }
+
+    #[test]
     fn benchmark_run_persists_and_report_reads_results() {
         let workspace = assert_fs::TempDir::new().unwrap();
         let init_args =
@@ -1186,6 +1385,62 @@ mod tests {
         header.set_mode(0o644);
         header.set_cksum();
         builder.append_data(&mut header, "manifest.json", bytes.as_slice())?;
+        builder.finish()?;
+        builder.into_inner()?.finish()?;
+        Ok(())
+    }
+
+    fn empty_workspace_archive() -> WorkspaceArchive {
+        WorkspaceArchive {
+            format_version: 1,
+            exported_at: chrono::Utc::now(),
+            registry: serde_json::json!([]),
+            proofs: vec![],
+            principals: vec![],
+            delegations: vec![],
+            blobs: vec![],
+        }
+    }
+
+    fn create_archive_with_workspace_json(
+        path: &Path,
+        manifest: &WorkspaceArchive,
+        archive_path: &str,
+        value: &serde_json::Value,
+        raw_path: bool,
+    ) -> Result<()> {
+        let output_file = std::fs::File::create(path)?;
+        let encoder = flate2::write::GzEncoder::new(output_file, flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let manifest_bytes = serde_json::to_vec_pretty(manifest)?;
+        let mut manifest_header = tar::Header::new_gnu();
+        manifest_header.set_size(manifest_bytes.len() as u64);
+        manifest_header.set_mode(0o644);
+        manifest_header.set_cksum();
+        builder.append_data(
+            &mut manifest_header,
+            "manifest.json",
+            manifest_bytes.as_slice(),
+        )?;
+
+        let bytes = serde_json::to_vec_pretty(value)?;
+        if raw_path {
+            let path_bytes = archive_path.as_bytes();
+            anyhow::ensure!(path_bytes.len() <= 100, "test archive path is too long");
+            let mut header = tar::Header::new_old();
+            header.as_old_mut().name[..path_bytes.len()].copy_from_slice(path_bytes);
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append(&header, bytes.as_slice())?;
+        } else {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder.append_data(&mut header, archive_path, bytes.as_slice())?;
+        }
         builder.finish()?;
         builder.into_inner()?.finish()?;
         Ok(())

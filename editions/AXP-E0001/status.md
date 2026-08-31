@@ -3,14 +3,14 @@
 - Edition: `AXP-E0001`
 - Last updated: 2026-08-30
 - Overall: `active`
-- Current wave/task: W11 / E0001-04 live dogfood, owner-deferred until the morning of 2026-08-31 before provider construction
+- Current wave/task: W12 / E0001-04 live dogfood, owner-deferred until the morning of 2026-08-31 before provider construction
 - Owner action needed on 2026-08-31: make `OPENAI_API_KEY` available through the secure agent environment; do not put the value in chat, Git, an edition record, or the workspace
 
 ## Gates
 
 - [x] Gate A — direction approved 2026-08-30
 - [x] Gate B — B1-B4/B6 approved 2026-08-30
-- [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence plus E0001-14/E0001-15 host CLI 72/72 and exact readiness replay pass at the current source
+- [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence plus E0001-14..16 host CLI 78/78 and final-source exact readiness replay pass
 - [x] Gate B clarification — D-E0001-009 narrows E0001 to a trusted fresh local workspace after E0001-12 proved strong stock-SQLite descriptor pinning impossible
 - [ ] Human approval — exact preview consequence signed during live run
 - [ ] Gate C — release accepted
@@ -41,7 +41,9 @@
 - [x] E0001-14 repaired CLI delegation principal-kind mutation: focused delegation tests 5/5, all test targets compile, and format/diff checks pass
 - [x] E0001-15 repaired workspace-import identity replacement, delegation unrevocation, and invalid-proof partial identity persistence: focused 3/3 plus compatibility, compile, and format gates pass
 - [x] Post-repair host gate passed: complete locked CLI 72/72 and immutable credential-free readiness replay retained the exact 10/10 packet and binding digest
-- [x] Revised fifteen-task W1-W12 graph preserves one CLI writer and makes host-context CLI/readiness replay an explicit pre-provider W11 barrier
+- [x] E0001-16 repaired archive traversal, two-open substitution, symlink following, and unbound proof-file import: adversarial 5/5, compatibility 4/4, compile/format, and host 78/78 pass
+- [x] Final-source immutable credential-free readiness replay retained the exact 10/10 packet, `next_argv`, and binding digest after E0001-16
+- [x] Revised sixteen-task W1-W13 graph preserves one CLI writer and makes final-source host/readiness replay an explicit pre-provider W12 barrier
 
 ## Risks and next actions
 
@@ -55,6 +57,7 @@
 | CLI delegation SQL omitted v12 `scope_json` | resolved in E0001-08 with exact save/load/list/validate/transfer scope round trips | E0001-08 | independent credential/authority audit and reverse-impact gate passed |
 | CLI delegation grant could reclassify the workspace Agent as Human for a distinct recipient, or an enrolled Human recipient as Agent | resolved in E0001-14; issuer uses its actual keypair principal and existing recipient identity is immutable | E0001-14 | focused 5/5 and compile/format clean; retained packet independently remains Agent requester plus Human approver; current host CLI/readiness gate passes |
 | Workspace import could replace an enrolled principal kind/key, replace or un-revoke a delegation ID, and persist earlier proofs before a later bad signature | resolved in E0001-15 with complete identity/authority/proof preflight before archive identity writes | E0001-15 | focused rejection 3/3, compatible import 2/2, compile/format and host 72/72 clean; exact readiness replay passes; broader blob/registry/file transactionality remains outside this bounded repair |
+| Workspace archive could traverse from `workspace-data` into private controls, swap between two opens, follow target links, or persist proof JSON absent/drifted from the verified manifest | resolved in E0001-16 with one strict snapshot, proof-file binding, and descriptor-relative atomic replacement | E0001-16 | adversarial 5/5, compatibility 4/4, compile/format and host 78/78 clean; exact final-source readiness replay passes; archive size and cross-store transactionality remain separate |
 | CLI read `OPENAI_API_KEY` before deterministic and authority checks | resolved in E0001-08 with the audited deferred factory seam and zero-call failure spies | E0001-08 | direct live factory remains the only live-command reader at the credential boundary |
 | Runtime authoritative live setup/target-agent validator was private | resolved by E0001-10 public read-only exact-validator path | E0001-10 | 99 tests and independent audit passed; CLI integration remains under E0001-09 |
 | Generic runtime start can die after run save but before checkpoint/Started | resolved and independently audited in E0001-11 | E0001-11 | owner/root runtime suites pass 110/110; focused adversarial recovery 11/11; final audit PASS |

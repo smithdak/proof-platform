@@ -17,8 +17,9 @@ Edition: `AXP-E0001`
 | E0001-09 | W8 | e0001-cli-owner / `gpt-5.6-sol` | `proof-transport-cli` | E0001-08, E0001-10, E0001-11, E0001-13 | Public credential-free runtime rehearsal, immutable fresh 10/10 evidence, safe synthetic edition, exact readiness packet | done |
 | E0001-14 | W9 | orchestrator / `gpt-5.6-sol` | CLI delegation grant and unique handoff | E0001-09 | Preserve immutable workspace/recipient principal identity across distinct-recipient grants; reject kind collisions | done; focused 5/5 and compile/format clean; current host entry gate passes |
 | E0001-15 | W10 | orchestrator / `gpt-5.6-sol` | CLI workspace import and unique handoff | E0001-14 | Reject principal replacement, delegation replacement/unrevocation, and invalid-proof partial identity persistence before archive writes | done; focused 3/3 plus compatibility, compile, format, host 72/72, and readiness replay clean |
-| E0001-04 | W11 | unassigned / `gpt-5.6-sol` | live dogfood record and unique handoff | E0001-02, E0001-03, E0001-06..15 + paid-use Gate B | Host CLI replay, immutable readiness replay, fresh live run, signed approval, independent 17/17 verification, cost/rollback evidence | owner-deferred until morning 2026-08-31; host credential unavailable; zero provider attempts |
-| E0001-05 | W12 | orchestrator / `gpt-5.6-sol` | integration and edition release records | E0001-01..04, E0001-06..15 | Quiescent workspace gate and dated Gate C decision | blocked |
+| E0001-16 | W11 | orchestrator / `gpt-5.6-sol` | CLI archive extraction/secure writes and unique handoff | E0001-15 | One archive snapshot; reject traversal/symlink/proof drift before persistence; descriptor-relative atomic JSON replacement | done; adversarial 5/5, compatibility 4/4, compile/format, host 78/78, and exact readiness replay clean |
+| E0001-04 | W12 | unassigned / `gpt-5.6-sol` | live dogfood record and unique handoff | E0001-02, E0001-03, E0001-06..16 + paid-use Gate B | Host CLI replay, immutable readiness replay, fresh live run, signed approval, independent 17/17 verification, cost/rollback evidence | owner-deferred until morning 2026-08-31; host credential unavailable; zero provider attempts |
+| E0001-05 | W13 | orchestrator / `gpt-5.6-sol` | integration and edition release records | E0001-01..04, E0001-06..16 | Quiescent workspace gate and dated Gate C decision | blocked |
 
 ## Dependency flow
 
@@ -52,6 +53,9 @@ E0001-01 contract + recovery/evaluation design
   |                                                                                         |
   |                                                                                         v
   |                                                                                E0001-15 import repair
+  |                                                                                         |
+  |                                                                                         v
+  |                                                                                E0001-16 archive repair
   |                                                                                         |
   +--> Gate B: credential/model/spend approval                                              v
                                                                                    E0001-04 live gate
@@ -87,12 +91,15 @@ E0001-01 contract + recovery/evaluation design
   It must preflight immutable principal identity, exact existing delegations,
   and every proof signature before archive identity/proof writes, while
   preserving compatible imports and the retained packet.
-- W11 starts only after deterministic preflight is independently 10/10, the
+- W11 closes archive extraction ambiguity and filesystem escape. It must use
+  one snapshot, reject unsafe/duplicate entries and unbound proof files before
+  persistence, and atomically replace contained JSON without following links.
+- W12 starts only after deterministic preflight is independently 10/10, the
   frozen 17-check live policy is validated, and the owner has explicitly
   approved credential, provider/model, spend, synthetic data, evidence
   retention, and the human approver. Those policy/evidence prerequisites now
-  pass. Host context passed the full CLI suite 72/72 and replayed the exact
-  immutable readiness packet after E0001-14 and E0001-15. Execution remains
+  pass. Host context passed the full CLI suite 78/78 and the exact immutable
+  readiness replay after E0001-14 through E0001-16. Execution remains
   stopped until `OPENAI_API_KEY` is securely available to that host process.
-- W12 starts only after all writers quiesce. The orchestrator reconciles root
+- W13 starts only after all writers quiesce. The orchestrator reconciles root
   manifests, runs impact plus final workspace verification, and requests Gate C.

@@ -231,6 +231,49 @@ impl SecureDirectory {
         }
     }
 
+    /// Atomically replaces one contained regular-file leaf without following
+    /// an existing symbolic or hard link.
+    pub(crate) fn replace_file(&self, name: &str, bytes: &[u8]) -> Result<()> {
+        validate_name(name)?;
+
+        #[cfg(not(target_os = "linux"))]
+        bail!("descriptor-based replacement requires Linux");
+
+        #[cfg(target_os = "linux")]
+        {
+            let temporary_name = format!(".replace-{}.tmp", uuid::Uuid::now_v7());
+            let temporary_path = self.child_path(&temporary_name);
+            let result = (|| -> Result<()> {
+                let mut options = OpenOptions::new();
+                options
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .custom_flags(O_NOFOLLOW);
+                let mut temporary = options.open(&temporary_path)?;
+                temporary.write_all(bytes)?;
+                temporary.sync_all()?;
+                std::fs::rename(&temporary_path, self.child_path(name))?;
+                self.handle.sync_all()?;
+                let published = self
+                    .read_optional(name)?
+                    .context("replacement file disappeared")?;
+                if published != bytes {
+                    bail!("replacement file failed exact-byte reread: {name}");
+                }
+                Ok(())
+            })();
+            if result.is_err() {
+                match std::fs::remove_file(&temporary_path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == ErrorKind::NotFound => {}
+                    Err(_) => {}
+                }
+            }
+            result
+        }
+    }
+
     pub(crate) fn exclusive_lock(&self, name: &str) -> Result<File> {
         validate_name(name)?;
         let mut options = OpenOptions::new();
@@ -400,6 +443,54 @@ mod tests {
         std::fs::write(temp.path().join("real/target"), b"secret").unwrap();
         symlink(temp.path().join("real/target"), temp.path().join("leaf")).unwrap();
         assert!(root.read_optional("leaf").is_err());
+    }
+
+    #[cfg(target_family = "unix")]
+    #[test]
+    fn atomic_replacement_does_not_follow_existing_link_leaves() {
+        use std::os::unix::fs::symlink;
+
+        let directory = assert_fs::TempDir::new().unwrap();
+        let outside = assert_fs::NamedTempFile::new("outside").unwrap();
+        std::fs::write(outside.path(), b"outside").unwrap();
+        symlink(outside.path(), directory.path().join("record.json")).unwrap();
+        let secure = SecureDirectory::open(directory.path()).unwrap();
+
+        secure.replace_file("record.json", b"imported").unwrap();
+
+        assert_eq!(std::fs::read(outside.path()).unwrap(), b"outside");
+        assert!(
+            std::fs::symlink_metadata(directory.path().join("record.json"))
+                .unwrap()
+                .is_file()
+        );
+        assert_eq!(
+            std::fs::read(directory.path().join("record.json")).unwrap(),
+            b"imported"
+        );
+        secure.replace_file("record.json", b"updated").unwrap();
+        assert_eq!(
+            std::fs::read(directory.path().join("record.json")).unwrap(),
+            b"updated"
+        );
+
+        let hardlink_target = assert_fs::NamedTempFile::new("hardlink-outside").unwrap();
+        std::fs::write(hardlink_target.path(), b"hardlink-outside").unwrap();
+        std::fs::hard_link(
+            hardlink_target.path(),
+            directory.path().join("hardlink.json"),
+        )
+        .unwrap();
+        secure.replace_file("hardlink.json", b"contained").unwrap();
+        assert_eq!(
+            std::fs::read(hardlink_target.path()).unwrap(),
+            b"hardlink-outside"
+        );
+        assert_eq!(
+            std::fs::read(directory.path().join("hardlink.json")).unwrap(),
+            b"contained"
+        );
+        assert!(secure.replace_file("../escape", b"blocked").is_err());
     }
 
     #[cfg(target_family = "unix")]
