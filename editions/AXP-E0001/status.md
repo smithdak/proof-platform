@@ -2,18 +2,18 @@
 
 - Edition: `AXP-E0001`
 - Last updated: 2026-08-31
-- Overall: `active`
-- Current wave/task: W16 / E0001-04 live dogfood, stopped before provider construction until the approved credential is securely available
-- Owner action needed: make `OPENAI_API_KEY` available through the secure agent environment when possible; do not put the value in chat, Git, an edition record, or the workspace
+- Overall: `active — stopped for Gate C disposition`
+- Current wave/task: W17 / E0001-05 integration; the sole authorized live run sealed failed at provider retry exhaustion before approval or publication
+- Owner action needed: record Gate C defer or reject. A replacement preparation, run, provider diagnostic, or retry requires a new explicit Gate B decision
 
 ## Gates
 
 - [x] Gate A — direction approved 2026-08-30
 - [x] Gate B — B1-B4/B6 approved 2026-08-30
-- [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence, E0001-20 host CLI 93/93, independent repair/runbook/concurrency audits, and final-source exact readiness replay pass
+- [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence, E0001-20 host CLI 93/93, independent repair/runbook/concurrency audits, and final-source exact readiness replay passed; its one-run authority was exercised and exhausted by the sealed failed run
 - [x] Gate B clarification — D-E0001-009 narrows E0001 to a trusted fresh local workspace after E0001-12 proved strong stock-SQLite descriptor pinning impossible
-- [ ] Human approval — exact preview consequence signed during live run
-- [ ] Gate C — release accepted
+- [ ] Human approval — not reached; the provider produced no committed model response or tool request
+- [ ] Gate C — defer/no-go recommended; product-owner decision pending
 
 ## Discovery results
 
@@ -56,6 +56,9 @@
 - [x] E0001-20 gates pass: Kernel 106/106, Storage 133/133, Runtime 122/122, host CLI 93/93, Runtime/CLI impact 215/215, Storage impact 293/293, full reverse impact 613/613 across 50 suites, formatting/diff, and independent runtime/CLI/concurrency audits
 - [x] Final-source immutable credential-free readiness replay retained the exact 10/10 packet, `next_argv`, binding digest, ready-record SHA-256, and private modes after E0001-20
 - [x] Revised twenty-task W1-W17 graph preserves one writer edition and makes final-source host/readiness replay an explicit pre-provider W16 barrier
+- [x] E0001-04 executed the exact persisted start once: run `01a057fe-0a47-7fe1-a607-5f350f90cd9b` sealed failed after two dispatches and the one allowed retry, before any committed response, approval, tool, artifact, proof, or mutation
+- [x] Distinct non-author failure verification passed: two credential-free watches were byte-identical, exact four-event chronology and 5/17 evaluation were preserved, and zero effects plus no ambiguity/budget event were confirmed
+- [x] W17 quiescent verification passes: edition structure valid and 614/614 workspace tests across 52 suites; edition and full diff checks clean
 
 ## Risks and next actions
 
@@ -65,7 +68,7 @@
 | Provider completion can be ambiguous before local response checkpoint | resolved in W3 with strict durable attempt/event barriers and restart tests | E0001-02 | both independent audits and Runtime reverse-impact gate passed |
 | Current release result is random, local, and not durably bound to a requested edition | resolved in W3 with immutable, independently verified preview artifact | E0001-03 | final independent audit passed; reverse-impact gate runs after W3 quiesces |
 | Provider usage has tokens but no `cost_microusd` | resolved locally with nullable provider cost plus sealed conservative calculated cost | E0001-02/product owner | E0001-09 now passes; enforce the 120000 micro-USD runtime ceiling and preserve null provider cost as unavailable during E0001-04 |
-| Live call sends data to a paid external provider | high; credential/data/external effect | product owner | B5 evidence prerequisites pass; retain the exact direct `gpt-5.6-sol`, one-run, USD 0.15, synthetic-only boundary |
+| Live call sends data to a paid external provider | exercised within the approved synthetic-only boundary; two dispatches, no committed response or local consequence | product owner | preserve the sealed failure; authorize no diagnostic or replacement call without a new Gate B decision |
 | CLI delegation SQL omitted v12 `scope_json` | resolved in E0001-08 with exact save/load/list/validate/transfer scope round trips | E0001-08 | independent credential/authority audit and reverse-impact gate passed |
 | CLI delegation grant could reclassify the workspace Agent as Human for a distinct recipient, or an enrolled Human recipient as Agent | resolved in E0001-14; issuer uses its actual keypair principal and existing recipient identity is immutable | E0001-14 | focused 5/5 and compile/format clean; retained packet independently remains Agent requester plus Human approver; current host CLI/readiness gate passes |
 | Workspace import could replace an enrolled principal kind/key, replace or un-revoke a delegation ID, and persist earlier proofs before a later bad signature | resolved in E0001-15 with complete identity/authority/proof preflight before archive identity writes | E0001-15 | focused rejection 3/3, compatible import 2/2, compile/format and host 72/72 clean; exact readiness replay passes; broader blob/registry/file transactionality remains outside this bounded repair |
@@ -80,6 +83,7 @@
 | Strong descriptor-pinned SQLite main/WAL/sidecar semantics | impossible with stock Unix VFS; `/proc/self/fd` conflicts with native nofollow and canonicalizes without it | E0001-12/D-E0001-009 | preserve negative evidence; do not claim the impossible guarantee or add a custom VFS in E0001 |
 | Path-only SQLite open follows a storage/database symlink before CLI secure checks | resolved within D-E0001-009's explicit fresh-workspace threat boundary | E0001-13/E0001-09 | storage 124/124 and independent PASS; CLI 68/68, 11 child tests, and independent PASS |
 | No public command can create fresh terminal 10/10 evidence plus a safe synthetic edition without credentials | resolved | E0001-09 | fresh public packet independently verified exactly 10/10 with stable replay and zero provider attempts |
-| Host process has no `OPENAI_API_KEY` | blocks the sole approved paid request before provider construction; no charge or external effect occurred | product owner/operator | when available, inject the credential through the secure agent environment and execute only the replay-verified persisted exact `next_argv` |
-| Fresh readiness workspace is under `/tmp` | host cleanup or reboot could remove the retained packet before morning | orchestrator/operator | preserve the workspace overnight; if it disappears, stop and regenerate/reverify credential-free readiness before any paid attempt |
+| The authorized provider journey exhausted its retry before a response committed | E0001 live acceptance is 5/17; no approval/publication evidence exists | product owner | record Gate C defer or reject; any further call needs a new gated attempt plan and provider capability/quota readiness evidence |
+| Retry exhaustion overwrites attempt 2's original retryable class | the sealed evidence cannot distinguish a second explicit 429 from certified-no-bytes transport failure | next-edition runtime owner | preserve the underlying cause in terminal evidence and add explicit two-429 exhaustion coverage before another live gate |
+| Failed readiness workspace is under `/tmp` | cleanup or reboot could remove the sealed run before owner retention disposition | orchestrator/operator | retain the private workspace unchanged; do not destructively clean it under E0001 authority |
 | Historical E0000 workspace identity is compromised | critical if reused | orchestrator | use only a fresh temporary workspace and newly generated test identities |

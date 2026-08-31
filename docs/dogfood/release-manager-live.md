@@ -3,9 +3,10 @@
 ## Status and authority
 
 This is the secure operator and independent-verification procedure for the one
-approved AXP-E0001 Release Manager live journey. It is a procedure, not a live
-result: this record does not assert that a provider credential is available,
-that a provider request has been sent, or that a publication has occurred.
+approved AXP-E0001 Release Manager live journey. The procedure remains frozen
+for auditability. The final section records the 2026-08-31 execution result:
+the authorized journey sealed failed at provider retry exhaustion before an
+approval request, publication, artifact, or proof existed.
 
 This runbook supersedes the **Live-provider gate** in
 [`release-manager-preview.md`](release-manager-preview.md). Do not follow that
@@ -433,3 +434,73 @@ rtk env -u OPENAI_API_KEY -u OPENAI_BASE_URL \
 The verifier records only the approved redacted evidence summary, commands and
 results. The raw `/tmp` captures remain private operator material and are not
 committed or copied into edition records.
+
+## 2026-08-31 execution record — stopped at retry exhaustion
+
+The operator satisfied the final-source entry barrier at revision
+`357ec1196069ee7c42ee1f55c5e8f2f47e0cf6da`: locked Kernel 106/106, Storage
+133/133, Runtime 122/122, and CLI 93/93 passed; scoped formatting passed; the
+current CLI binary built; and the exact credential-free preparation replay
+remained 10/10 with output SHA-256
+`758847ef1a6f7be775b1fb90a86e962cf9eb93ffa9f03d9c754dd58d2b348bd7`.
+A distinct non-author independently verified the ready record, its private
+modes, both readiness digests, exact bindings, persisted argv, and zero prior
+runs for the live agent.
+
+The operator loaded and exact-compared the packet's array-form `next_argv`,
+then executed it once without a base-URL override. Direct OpenAI Responses,
+exact `gpt-5.6-sol`, default synchronous tier, `store=true`, the frozen
+synthetic goal, and the one strict release function were preserved. Run
+`01a057fe-0a47-7fe1-a607-5f350f90cd9b` started at
+`2026-08-31T13:24:21.700208419Z` and sealed failed at
+`2026-08-31T13:24:25.329439675Z`.
+
+The immutable chronology is:
+
+1. Sequence 0: `started`.
+2. Sequence 1: `model_requested`; attempt
+   `01a057fe-0a5c-7ce3-b67c-a2e1ee5f101b` returned explicit HTTP 429 without
+   a response ID and became `rejected_retryable/http_429`.
+3. Sequence 2: `model_requested`; the sole retry
+   `01a057fe-13e1-74d2-874f-7db04fd0fb8d` was dispatched with the identical
+   request digest and sealed `failed_terminal/retry_limit_exhausted`.
+4. Sequence 3: `failed`; terminal error `live automatic retry limit exceeded`.
+
+No waiting result or decision argv existed, so the operator did not invoke
+review, approve, deny, `live-resume`, generic resume, or a second start. The
+terminal ledger contains two provider dispatches, one retry, no committed
+model response, no logical model turn, no tool attempt, no approval, no
+mutation, no artifact, no proof, and no publication. Committed usage is zero
+tokens and calculated committed-usage cost is 0 micro-USD; provider cost is
+explicitly unavailable and is not treated as zero. No budget-exceeded or
+ambiguous event exists.
+
+Live evaluation `01a057fe-1894-75b0-ad3c-947e70cee86c` correctly sealed failed
+at 5/17 and 2,941 basis points. Complete trace digest is
+`6200c3570e16b477d6063645f2b80ee0939152d1f1e5cca9a3fee149ead04aeb`;
+runtime-state digest is
+`ded05e4cd7c7f96d8c312d9f42d1399674850b6db185c0cce02a7d7324b7e9fa`;
+live bindings digest is
+`0b1c12f1f1b9087bc967de71e01c943b17cb15650a7082337bf0e65c5b9d8d00`.
+The redacted start and watch captures remain private, mode `0600`, with
+SHA-256 values
+`f32fd42758bfb6aa413b277a352cba6189df4f6e7fc6c5dd488bc30c68194fea`
+and
+`144b02b2a5215e4fd74ac04c96dc5e3ea936923620539ae887145de366d031ba`.
+A distinct non-author then performed two credential-free read-only watches;
+the results were byte-identical at the latter digest and independently
+confirmed the exact failure chronology, counters, evaluator result, zero
+effects, and absence of ambiguity or a budget event. The verifier did not
+sign or advance the run.
+
+This is an immediate-stop result under the frozen rules, not a recoverable
+approval pause. The private workspace and failed evidence remain unchanged;
+there is no local consequence to roll back. The current one-run/no-replacement
+Gate B authority is exhausted. Do not retry, create a replacement preparation
+or run, change model or endpoint, or perform a diagnostic provider request
+without a new explicit owner decision.
+
+The two dispatch barriers prove one initial call and one retry. They do not
+prove that the retry's original cause was another 429: the terminal record
+collapses either an explicit 429 or a certified-no-bytes failure into
+`retry_limit_exhausted`. Retain that limitation in every downstream summary.

@@ -582,3 +582,47 @@ Independent final audit found no remaining material live concurrency race.
 This correction changes no credential, provider/model, budget, synthetic
 payload, authority, registry, schema migration, live-run evidence, or Gate C
 state, and it authorizes no provider attempt.
+
+## D-E0001-019 — Live retry exhausted; Gate C defer recommended
+
+Status: proposed Gate C defer · Date: 2026-08-31 · Decision owner: product owner · Proposer: orchestrator
+
+Every final-source and credential-free entry condition passed before E0001-04
+executed the retained persisted start argv exactly once. Direct OpenAI
+Responses, exact `gpt-5.6-sol`, the default synchronous tier, `store=true`, the
+sealed synthetic target, and both spend ceilings remained unchanged. Run
+`01a057fe-0a47-7fe1-a607-5f350f90cd9b` received an explicit HTTP 429 without a
+response ID on its first attempt. Its one authorized automatic retry also
+ended in a retryable failure and sealed as `retry_limit_exhausted`; the
+terminal record does not retain enough detail to distinguish a second 429 from
+a certified-no-bytes transport failure.
+
+The run is durably failed with two dispatches, one retry, no committed model
+response, no logical turn, no tool attempt, no approval request or decision,
+no publication mutation, no artifact, and no proof. Committed token usage is
+zero. Calculated committed-usage cost is 0 micro-USD; provider cost is
+explicitly unavailable and is not treated as zero. Evaluation
+`01a057fe-1894-75b0-ad3c-947e70cee86c` correctly sealed at 5/17 and 2,941
+basis points. A distinct non-author performed two byte-identical
+credential-free watches and confirmed the exact four-event chronology, both
+attempts, zero effects, and absence of ambiguity or a budget event.
+
+The recommended Gate C decision is **defer**, not accept. The implementation,
+security, recovery, deterministic 10/10 readiness, and scoped test evidence
+remain valid, but the edition's defining live approval/publication outcome and
+17/17 acceptance evidence do not exist. No agent may mark Gate C accepted or
+silently substitute deterministic coverage for the missing live outcome.
+
+The existing one-run/no-replacement B5 authority is exhausted. A future live
+attempt requires a new explicit Gate B decision defining a fresh preparation
+and run plus provider capability/quota readiness evidence. Before that gate,
+the recommended bounded runtime repair is to preserve the exhausted attempt's
+underlying retryable class and add explicit two-429 exhaustion coverage. This
+proposal authorizes neither that implementation nor any diagnostic/provider
+call, changed model or endpoint, new spend, retry, cleanup, or replacement
+journey.
+
+The private failed workspace remains unchanged pending owner retention
+disposition. There is no local artifact, approval, proof, or publication to
+roll back. The product owner must explicitly accept the defer or choose reject;
+the orchestrator does not self-approve Gate C.

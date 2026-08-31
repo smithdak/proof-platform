@@ -2,11 +2,11 @@
 
 - Edition: `AXP-E0001`
 - Base revision: `2f22a0c6ce28e70dcc9be89f2961f7e4f7acb9b6`
-- Evaluation/policy version or digest: `proof-release-manager-live-policy/v1`; template digest `c85a604eed34f9b1085299c2d9397a85d3d18490a5da72db8e1db139afd16856`; live resolved digest remains intentionally uncreated
-- Provider/model configuration: direct OpenAI Responses / exact `gpt-5.6-sol` approved under B5; host credential unavailable and no live request sent
+- Evaluation/policy version or digest: `proof-release-manager-live-policy/v1`; template digest `c85a604eed34f9b1085299c2d9397a85d3d18490a5da72db8e1db139afd16856`; live resolved digest `16a37a93885a27259bbae4de30a91f669e7ea08ddcbcbfa48c6c21b25f8e9af5`
+- Provider/model configuration: direct OpenAI Responses / exact `gpt-5.6-sol`; default synchronous tier; `store=true`; two authorized dispatches comprising the initial call and sole retry; no committed response
 - Environment: fresh temporary workspace; synthetic data; no historical key
-- Evaluator: independent E0001-09 readiness verifier; independent E0001-04 live verifier pending
-- Result: credential-free readiness passed; live journey pending at the credential boundary
+- Evaluator: independent E0001-09 readiness verifier; distinct non-author E0001-04 failure verifier
+- Result: deterministic readiness passed 10/10; live run `01a057fe-0a47-7fe1-a607-5f350f90cd9b` sealed failed at retry exhaustion, 5/17 and 2,941 basis points, with zero approval/tool/publication effect
 
 ## Acceptance checks
 
@@ -36,11 +36,12 @@
 | Strong SQLite pinning feasibility | E0001-12 probe, handoff, and independent design review | never accept a false pathname guard as descriptor-pinned WAL/sidecar safety | stock SQLite rejects the proc-fd magic link under NOFOLLOW and otherwise canonicalizes it; custom VFS/mount namespace required, so D-E0001-008 is superseded | passed: negative result |
 | Trusted fresh-workspace open | D-E0001-009 plus E0001-13 storage and E0001-09 CLI tests | no static symlink/hard-link or different-UID substitution before key/DB use; native nofollow and identity barriers; residual same-euid/root risk explicit | storage owner/root 124/124, focused 4/4, integration 6/6, independent PASS; CLI owner/root 68/68, child 11/11 including real sticky `/tmp`, independent PASS | passed |
 | Deterministic preflight | public credential-free runtime rehearsal plus independent recomputation | fresh immutable stable digest, 10/10, no failures, exact safe edition/readiness bindings | preparation `01a053eb-a460-7f21-8b2b-5cebcd872dd0`; run `01a053eb-cc9b-7e13-9015-657a54997a41`; evaluation `01a053ec-51a1-7b13-af4e-2535a8ea551f`; evaluation digest `95f484f30bfdb5f9531a6702d78df247685bd38ebd19e1e4b45113987d1776d6`; readiness binding digest `7efebe8d98ad23f9a122ae64f76887d371804f719bae7fb4a69b434e511b6b71`; independent stable replay and exact ordered 10/10; zero provider/live-v2/artifact/failure evidence | passed |
-| Post-repair readiness replay | host `live-prepare finish` with both provider variables unset after E0001-14..20 | exact retained 10/10 evidence, bindings, `next_argv`, binding digest, and ready bytes; no provider boundary | exact packet and digest `7efebe8d98ad23f9a122ae64f76887d371804f719bae7fb4a69b434e511b6b71` returned after final source; ready SHA-256 remains `8bc2784f8ae20cc108fe50715ef31ec46289ed4bcf81da6a32b66554785cc40b`; record remains mode `0600` under workspace mode `0700`; zero provider attempts | passed |
-| Live journey | one fresh bounded provider run | exact call, signed pause, same-run restart/resume, one artifact/proof | B5 activation and E0001-20 entry evidence pass, but `OPENAI_API_KEY` remains absent without exposing a value; zero provider attempts; execution remains stopped before provider construction | owner-deferred |
-| Independent live verification | sealed policy/trace/artifact/proof bundle | exact 17/17; tamper vectors fail; usage/cost/rollback recorded | pending | blocked on the live journey |
-| Final gate | `rtk scripts/swarm.sh verify AXP-E0001 --quiescent` | format and workspace suite pass | pending | blocked |
-| Owner release | Gate C decision | dated accept/defer/reject | pending | blocked |
+| Post-repair readiness replay | host `live-prepare finish` with both provider variables unset after E0001-14..20 | exact retained 10/10 evidence, bindings, `next_argv`, binding digest, and ready bytes; no provider boundary | exact packet and digest `7efebe8d98ad23f9a122ae64f76887d371804f719bae7fb4a69b434e511b6b71` returned after final source; ready SHA-256 remains `8bc2784f8ae20cc108fe50715ef31ec46289ed4bcf81da6a32b66554785cc40b`; record remains mode `0600` under workspace mode `0700`; zero provider attempts at the entry barrier | passed |
+| Live journey | one fresh bounded provider run | exact call, signed pause, same-run restart/resume, one artifact/proof | exact persisted argv executed once; attempt 1 `explicit429/http_429`; sole retry sealed `retry_limit_exhausted`; 2 dispatches, 1 retry, 0 committed responses/turns/tools/mutations/tokens, provider cost unavailable, calculated committed-usage cost 0; no approval/artifact/proof | failed: 5/17 |
+| Live failure integrity | sealed run/watch/evaluator records | preserve every failed attempt, no replacement, exact redacted digests and zero-effect accounting | four contiguous events; trace `6200c357...04aeb`; runtime `ded05e4c...e9fa`; start capture `f32fd427...4fea`; failed watch `144b02b2...31ba`; private workspace retained unchanged | passed |
+| Independent live verification | sealed policy/trace/artifact/proof bundle | exact 17/17; tamper vectors fail; usage/cost/rollback recorded | non-author verified two byte-identical credential-free watches at `144b02b2...31ba`, exact failure chronology/counters, no ambiguity or budget event, and zero approval/effect; no artifact/proof exists to verify | failed acceptance; failure record verified |
+| Final gate | `rtk scripts/swarm.sh verify AXP-E0001 --quiescent` | format and workspace suite pass | final integrated rerun: edition valid; 614 passed across 52 suites in 19.16 seconds; edition and full diff checks clean | passed |
+| Owner release | Gate C decision | dated accept/defer/reject | defer/no-go proposal prepared; owner decision not inferred | pending owner |
 
 ## Evidence handling
 
