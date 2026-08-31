@@ -1,12 +1,11 @@
-use super::delegation::save_delegation;
 use crate::{load_registry, open_content_store, open_store, Cli, Workspace};
 use anyhow::{bail, Context, Result};
-use base64::Engine;
-use proof_kernel::{Delegation, Proof};
-use proof_storage::SqliteStore;
+use proof_kernel::{Delegation, Principal, PrincipalId, Proof};
+use proof_storage::{SqliteStore, StorageError};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct WorkspaceArchive {
@@ -56,23 +55,136 @@ fn load_exported_principal(row: (String, String, Vec<u8>, String)) -> Result<Exp
     })
 }
 
-fn store_exported_principal(store: &SqliteStore, principal: &ExportedPrincipal) -> Result<()> {
-    store.connection().execute(
+fn decode_exported_principal(exported: &ExportedPrincipal) -> Result<Principal> {
+    let id = uuid::Uuid::parse_str(&exported.id)
+        .with_context(|| format!("invalid exported principal ID: {}", exported.id))?;
+    let public_key = ed25519_dalek::VerifyingKey::from_bytes(&exported.public_key)
+        .with_context(|| format!("invalid exported principal public key: {}", exported.id))?;
+    Ok(Principal {
+        id: PrincipalId::new(id),
+        kind: exported.kind,
+        public_key,
+        created_at: exported.created_at,
+    })
+}
+
+fn load_existing_principal(
+    store: &SqliteStore,
+    principal_id: &PrincipalId,
+) -> Result<Option<Principal>> {
+    match store.load_principal(principal_id) {
+        Ok(principal) => Ok(Some(principal)),
+        Err(StorageError::NotFound(_)) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn preflight_exported_principals(
+    store: &SqliteStore,
+    exported: &[ExportedPrincipal],
+) -> Result<Vec<Principal>> {
+    let mut seen = HashSet::with_capacity(exported.len());
+    let mut principals = Vec::with_capacity(exported.len());
+    for exported in exported {
+        let principal = decode_exported_principal(exported)?;
+        if !seen.insert(principal.id) {
+            bail!("duplicate exported principal ID: {}", principal.id);
+        }
+        if let Some(existing) = load_existing_principal(store, &principal.id)? {
+            if existing.kind != principal.kind || existing.public_key != principal.public_key {
+                bail!(
+                    "imported principal {} conflicts with its immutable enrolled kind or public key",
+                    principal.id
+                );
+            }
+        }
+        principals.push(principal);
+    }
+    Ok(principals)
+}
+
+fn preflight_exported_delegations(
+    store: &SqliteStore,
+    delegations: &[Delegation],
+    imported_principal_ids: &HashSet<PrincipalId>,
+) -> Result<()> {
+    let mut seen = HashSet::with_capacity(delegations.len());
+    for delegation in delegations {
+        if !seen.insert(delegation.id) {
+            bail!("duplicate exported delegation ID: {}", delegation.id);
+        }
+        if delegation.valid_from > delegation.valid_until {
+            bail!(
+                "imported delegation {} has an invalid validity window",
+                delegation.id
+            );
+        }
+        for (role, principal_id) in [
+            ("issuer", delegation.issuer),
+            ("recipient", delegation.recipient),
+        ] {
+            if !imported_principal_ids.contains(&principal_id)
+                && load_existing_principal(store, &principal_id)?.is_none()
+            {
+                bail!(
+                    "imported delegation {} {role} is not enrolled: {principal_id}",
+                    delegation.id
+                );
+            }
+        }
+        if let Some(existing) = store.load_delegation(&delegation.id)? {
+            if existing != *delegation {
+                bail!(
+                    "imported delegation {} conflicts with the existing durable grant",
+                    delegation.id
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn save_imported_delegation_exact(store: &SqliteStore, delegation: &Delegation) -> Result<()> {
+    let connection = store.connection();
+    let transaction = rusqlite::Transaction::new_unchecked(
+        &connection,
+        rusqlite::TransactionBehavior::Immediate,
+    )?;
+    let changed = transaction.execute(
         "
-        INSERT INTO principals (id, kind, display_name, public_key)
-        VALUES (?1, ?2, ?3, ?4)
-        ON CONFLICT(id) DO UPDATE SET
-            kind = excluded.kind,
-            display_name = excluded.display_name,
-            public_key = excluded.public_key
+        INSERT INTO delegations (
+            id, issuer, recipient, allowed_actions, resource_scope, scope_json,
+            valid_from, valid_until, revoked
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        ON CONFLICT(id) DO UPDATE SET id = excluded.id
+        WHERE issuer = excluded.issuer
+          AND recipient = excluded.recipient
+          AND allowed_actions = excluded.allowed_actions
+          AND resource_scope = excluded.resource_scope
+          AND scope_json = excluded.scope_json
+          AND valid_from = excluded.valid_from
+          AND valid_until = excluded.valid_until
+          AND revoked = excluded.revoked
         ",
         rusqlite::params![
-            principal.id,
-            serde_json::to_string(&principal.kind)?,
-            serde_json::to_string(&principal.kind)?,
-            principal.public_key.as_slice(),
+            delegation.id.to_string(),
+            delegation.issuer.to_string(),
+            delegation.recipient.to_string(),
+            serde_json::to_string(&delegation.allowed_actions)?,
+            serde_json::to_string(&delegation.resource_scope)?,
+            serde_json::to_string(&delegation.scope)?,
+            delegation.valid_from.to_rfc3339(),
+            delegation.valid_until.to_rfc3339(),
+            delegation.revoked,
         ],
     )?;
+    if changed != 1 {
+        bail!(
+            "imported delegation {} conflicts with the existing durable grant",
+            delegation.id
+        );
+    }
+    transaction.commit()?;
     Ok(())
 }
 
@@ -334,25 +446,37 @@ pub fn cmd_import(cli: &Cli, input: &Path) -> Result<()> {
         );
     }
 
+    let imported_principals = preflight_exported_principals(&store, &manifest.principals)?;
+    let imported_principal_ids = imported_principals
+        .iter()
+        .map(|principal| principal.id)
+        .collect::<HashSet<_>>();
+    preflight_exported_delegations(&store, &manifest.delegations, &imported_principal_ids)?;
+
+    for proof in &manifest.proofs {
+        let principal = match load_existing_principal(&store, &proof.body.actor)? {
+            Some(principal) => principal,
+            None => imported_principals
+                .iter()
+                .find(|principal| principal.id == proof.body.actor)
+                .cloned()
+                .with_context(|| format!("missing principal for proof {}", proof.body.id))?,
+        };
+        proof
+            .verify(&principal.public_key)
+            .map_err(anyhow::Error::from)?;
+    }
+
+    for principal in &imported_principals {
+        store.save_principal(principal)?;
+    }
+    for delegation in &manifest.delegations {
+        save_imported_delegation_exact(&store, delegation)?;
+    }
+
     let mut imported_proofs = 0_usize;
     let mut newer_proofs = 0_usize;
     for proof in &manifest.proofs {
-        let principal = store
-            .load_principal(&proof.body.actor)
-            .map_err(anyhow::Error::from);
-        let public_key = match principal {
-            Ok(principal) => principal.public_key,
-            Err(_) => {
-                let exported = manifest
-                    .principals
-                    .iter()
-                    .find(|principal| principal.id == proof.body.actor.to_string())
-                    .with_context(|| format!("missing principal for proof {}", proof.body.id))?;
-                ed25519_dalek::VerifyingKey::from_bytes(&exported.public_key)?
-            }
-        };
-        proof.verify(&public_key).map_err(anyhow::Error::from)?;
-
         let existing = store.load_proof(&proof.body.id).ok();
         if existing
             .as_ref()
@@ -367,12 +491,6 @@ pub fn cmd_import(cli: &Cli, input: &Path) -> Result<()> {
         }
     }
 
-    for principal in &manifest.principals {
-        store_exported_principal(&store, principal)?;
-    }
-    for delegation in &manifest.delegations {
-        save_delegation(&store, delegation)?;
-    }
     for blob in &manifest.blobs {
         store_exported_blob(&cas, blob)?;
     }

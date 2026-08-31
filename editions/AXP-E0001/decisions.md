@@ -328,3 +328,37 @@ packet. It adds W9, moves live dogfood to W10 and release integration to W11,
 and requires a host-context full CLI plus immutable readiness replay before
 provider construction. It authorizes no credential read, provider request,
 additional run, schema change, or expanded spend/effect.
+
+## D-E0001-012 — Workspace import preserves immutable authority
+
+Status: implemented protective correction · Date: 2026-08-30 · Decision owner: orchestrator
+
+Continued credential-free CLI audit found that workspace import bypassed the
+canonical principal API with an `ON CONFLICT` update of kind and public key.
+The same path could feed an existing delegation ID through a mutable upsert,
+including replacing or un-revoking the stored grant, and it persisted proofs
+one at a time before every signature had passed.
+
+E0001-15 makes import preflight the authority boundary. Every exported
+principal ID/key is decoded, duplicate IDs fail, and an enrolled principal is
+accepted only with its exact durable kind/key. Delegations require unique IDs,
+valid windows, enrolled/imported endpoints, and exact equality when their ID
+already exists. Every proof signature is then checked against the enrolled or
+preflighted principal set before any archive principal, proof, or delegation
+is saved through the canonical APIs. The delegation write atomically permits
+only insertion or an exact no-op, preventing a post-preflight change from
+being overwritten. Tests prove collisions and unrevocation
+leave durable state unchanged, invalid proof evidence does not partially
+enroll its signer, and compatible round-trip/newer-proof behavior remains.
+
+This correction intentionally does not change the global storage delegation
+contract or claim that blob, registry, and workspace-file import is one
+transaction. Signed monotonic operator revocation and broader import
+transactionality require separately contracted work. The repair did not open
+or change the retained readiness workspace, and no credential/provider/live
+evidence was created. E0001-15 adds W10, moves live dogfood to W11 and release
+integration to W12, and extends the existing host full-CLI plus immutable
+readiness replay barrier to the new source revision. Both checks then passed in
+host context: the locked CLI suite was 72/72 and the credential-free replay
+returned the exact retained 10/10 packet and binding digest with both provider
+variables unset. The paid boundary remains closed.

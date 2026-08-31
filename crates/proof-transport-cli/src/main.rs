@@ -900,12 +900,20 @@ mod tests {
             .unwrap()
             .keypair;
         let mut workspace = Workspace::open(&source.path().to_path_buf()).unwrap();
-        let proof = workspace
+        let valid_proof = workspace
             .make_proof(
                 "test.operation",
                 "v1",
                 &serde_json::json!({"a": 1}),
                 &serde_json::json!({"b": 2}),
+            )
+            .unwrap();
+        let invalid_proof = workspace
+            .make_proof(
+                "test.operation",
+                "v1",
+                &serde_json::json!({"a": 2}),
+                &serde_json::json!({"b": 3}),
             )
             .unwrap();
         let exported_principal = commands::transfer::ExportedPrincipal {
@@ -918,12 +926,12 @@ mod tests {
             format_version: 1,
             exported_at: chrono::Utc::now(),
             registry: serde_json::json!([]),
-            proofs: vec![proof],
+            proofs: vec![valid_proof, invalid_proof],
             principals: vec![exported_principal],
             delegations: vec![],
             blobs: vec![],
         };
-        archive_manifest.proofs[0].signature = ed25519_dalek::Signature::from_bytes(&[1; 64]);
+        archive_manifest.proofs[1].signature = ed25519_dalek::Signature::from_bytes(&[1; 64]);
 
         let output_file = std::fs::File::create(archive.path()).unwrap();
         let encoder = flate2::write::GzEncoder::new(output_file, flate2::Compression::default());
@@ -957,6 +965,146 @@ mod tests {
         let error = commands::transfer::cmd_import(&import_args, archive.path()).unwrap_err();
         println!("IMPORT ERROR: {}", error);
         assert!(error.to_string().contains("invalid proof signature"));
+        let target_store = open_store(&target.path().to_path_buf()).unwrap();
+        assert_eq!(target_store.proof_count().unwrap(), 0);
+        assert!(matches!(
+            target_store.load_principal(&workspace_keypair.principal_id),
+            Err(proof_storage::StorageError::NotFound(_))
+        ));
+    }
+
+    #[test]
+    fn import_rejects_principal_identity_replacement_without_mutation() {
+        for replace_kind in [true, false] {
+            let source = assert_fs::TempDir::new().unwrap();
+            let target = assert_fs::TempDir::new().unwrap();
+            let archive = source.child("principal-conflict.tar.gz");
+            let target_args =
+                Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+            commands::content::cmd_init(&target_args).unwrap();
+            let workspace = Workspace::open(&target.path().to_path_buf()).unwrap();
+            let store = open_store(&target.path().to_path_buf()).unwrap();
+            let original = store.load_principal(&workspace.actor).unwrap();
+            let replacement = if replace_kind {
+                ExportedPrincipal {
+                    id: workspace.actor.to_string(),
+                    kind: proof_kernel::PrincipalKind::Human,
+                    public_key: original.public_key.to_bytes(),
+                    created_at: chrono::Utc::now(),
+                }
+            } else {
+                let keypair = proof_kernel::generate_keypair();
+                ExportedPrincipal {
+                    id: workspace.actor.to_string(),
+                    kind: proof_kernel::PrincipalKind::Agent,
+                    public_key: keypair.signing_key.verifying_key().to_bytes(),
+                    created_at: chrono::Utc::now(),
+                }
+            };
+            let manifest = WorkspaceArchive {
+                format_version: 1,
+                exported_at: chrono::Utc::now(),
+                registry: serde_json::json!([]),
+                proofs: vec![],
+                principals: vec![replacement],
+                delegations: vec![],
+                blobs: vec![],
+            };
+            create_archive(archive.path(), &manifest).unwrap();
+
+            let import_args = Cli::parse_from([
+                "proof",
+                "-w",
+                target.path().to_str().unwrap(),
+                "import",
+                "--input",
+                archive.path().to_str().unwrap(),
+            ]);
+            let error = commands::transfer::cmd_import(&import_args, archive.path()).unwrap_err();
+
+            assert!(error
+                .to_string()
+                .contains("immutable enrolled kind or public key"));
+            let reloaded = store.load_principal(&workspace.actor).unwrap();
+            assert_eq!(reloaded.id, original.id);
+            assert_eq!(reloaded.kind, original.kind);
+            assert_eq!(reloaded.public_key, original.public_key);
+            assert_eq!(store.proof_count().unwrap(), 0);
+        }
+    }
+
+    #[test]
+    fn import_rejects_delegation_replacement_and_unrevocation() {
+        let source = assert_fs::TempDir::new().unwrap();
+        let target = assert_fs::TempDir::new().unwrap();
+        let archive = source.child("delegation-conflict.tar.gz");
+        let target_args = Cli::parse_from(["proof", "-w", target.path().to_str().unwrap(), "init"]);
+        commands::content::cmd_init(&target_args).unwrap();
+        let workspace = Workspace::open(&target.path().to_path_buf()).unwrap();
+        let store = open_store(&target.path().to_path_buf()).unwrap();
+        let stored = proof_kernel::Delegation {
+            id: uuid::Uuid::now_v7(),
+            issuer: workspace.actor,
+            recipient: workspace.actor,
+            allowed_actions: vec!["content:release_publish".to_string()],
+            resource_scope: vec!["preview".to_string()],
+            scope: proof_kernel::delegation::DelegationScope {
+                allowed_operations: Some(vec!["release.publish".to_string()]),
+                allowed_domains: Some(vec!["content".to_string()]),
+                resource_scope: None,
+            },
+            valid_from: chrono::Utc::now(),
+            valid_until: chrono::Utc::now() + chrono::Duration::hours(1),
+            revoked: true,
+        };
+        store.save_delegation(&stored).unwrap();
+        let mut replacement = stored.clone();
+        replacement.revoked = false;
+        let manifest = WorkspaceArchive {
+            format_version: 1,
+            exported_at: chrono::Utc::now(),
+            registry: serde_json::json!([]),
+            proofs: vec![],
+            principals: vec![],
+            delegations: vec![replacement],
+            blobs: vec![],
+        };
+        create_archive(archive.path(), &manifest).unwrap();
+        let import_args = Cli::parse_from([
+            "proof",
+            "-w",
+            target.path().to_str().unwrap(),
+            "import",
+            "--input",
+            archive.path().to_str().unwrap(),
+        ]);
+
+        let error = commands::transfer::cmd_import(&import_args, archive.path()).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("conflicts with the existing durable grant"));
+        assert_eq!(
+            store.load_delegation(&stored.id).unwrap(),
+            Some(stored.clone())
+        );
+        assert_eq!(store.proof_count().unwrap(), 0);
+
+        create_archive(
+            archive.path(),
+            &WorkspaceArchive {
+                format_version: 1,
+                exported_at: chrono::Utc::now(),
+                registry: serde_json::json!([]),
+                proofs: vec![],
+                principals: vec![],
+                delegations: vec![stored.clone()],
+                blobs: vec![],
+            },
+        )
+        .unwrap();
+        commands::transfer::cmd_import(&import_args, archive.path()).unwrap();
+        assert_eq!(store.load_delegation(&stored.id).unwrap(), Some(stored));
     }
 
     #[test]
