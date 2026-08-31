@@ -626,3 +626,27 @@ The private failed workspace remains unchanged pending owner retention
 disposition. There is no local artifact, approval, proof, or publication to
 roll back. The product owner must explicitly accept the defer or choose reject;
 the orchestrator does not self-approve Gate C.
+
+## D-E0001-020 — Gate C deferred after verified live failure
+
+Status: Gate C deferred/no-go · Date: 2026-08-31 · Decision owner: product owner
+
+After reviewing the reported candidate status and D-E0001-019 recommendation,
+the product owner directed the orchestrator to proceed with the defer. E0001 is
+therefore blocked and quiescent, not released. The exact live run
+`01a057fe-0a47-7fe1-a607-5f350f90cd9b` exhausted its one allowed retry and
+evaluated 5/17; it produced no committed model response, approval, tool call,
+artifact, proof, publication, or local mutation.
+
+This disposition preserves the valid implementation, security, recovery,
+deterministic 10/10 readiness, and 614/614 quiescent verification evidence. It
+does not substitute that evidence for the missing live approval/publication
+journey or authorize a release claim. The existing B5 one-run authority is
+exhausted. No replacement preparation, diagnostic, retry, provider call,
+cleanup, changed model/endpoint, or additional spend is authorized without a
+new explicit Gate B decision.
+
+The private failed workspace remains retained unchanged pending a separate
+owner retention disposition. E0001 may be revisited only through a newly
+gated bounded repair/attempt plan; meanwhile its blocked, writer-free state
+permits the next ranked edition to proceed through its own Gate A.

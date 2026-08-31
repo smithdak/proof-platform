@@ -38,6 +38,23 @@
       background: #181e29;
       cursor: pointer;
     }
+    .header-actions { display: flex; gap: .65rem; }
+    .bootstrap {
+      max-width: 34rem;
+      margin: 4rem auto;
+      padding: 1.5rem;
+      border: 1px solid #303949;
+      border-radius: .75rem;
+      background: #111720;
+      text-align: center;
+    }
+    .bootstrap h2 { font-size: 1.25rem; }
+    .bootstrap-code {
+      margin: 1.25rem 0;
+      font: 700 1.65rem/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .08em;
+      color: #a9d5ff;
+    }
     main {
       display: grid;
       grid-template-columns: minmax(17rem, 23rem) minmax(0, 1fr);
@@ -178,10 +195,19 @@
       <h1>Proof operator approvals</h1>
       <p>Review exact native agent calls before signing authority.</p>
     </div>
-    <button class="refresh" id="refresh" type="button">Refresh</button>
+    <div class="header-actions">
+      <button class="refresh" id="end-session" type="button" hidden>End session</button>
+      <button class="refresh" id="refresh" type="button" hidden>Refresh</button>
+    </div>
   </header>
   <div id="fatal" class="fatal" hidden></div>
-  <main id="app">
+  <section id="bootstrap" class="bootstrap" aria-labelledby="bootstrap-title">
+    <h2 id="bootstrap-title">Confirm this local browser</h2>
+    <p>Enter this one-use code at the terminal running Proof:</p>
+    <p id="bootstrap-code" class="bootstrap-code" aria-live="polite"></p>
+    <p id="bootstrap-status" role="status" aria-live="polite">Preparing local confirmation…</p>
+  </section>
+  <main id="app" hidden>
     <aside class="inbox" aria-labelledby="inbox-title">
       <div class="inbox-heading">
         <h2 id="inbox-title">Approval inbox</h2>
@@ -237,13 +263,13 @@
   </main>
   <script>
     (() => {
-      const fragmentToken = decodeURIComponent(location.hash.slice(1));
-      if (fragmentToken) sessionStorage.setItem("proofApprovalSession", fragmentToken);
-      const token = fragmentToken || sessionStorage.getItem("proofApprovalSession") || "";
-      if (location.hash) history.replaceState(null, "", location.pathname);
-
       const app = document.getElementById("app");
       const fatal = document.getElementById("fatal");
+      const bootstrap = document.getElementById("bootstrap");
+      const bootstrapCodeElement = document.getElementById("bootstrap-code");
+      const bootstrapStatus = document.getElementById("bootstrap-status");
+      const refreshButton = document.getElementById("refresh");
+      const endSessionButton = document.getElementById("end-session");
       const list = document.getElementById("approval-list");
       const count = document.getElementById("approval-count");
       const pageStatus = document.getElementById("page-status");
@@ -254,23 +280,53 @@
       let selectedId = null;
       let selectedApproval = null;
       let decisionPending = false;
+      let sessionAuthorityUncertain = false;
       let selectionGeneration = 0;
-
-      if (!token) {
-        app.hidden = true;
-        fatal.hidden = false;
-        fatal.textContent = "This approval console needs the private session URL printed by `proof approval ui`.";
-        return;
-      }
+      let session = null;
 
       async function api(path, options = {}) {
+        if (!session) throw new Error("The approval session is no longer available.");
         const headers = new Headers(options.headers || {});
-        headers.set("X-Proof-Session", token);
+        headers.set("X-Proof-Session", session);
         if (options.body) headers.set("Content-Type", "application/json");
         const response = await fetch(path, {...options, headers});
         const payload = await response.json().catch(() => ({error: "Invalid server response"}));
         if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
         return payload;
+      }
+
+      async function establishSession() {
+        const bytes = new Uint8Array(8);
+        crypto.getRandomValues(bytes);
+        let code = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+        bootstrapCodeElement.textContent = code.match(/.{4}/g).join("-");
+        try {
+          const request = async path => {
+            const response = await fetch(path, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({code})
+            });
+            const payload = await response.json().catch(() => ({error: "Request rejected"}));
+            if (!response.ok) throw new Error(payload.error || "Request rejected");
+            return payload;
+          };
+          await request("/api/session/bootstrap");
+          bootstrapStatus.textContent = "Waiting for terminal confirmation…";
+          const result = await request("/api/session/exchange");
+          session = result.session;
+          code = "";
+          bootstrapCodeElement.textContent = "";
+          bootstrap.hidden = true;
+          app.hidden = false;
+          refreshButton.hidden = false;
+          endSessionButton.hidden = false;
+          await loadInbox();
+        } catch (error) {
+          code = "";
+          bootstrapCodeElement.textContent = "";
+          bootstrapStatus.textContent = `${error.message}. Restart the console to try again.`;
+        }
       }
 
       function setStatus(message) { pageStatus.textContent = message; }
@@ -302,7 +358,7 @@
           button.type = "button";
           button.className = "approval-row";
           button.dataset.requestId = approval.request_id;
-          button.disabled = decisionPending;
+          button.disabled = decisionPending || sessionAuthorityUncertain;
           button.setAttribute("aria-current", String(approval.request_id === selectedId));
           const top = document.createElement("span");
           top.className = "row-top";
@@ -431,7 +487,7 @@
 
       function updateActions() {
         const approver = document.getElementById("approver").value;
-        const disabled = decisionPending || !selectedApproval || !selectedApproval.actionable || !approver;
+        const disabled = decisionPending || sessionAuthorityUncertain || !selectedApproval || !selectedApproval.actionable || !approver;
         approveButton.disabled = disabled;
         denyButton.disabled = disabled;
       }
@@ -493,13 +549,37 @@
         }
       }
 
-      document.getElementById("refresh").addEventListener("click", () => loadInbox());
+      refreshButton.addEventListener("click", () => loadInbox());
+      endSessionButton.addEventListener("click", async () => {
+        if (!session) return;
+        sessionAuthorityUncertain = true;
+        refreshButton.disabled = true;
+        endSessionButton.disabled = true;
+        setInboxDisabled(true);
+        updateActions();
+        try {
+          await api("/api/session/revoke", {method: "POST", body: "{}"});
+        } catch (_) {
+          endSessionButton.disabled = false;
+          fatal.hidden = false;
+          fatal.textContent = "Revocation could not be confirmed. Retry End Session or stop the console; approval actions remain disabled.";
+          setStatus("Session authority is uncertain. Retry End Session or stop the console.");
+          return;
+        }
+        session = null;
+        sessionAuthorityUncertain = false;
+        app.hidden = true;
+        refreshButton.hidden = true;
+        endSessionButton.hidden = true;
+        fatal.hidden = false;
+        fatal.textContent = "This approval session has ended. Restart the console for a new session.";
+      });
       document.getElementById("approver").addEventListener("change", updateActions);
       approveButton.addEventListener("click", () => decide("approved"));
       denyButton.addEventListener("click", () => decide("denied"));
       setInterval(updateCountdown, 1000);
-      setInterval(() => loadInbox(true), 5000);
-      loadInbox();
+      setInterval(() => { if (session) loadInbox(true); }, 5000);
+      establishSession();
     })();
   </script>
 </body>

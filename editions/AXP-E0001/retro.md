@@ -1,8 +1,7 @@
 # E0001 Retrospective
 
-Prepared for Gate C on 2026-08-31. The owner decision remains pending; update
-only the decision line after the product owner explicitly accepts defer or
-chooses reject.
+Completed after the product owner accepted the Gate C defer/no-go on
+2026-08-31. E0001 is blocked and quiescent rather than release-accepted.
 
 ## Outcome
 
@@ -17,8 +16,8 @@ chooses reject.
   turns, tools, and tokens; elapsed 3.629231 seconds; calculated
   committed-usage cost 0 micro-USD; provider cost unavailable and not treated
   as zero; USD 0.15 owner ceiling not exceeded.
-- Owner decision: pending. D-E0001-019 recommends Gate C defer; no agent
-  self-approval is recorded.
+- Owner decision: Gate C deferred/no-go on 2026-08-31 in D-E0001-020. The
+  failed journey remains preserved evidence; E0001 is not released.
 
 ## Swarm performance
 

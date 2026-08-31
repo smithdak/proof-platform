@@ -1,0 +1,275 @@
+{
+  "schema": "proof-approval-console-security-policy/v1",
+  "policy_id": "approval-console-security-v1",
+  "contract": "proof-approval-console-session/v1",
+  "contract_path": "contracts/approval-console-session.md",
+  "edition": "AXP-E0006",
+  "mode": "deterministic_local_security",
+  "unknown_fields": "reject",
+  "provider_calls_allowed": 0,
+  "external_network_allowed": false,
+  "workspace": {
+    "kind": "fresh_disposable_synthetic",
+    "historical_identity_allowed": false,
+    "private_material_in_evidence": false
+  },
+  "limits": {
+    "bootstrap_entropy_bits": 64,
+    "bootstrap_ttl_seconds": 120,
+    "bootstrap_verification_attempts": 1,
+    "bootstrap_successful_exchanges": 1,
+    "session_entropy_bits": 256,
+    "session_absolute_ttl_seconds": 900,
+    "session_idle_ttl_seconds": 300,
+    "active_sessions_per_instance": 1
+  },
+  "required_bindings": [
+    "server_instance_id",
+    "workspace_binding",
+    "bound_ipv4_loopback_host",
+    "bootstrap_state",
+    "session_state",
+    "absolute_deadline",
+    "idle_deadline"
+  ],
+  "prohibited_credential_channels": [
+    "url_query",
+    "url_fragment",
+    "stdout",
+    "stderr",
+    "process_arguments",
+    "child_environment",
+    "browser_history",
+    "web_storage",
+    "indexed_db",
+    "cookies",
+    "referrers",
+    "service_workers",
+    "console_logs",
+    "screenshots",
+    "test_artifacts",
+    "repository_files",
+    "durable_workspace_storage"
+  ],
+  "checks": [
+    {
+      "id": "clean_launch_surface",
+      "required": true,
+      "assertions": [
+        "Linux controlling TTY and safe non-echo setup are established before bind",
+        "listener is exactly IPv4 127.0.0.1",
+        "ordinary output contains one exact clean URL and no credential",
+        "no automatic browser launch or child argument/environment secret exists"
+      ]
+    },
+    {
+      "id": "bootstrap_local_handoff",
+      "required": true,
+      "assertions": [
+        "browser uses crypto.getRandomValues for exactly 64 bits and keeps canonical code in page memory",
+        "bootstrap request has one strict code field and never receives the code in its response",
+        "rustix 1.1.4 termios reads one non-echoing TTY attempt and restores terminal state on every specified path",
+        "terminal mismatch malformed input EOF loss timeout or unsafe restoration creates no verified bootstrap"
+      ]
+    },
+    {
+      "id": "bootstrap_single_use",
+      "required": true,
+      "assertions": [
+        "one instance accepts at most one pending bootstrap and one exchange waiter",
+        "one long-poll exchange returns no session before terminal verification",
+        "verified bootstrap is consumed before the one successful session response is published",
+        "duplicate replay page reload and lost exchange response require server restart and create no second session"
+      ]
+    },
+    {
+      "id": "bootstrap_expiry_and_race",
+      "required": true,
+      "assertions": [
+        "bootstrap expiry uses monotonic time and now greater than or equal to deadline is expired",
+        "deterministic concurrent exchange has exactly one winner",
+        "revocation expiry and terminal failure wake the one waiter with a generic no-session result",
+        "cross-instance and cross-workspace codes never verify or exchange"
+      ]
+    },
+    {
+      "id": "session_distinction_and_scope",
+      "required": true,
+      "assertions": [
+        "session is exactly 256 OS-random bits and differs from code and instance ID",
+        "server and browser retain the session only in current process/page memory",
+        "session binds exact server instance and workspace",
+        "one instance has at most one active session"
+      ]
+    },
+    {
+      "id": "session_expiry_and_revocation",
+      "required": true,
+      "assertions": [
+        "absolute expiry is 900 seconds and idle expiry is 300 seconds on monotonic time",
+        "now greater than or equal to either deadline is expired and only successful auth advances idle deadline",
+        "explicit revoke invalidates authority before return",
+        "stale page process restart and browser memory loss cannot recover authority"
+      ]
+    },
+    {
+      "id": "constant_work_secret_comparison",
+      "required": true,
+      "assertions": [
+        "fixed-length code and session encodings are decoded before comparison",
+        "all fixed secret bytes are compared without prefix early return",
+        "missing duplicate malformed guessed and wrong-scope credentials return generic errors",
+        "errors never echo bytes reveal matched prefixes or serialize authority state"
+      ]
+    },
+    {
+      "id": "browser_memory_only",
+      "required": true,
+      "assertions": [
+        "no credential enters query fragment history Web Storage IndexedDB cookie referrer service worker or console",
+        "code text is cleared after exchange result or terminal state",
+        "session exists only in one JavaScript closure and authenticated header",
+        "no remote resource or credential-bearing retained screenshot or network export exists"
+      ]
+    },
+    {
+      "id": "request_boundary",
+      "required": true,
+      "assertions": [
+        "every API request requires one exact bound Host",
+        "every state-changing request requires one exact Origin and one application/json content type",
+        "missing duplicate null alias wildcard opaque and foreign security headers fail",
+        "server emits no permissive CORS response"
+      ]
+    },
+    {
+      "id": "response_security_headers",
+      "required": true,
+      "assertions": [
+        "index and every API success or error carry Cache-Control no-store and X-Content-Type-Options nosniff",
+        "framework 404 405 unsupported-media and malformed-JSON responses carry the same baseline",
+        "index retains restrictive CSP no-referrer and frame denial",
+        "responses never reflect raw credential header or request body"
+      ]
+    },
+    {
+      "id": "pre_signing_failure_boundary",
+      "required": true,
+      "assertions": [
+        "one mutation lease spans final session check fresh registry governance exact context key access signing and decision persistence",
+        "decision versus revoke or expiry races have exactly one linearized outcome",
+        "registry drift between detail and POST fails before key access signature or decision",
+        "every authentication or actionability failure exposes no approval data and creates no signature or durable decision"
+      ]
+    },
+    {
+      "id": "approval_v1_v2_compatibility",
+      "required": true,
+      "assertions": [
+        "exact signed request run step operation version arguments and input digest remain required",
+        "approver remains an enrolled Human and live v2 uses the exact sealed Human",
+        "approve deny and conflicting double-submit behavior remain exact",
+        "decision signing performs no tool execution and advertises no generic live-v2 resume"
+      ]
+    },
+    {
+      "id": "process_browser_artifact_secret_scan",
+      "required": true,
+      "assertions": [
+        "synthetic sentinels are absent from stdout stderr argv child environment logs and test artifacts",
+        "synthetic sentinels are absent from URL history storage cookies referrers console and retained captures",
+        "synthetic sentinels are absent from repository files and durable workspace storage",
+        "evidence records only redacted pass fail facts and digests"
+      ]
+    },
+    {
+      "id": "fail_closed_rollback",
+      "required": true,
+      "assertions": [
+        "lost response page failure and unrecoverable authority error require console restart",
+        "rollback disables approval ui or uses terminal approve deny",
+        "rollback never restores fragment Web Storage persistent credentials wildcard bind or relaxed request checks",
+        "zero provider calls external network effects and credential migrations occur"
+      ]
+    }
+  ],
+  "check_set": {
+    "expected_cardinality": 14,
+    "require_unique_ids": true,
+    "require_exact_ordered_set": true,
+    "required_passed_checks": 14,
+    "required_total_checks": 14,
+    "required_score_bps": 10000,
+    "digest_algorithm": "sha256",
+    "digest_schema": "proof-approval-console-check-set-digest/v1",
+    "digest_input": "UTF-8 compact canonical JSON of the complete ordered checks array with lexicographically sorted object keys",
+    "expected_digest": "sha256:b5ddad83dc550468dd062ca814313e64fd04cb63ffad00a8a2dc7e5391c01889"
+  },
+  "rejection_vectors": [
+    {"id": "non_linux_or_non_tty_launch", "expected": "no listener credential approval read key access signature or decision"},
+    {"id": "url_query_fragment_output_argv_or_environment_credential", "expected": "launch fails security evaluation and no credential is retained"},
+    {"id": "malformed_unknown_or_duplicate_bootstrap_body", "expected": "no pending or verified bootstrap and no protected work"},
+    {"id": "bootstrap_terminal_mismatch", "expected": "bootstrap revoked no session and no protected work"},
+    {"id": "bootstrap_terminal_eof_loss_or_restore_failure", "expected": "bootstrap revoked or launch stopped no session and terminal restoration evidence"},
+    {"id": "bootstrap_expired_before_confirmation", "expected": "bootstrap expired no session and waiter returns generic failure"},
+    {"id": "bootstrap_deadline_equality", "expected": "now equal deadline is expired and creates no session"},
+    {"id": "exchange_waits_before_local_confirmation", "expected": "no response session approval data key access signature or decision before verification"},
+    {"id": "concurrent_exchange_loser", "expected": "one session winner only and loser receives generic failure"},
+    {"id": "lost_exchange_response", "expected": "bootstrap remains consumed and restart is required with no second session"},
+    {"id": "replayed_exchange", "expected": "no second response credential session or protected work"},
+    {"id": "cross_instance_bootstrap_or_session", "expected": "generic rejection before protected work"},
+    {"id": "cross_workspace_bootstrap_or_session", "expected": "generic rejection before protected work"},
+    {"id": "malformed_or_duplicate_session_header", "expected": "generic rejection before approval enumeration or key access"},
+    {"id": "session_absolute_deadline_equality", "expected": "session expired before protected work"},
+    {"id": "session_idle_deadline_equality", "expected": "session expired before protected work"},
+    {"id": "explicit_revoke_then_stale_page", "expected": "authority cleared before response and stale page cannot read or sign"},
+    {"id": "decision_races_revoke", "expected": "decision commits before revoke or revoke wins with zero signature and decision"},
+    {"id": "decision_races_expiry", "expected": "decision commits under valid lease or expiry wins with zero signature and decision"},
+    {"id": "missing_wrong_or_duplicate_host", "expected": "generic rejection before protected work with security headers"},
+    {"id": "missing_wrong_duplicate_null_or_opaque_origin", "expected": "generic rejection before state change with security headers"},
+    {"id": "missing_duplicate_non_json_or_malformed_json_content", "expected": "generic rejection before state change with security headers"},
+    {"id": "unknown_route_or_wrong_method", "expected": "404 or 405 with no-store nosniff and no reflected secret"},
+    {"id": "browser_persistence_cookie_referrer_service_worker_or_console_channel", "expected": "security evaluation fails and no credential-bearing evidence is retained"},
+    {"id": "registry_governance_changes_between_review_and_post", "expected": "rejection before key access signature or decision"},
+    {"id": "approval_request_argument_human_or_signature_substitution", "expected": "rejection before decision persistence and no tool execution"}
+  ],
+  "rejection_vector_set": {
+    "expected_cardinality": 26,
+    "require_unique_ids": true,
+    "require_exact_ordered_set": true,
+    "digest_algorithm": "sha256",
+    "digest_schema": "proof-approval-console-rejection-vector-set-digest/v1",
+    "digest_input": "UTF-8 compact canonical JSON of the complete ordered rejection_vectors array with lexicographically sorted object keys",
+    "expected_digest": "sha256:43ad301d7a86e91760961b3d309ff193515029d6c688ba19d816936f1ef10fe8"
+  },
+  "required_evidence": [
+    "scoped_cli_tests",
+    "cli_format_check",
+    "reverse_dependency_impact",
+    "process_output_and_argv_sentinel_scan",
+    "tower_route_and_concurrency_tests",
+    "browser_url_history_storage_cookie_referrer_console_capture",
+    "response_header_capture",
+    "signed_decision_and_zero_execution_record",
+    "independent_non_author_verdict",
+    "quiescent_edition_verification",
+    "dated_gate_c_decision"
+  ],
+  "score": {
+    "scale_bps": 10000,
+    "required_bps": 10000,
+    "all_required_checks_must_pass": true
+  },
+  "rollback": {
+    "allowed": [
+      "disable approval ui",
+      "use terminal approval approve and deny commands"
+    ],
+    "prohibited": [
+      "restore URL fragment bearer",
+      "restore Web Storage session",
+      "persist bootstrap or session credential",
+      "relax loopback Host Origin or content-type checks"
+    ]
+  }
+}

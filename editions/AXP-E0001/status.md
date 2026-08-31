@@ -2,9 +2,9 @@
 
 - Edition: `AXP-E0001`
 - Last updated: 2026-08-31
-- Overall: `active — stopped for Gate C disposition`
-- Current wave/task: W17 / E0001-05 integration; the sole authorized live run sealed failed at provider retry exhaustion before approval or publication
-- Owner action needed: record Gate C defer or reject. A replacement preparation, run, provider diagnostic, or retry requires a new explicit Gate B decision
+- Overall: `blocked — Gate C deferred`
+- Current wave/task: quiescent after W17 integration; the sole authorized live run sealed failed at provider retry exhaustion before approval or publication
+- Owner action needed: none for this edition. Any replacement preparation, run, provider diagnostic, or retry requires a new explicit Gate B decision
 
 ## Gates
 
@@ -13,7 +13,7 @@
 - [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence, E0001-20 host CLI 93/93, independent repair/runbook/concurrency audits, and final-source exact readiness replay passed; its one-run authority was exercised and exhausted by the sealed failed run
 - [x] Gate B clarification — D-E0001-009 narrows E0001 to a trusted fresh local workspace after E0001-12 proved strong stock-SQLite descriptor pinning impossible
 - [ ] Human approval — not reached; the provider produced no committed model response or tool request
-- [ ] Gate C — defer/no-go recommended; product-owner decision pending
+- [x] Gate C — product owner deferred/no-go on 2026-08-31; E0001 is not release-accepted
 
 ## Discovery results
 

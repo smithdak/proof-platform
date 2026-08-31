@@ -1604,6 +1604,7 @@ dependencies = [
  "proof-workflow",
  "rand 0.8.8",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "tar",

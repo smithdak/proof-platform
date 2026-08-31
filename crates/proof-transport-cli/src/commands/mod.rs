@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod approval;
+mod approval_session;
 pub mod approval_ui;
 pub mod benchmark;
 pub mod content;

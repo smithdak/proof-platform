@@ -17,13 +17,14 @@ assigned to one worker for the whole wave. Recommended tiers are
 normal implementation, and `gpt-5.6-sol` only for contracts, security, or
 cross-crate integration.
 
-AXP-E0001 is activated at its W16 live credential boundary after the W15
-one-shot-start and operator-recovery repair. Its tracked
-`editions/AXP-E0001/assignments.tsv` is the dispatch source of truth;
-`workgraph.md` and the exact task packets are required supporting dispatch
-context. The E0000 rows preserve the earlier plan, while E0006 and E0002-E0005
-remain ranked candidates that require an owner-approved charter, assignments,
-and exact task packets before any writer starts.
+AXP-E0001 is blocked and quiescent after its Gate C defer in D-E0001-020.
+AXP-E0006 is the current P0 edition; Gate A/B and its implementation are
+complete. Its five-minute Human decision/revoke path and later credential-free
+single-tab attachment probe passed separately. The final D-E0006-013 run
+reached terminal verification, but the current attached tab failed closed
+before session/app evidence; its one-run authority is consumed. Its tracked
+`editions/AXP-E0006/assignments.tsv` is the dispatch source of truth.
+E0002-E0005 remain ranked candidates without active writers.
 
 ## Ranked editions
 
@@ -64,14 +65,14 @@ deterministic release-manager evaluation; owner sign-off.
 **Outcome:** A real model completes a bounded release journey, pauses for
 signed human approval, resumes durably, and publishes a verified preview.
 
-**Status:** Activated. The authoritative twenty-task W1-W17 graph has
-completed E0001-01..03 and E0001-06..20. W16 E0001-04 is stopped only at the
-approved credential boundary and is preassigned to `e0001-live-operator` with
-a distinct non-author verifier; W17 E0001-05 and Gate C remain blocked on the
-live journey and independent 17/17 verification. E0001-20's final recovery
-barrier includes a crash-released active-writer lease and atomic expected-tail
-checkpoint append, so stale/concurrent resumers cannot poison history or
-orphan an authorized provider response.
+**Status:** Blocked and quiescent after the product-owner Gate C defer in
+D-E0001-020. The exact authorized live start reached the direct provider, then
+sealed failed after two dispatches and its one allowed retry, before any
+committed response, approval, tool, artifact, proof, publication, or mutation.
+The live evaluation is 5/17; the deterministic 10/10 and final host-context
+614/614 verification remain valid but do not make the edition released. Its
+B5 one-run authority is exhausted, and no diagnostic, replacement, or retry is
+authorized without a new explicit Gate B decision.
 
 **Dispatch source of truth:** `editions/AXP-E0001/assignments.tsv`.
 `workgraph.md` and `tasks/E0001-*.md` are required supporting dispatch context.
@@ -98,12 +99,28 @@ reusable signing credential appearing in a URL, ordinary process output,
 process arguments, browser history, Web Storage, cookies, referrers, logs, or
 test artifacts.
 
-**Status:** P0-next critical security candidate, ranked ahead of AXP-E0002. It
-depends on E0001-05 and the recorded E0001 Gate C decision. Until then, only
-this backlog candidate may be refined: do not create `editions/AXP-E0006/**`,
-dispatch a writer, or modify the frozen E0001 CLI source. The current
-standalone UI is not an approved operator path because its printed fragment is
-a reusable workspace-wide Human signing capability for the server lifetime.
+**Status:** Blocked P0 critical security edition, ranked ahead of AXP-E0002.
+Gate A/B are approved; E0006-02 is quiescent with 117/117 host tests and an
+independent source/contract PASS. E0006-03 passed pre-session browser/header
+checks and deterministic rejection coverage. A follow-up co-located Human
+journey then completed the secure handoff, one exact signed denial, explicit
+revoke, controlled shutdown, and TTY restoration with zero execution/resume.
+The prior headed W3 ceremony proved browser secrecy/capture but expired before
+decision/revoke. The owner-authorized five-minute rerun then passed the exact
+signed denial, explicit revoke, shutdown, TTY restoration, and zero
+execution/resume path, but automation exposed a distinct fresh tab instead of
+the Human-visible post-decision tab. A subsequent credential-free probe proved
+the corrected cross-agent single-tab attachment pattern and showed that tab
+inventory metadata can remain stale after asynchronous navigation. Exact
+14/14, E0006-04, and Gate C remain blocked until the product path and corrected
+attachment pass in one ceremony. The final D-E0006-013 ceremony reached
+terminal verification but its current attached tab returned a generic
+rejection with hidden app controls; it created no decision or execution and
+its one-run authority is consumed. The standalone UI remains unreleased and
+terminal approval commands are the rollback path.
+
+**Dispatch source of truth:** `editions/AXP-E0006/assignments.tsv`. The
+backlog rows below are descriptive only and cannot authorize work.
 
 **Gate B security contract:** the public loopback URL is clean; a secure
 non-URL bootstrap is one-use, short-lived, replay-resistant, and unavailable
@@ -116,9 +133,10 @@ automatic browser launcher may place either credential in child argv.
 
 | ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
 |---|---|---|---|---|---|---|
-| E0006-01 | Freeze the standalone-console threat model, bootstrap/session contract, and Gate A/B decision | E0001-05 + E0001 Gate C | new E0006 records plus one narrowly scoped approval-session contract (orchestrator only) | Contract covers clean URL/output, secure handoff, one-use exchange, lifetime/scope/revocation, constant-time comparison, Host/Origin, and fail-closed recovery | critical | `gpt-5.6-sol` |
+| E0006-01 | Freeze the standalone-console threat model, bootstrap/session contract, and Gate A/B decision | D-E0001-020 + E0001 quiescent/writer-free | new E0006 records plus one narrowly scoped approval-session contract (orchestrator only) | Contract covers clean URL/output, secure handoff, one-use exchange, lifetime/scope/revocation, constant-time comparison, Host/Origin, and fail-closed recovery | critical | `gpt-5.6-sol` |
 | E0006-02 | Replace the reusable fragment bearer with the approved bootstrap/session flow | E0006-01 | `crates/proof-transport-cli/**` (one security owner) | Process tests prove secret-free output/argv; Tower tests prove one successful exchange, concurrent/replay/expiry/cross-instance rejection, no unauthorized signature, and unchanged v1/v2 actionability | critical | `gpt-5.6-sol` |
-| E0006-03 | Independently verify browser secrecy, signing boundaries, public guidance, and Gate C | E0006-02 | non-author browser/security verifier; orchestrator owns `README.md` and release records | Clean loopback URL; no query/fragment/secret storage/cookie/referrer; no-store/CSP/no-referrer/frame/nosniff headers; full CLI and scoped-impact gates; secret-sentinel scan; dated non-author PASS and owner decision | critical | `gpt-5.6-sol` |
+| E0006-03 | Independently verify browser secrecy and signing boundaries | E0006-02 | non-author browser/security verifier; redacted dogfood evidence only | Clean loopback URL; no query/fragment/secret storage/cookie/referrer; no-store/CSP/no-referrer/frame/nosniff headers; secret-sentinel scan; exact 14/14 non-author PASS | critical | `gpt-5.6-sol` |
+| E0006-04 | Integrate, reconcile public guidance, run the quiescent gate, and request Gate C | E0006-01..03 | orchestrator-owned public guidance, contract, root manifests, and release records | Scoped/reverse impact and full final gate pass; rollback, limitations, zero provider spend, and dated owner decision are recorded | critical | `gpt-5.6-sol` |
 
 ### AXP-E0002 — One Human Oversees Many Runs
 
@@ -128,6 +146,15 @@ multiple governed runs from one authenticated control plane.
 **Dependency:** AXP-E0006 Gate C. E0002 may reuse only the released approval
 session contract; the current standalone fragment bearer is not a bootstrap or
 authentication primitive for the operator control plane.
+
+Read-only operator-control discovery completed on 2026-08-31 and is preserved
+without activating an E0002 writer. It found durable per-run records but no
+authenticated multi-run projection; unfiltered run/approval listing, an
+execution-context-only HTTP audit view, per-run CLI controls, and cancellation
+without a dedicated append-only cancellation event are the principal contract
+gaps. The proposed decomposition remains contract/storage/runtime followed by
+authenticated HTTP/UI and independent concurrency/recovery verification, but
+no E0002 directory or product writer may start before E0006 Gate C.
 
 | ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
 |---|---|---|---|---|---|---|

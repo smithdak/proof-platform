@@ -41,7 +41,7 @@
 | Live failure integrity | sealed run/watch/evaluator records | preserve every failed attempt, no replacement, exact redacted digests and zero-effect accounting | four contiguous events; trace `6200c357...04aeb`; runtime `ded05e4c...e9fa`; start capture `f32fd427...4fea`; failed watch `144b02b2...31ba`; private workspace retained unchanged | passed |
 | Independent live verification | sealed policy/trace/artifact/proof bundle | exact 17/17; tamper vectors fail; usage/cost/rollback recorded | non-author verified two byte-identical credential-free watches at `144b02b2...31ba`, exact failure chronology/counters, no ambiguity or budget event, and zero approval/effect; no artifact/proof exists to verify | failed acceptance; failure record verified |
 | Final gate | `rtk scripts/swarm.sh verify AXP-E0001 --quiescent` | format and workspace suite pass | final integrated rerun: edition valid; 614 passed across 52 suites in 19.16 seconds; edition and full diff checks clean | passed |
-| Owner release | Gate C decision | dated accept/defer/reject | defer/no-go proposal prepared; owner decision not inferred | pending owner |
+| Owner release | Gate C decision | dated accept/defer/reject | product owner directed the documented defer/no-go on 2026-08-31 in D-E0001-020; edition blocked and quiescent, not released | deferred |
 
 ## Evidence handling
 
