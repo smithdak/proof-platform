@@ -1,7 +1,10 @@
 use crate::{open_store, Cli, Workspace};
 use anyhow::{bail, Context, Result};
-use proof_kernel::{delegation::DelegationScope, Delegation, DelegationChain, PrincipalId};
+use proof_kernel::{
+    delegation::DelegationScope, principal_from_keypair, Delegation, DelegationChain, PrincipalId,
+};
 use proof_storage::SqliteStore;
+use rusqlite::OptionalExtension;
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -44,27 +47,47 @@ fn save_delegation_principal(
     principal_id: PrincipalId,
     kind: proof_kernel::PrincipalKind,
     public_key: Option<&ed25519_dalek::VerifyingKey>,
-    _created_at: chrono::DateTime<chrono::Utc>,
 ) -> Result<()> {
-    let public_key = match public_key {
-        Some(public_key) => public_key.as_bytes().to_vec(),
-        None => vec![0u8; 32],
-    };
-    store.connection().execute(
-        "
-        INSERT INTO principals (id, kind, display_name, public_key)
-        VALUES (?1, ?2, ?3, ?4)
-        ON CONFLICT(id) DO UPDATE SET
-            kind = excluded.kind,
-            display_name = excluded.display_name
-        ",
+    let kind_json = serde_json::to_string(&kind)?;
+    let expected_public_key = public_key.map(|key| key.as_bytes().to_vec());
+    let connection = store.connection();
+    let transaction = rusqlite::Transaction::new_unchecked(
+        &connection,
+        rusqlite::TransactionBehavior::Immediate,
+    )?;
+    let existing = transaction
+        .query_row(
+            "SELECT kind, public_key FROM principals WHERE id = ?1",
+            [principal_id.to_string()],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
+        )
+        .optional()?;
+    if let Some((stored_kind, stored_public_key)) = existing {
+        if stored_kind != kind_json {
+            bail!("delegation principal {principal_id} is already enrolled with a different kind");
+        }
+        if expected_public_key
+            .as_ref()
+            .is_some_and(|expected| expected != &stored_public_key)
+        {
+            bail!(
+                "delegation principal {principal_id} is already enrolled with a different public key"
+            );
+        }
+        transaction.commit()?;
+        return Ok(());
+    }
+    transaction.execute(
+        "INSERT INTO principals (id, kind, display_name, public_key)
+         VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![
             principal_id.to_string(),
+            kind_json,
             serde_json::to_string(&kind)?,
-            serde_json::to_string(&kind)?,
-            public_key,
+            expected_public_key.unwrap_or_else(|| vec![0_u8; 32]),
         ],
     )?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -130,19 +153,12 @@ pub fn cmd_delegation_grant(cli: &Cli, agent_id: &str, scope_json: &str) -> Resu
         revoked: false,
     };
     let store = open_store(&ws.root)?;
-    save_delegation_principal(
-        &store,
-        ws.actor,
-        proof_kernel::PrincipalKind::Human,
-        Some(&ws.keypair.signing_key.verifying_key()),
-        ws.keypair.created_at,
-    )?;
+    store.save_principal(&principal_from_keypair(&ws.keypair))?;
     save_delegation_principal(
         &store,
         delegation.recipient,
         proof_kernel::PrincipalKind::Agent,
         None,
-        delegation.valid_from,
     )?;
     save_delegation(&store, &delegation)?;
     println!(
@@ -304,6 +320,60 @@ mod tests {
         assert_eq!(loaded.allowed_actions, ["read"]);
         assert_eq!(loaded.resource_scope, ["legacy"]);
         assert_eq!(loaded.scope, DelegationScope::default());
+    }
+
+    #[test]
+    fn grant_to_distinct_recipient_preserves_workspace_agent_principal() {
+        let directory = assert_fs::TempDir::new().unwrap();
+        let cli = initialized_cli(&directory);
+        let workspace = Workspace::open(&cli.workspace).unwrap();
+        let store = open_store(&workspace.root).unwrap();
+        let original = store.load_principal(&workspace.actor).unwrap();
+        assert_eq!(original.kind, proof_kernel::PrincipalKind::Agent);
+        let recipient = uuid::Uuid::now_v7();
+
+        cmd_delegation_grant(
+            &cli,
+            &recipient.to_string(),
+            r#"{"actions":["read"],"resources":["preview"]}"#,
+        )
+        .unwrap();
+
+        let reloaded = store.load_principal(&workspace.actor).unwrap();
+        assert_eq!(reloaded.id, original.id);
+        assert_eq!(reloaded.kind, original.kind);
+        assert_eq!(reloaded.public_key, original.public_key);
+        let recipient = store.load_principal(&PrincipalId::new(recipient)).unwrap();
+        assert_eq!(recipient.kind, proof_kernel::PrincipalKind::Agent);
+    }
+
+    #[test]
+    fn grant_rejects_recipient_enrolled_with_a_different_kind() {
+        let directory = assert_fs::TempDir::new().unwrap();
+        let cli = initialized_cli(&directory);
+        let workspace = Workspace::open(&cli.workspace).unwrap();
+        let store = open_store(&workspace.root).unwrap();
+        let human = proof_kernel::generate_keypair_for(proof_kernel::PrincipalKind::Human);
+        let human_principal = principal_from_keypair(&human);
+        store.save_principal(&human_principal).unwrap();
+
+        let error = cmd_delegation_grant(
+            &cli,
+            &human.principal_id.to_string(),
+            r#"{"actions":["read"],"resources":["preview"]}"#,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("different kind"));
+        let reloaded = store.load_principal(&human.principal_id).unwrap();
+        assert_eq!(reloaded.id, human_principal.id);
+        assert_eq!(reloaded.kind, human_principal.kind);
+        assert_eq!(reloaded.public_key, human_principal.public_key);
+        let count: i64 = store
+            .connection()
+            .query_row("SELECT COUNT(*) FROM delegations", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

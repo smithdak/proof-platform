@@ -300,3 +300,31 @@ The product owner deferred E0001-04 until the morning of 2026-08-31 because a
 credential cannot be provisioned before then. This records no waiver and no
 new authority. The verified readiness packet remains the sole resume point,
 and provider-attempt count remains zero.
+
+## D-E0001-011 — Delegation grants preserve durable principal identity
+
+Status: implemented protective correction · Date: 2026-08-30 · Decision owner: orchestrator
+
+Final credential-free operator audit found that the CLI delegation grant path
+hard-coded the workspace issuer as `Human`. When the recipient differed from
+the workspace actor, the old conflict update could leave that Agent principal
+reclassified as Human; it could likewise reclassify an already enrolled Human
+recipient as Agent. This violates the canonical immutable principal ID, kind,
+and public-key contract and can break later approval requester verification.
+
+E0001-14 corrects the CLI-only binding before the paid boundary. The issuer is
+saved from its actual workspace keypair principal. An absent recipient retains
+the compatibility Agent placeholder, while an existing recipient is accepted
+only with the same kind and, when supplied, public key; conflicts fail before
+the delegation is saved. Focused tests prove a distinct-recipient grant leaves
+the workspace Agent tuple unchanged and a Human recipient remains unchanged
+with zero delegations persisted.
+
+A narrow immutable read of the retained E0001 readiness database confirmed
+that its requester is already `Agent`, its approver is `Human`, and its exact
+delegation binds the intended actor. No key material was read and the packet
+was not modified. E0001-14 therefore does not invalidate or replace the 10/10
+packet. It adds W9, moves live dogfood to W10 and release integration to W11,
+and requires a host-context full CLI plus immutable readiness replay before
+provider construction. It authorizes no credential read, provider request,
+additional run, schema change, or expanded spend/effect.

@@ -15,8 +15,9 @@ Edition: `AXP-E0001`
 | E0001-12 | W6 | e0001-storage-secure / `gpt-5.6-sol` | `proof-storage` | E0001-07, E0001-10 | Reproduce stock-SQLite descriptor-pinning infeasibility and stop without a false guard | done: negative feasibility result |
 | E0001-13 | W7 | e0001-storage-secure / `gpt-5.6-sol` | `proof-storage` | E0001-07, E0001-10, E0001-12 | Existing-DB native nofollow open with descriptor/inode barriers under D-E0001-009 | done |
 | E0001-09 | W8 | e0001-cli-owner / `gpt-5.6-sol` | `proof-transport-cli` | E0001-08, E0001-10, E0001-11, E0001-13 | Public credential-free runtime rehearsal, immutable fresh 10/10 evidence, safe synthetic edition, exact readiness packet | done |
-| E0001-04 | W9 | unassigned / `gpt-5.6-sol` | live dogfood record and unique handoff | E0001-02, E0001-03, E0001-06..13 + paid-use Gate B | Fresh live run, signed approval, independent 17/17 verification, cost/rollback evidence | owner-deferred until morning 2026-08-31; host credential unavailable; zero provider attempts |
-| E0001-05 | W10 | orchestrator / `gpt-5.6-sol` | integration and edition release records | E0001-01..04, E0001-06..13 | Quiescent workspace gate and dated Gate C decision | blocked |
+| E0001-14 | W9 | orchestrator / `gpt-5.6-sol` | CLI delegation grant and unique handoff | E0001-09 | Preserve immutable workspace/recipient principal identity across distinct-recipient grants; reject kind collisions | done; focused 5/5 and compile/format clean; host full-suite replay is a W10 entry check |
+| E0001-04 | W10 | unassigned / `gpt-5.6-sol` | live dogfood record and unique handoff | E0001-02, E0001-03, E0001-06..14 + paid-use Gate B | Host CLI replay, immutable readiness replay, fresh live run, signed approval, independent 17/17 verification, cost/rollback evidence | owner-deferred until morning 2026-08-31; host credential unavailable; zero provider attempts |
+| E0001-05 | W11 | orchestrator / `gpt-5.6-sol` | integration and edition release records | E0001-01..04, E0001-06..14 | Quiescent workspace gate and dated Gate C decision | blocked |
 
 ## Dependency flow
 
@@ -45,6 +46,9 @@ E0001-01 contract + recovery/evaluation design
   |                                                                                         v
   |                                                                                E0001-09 live preparation
   |                                                                                         |
+  |                                                                                         v
+  |                                                                                E0001-14 identity repair
+  |                                                                                         |
   +--> Gate B: credential/model/spend approval                                              v
                                                                                    E0001-04 live gate
                                                                                             |
@@ -71,11 +75,16 @@ E0001-01 contract + recovery/evaluation design
 - W8 adds the missing public credential-free preparer. It must produce fresh,
   immutable 10/10 evidence and exact readiness bindings through real runtime,
   approval, evaluator, storage, and setup paths without a live provider.
-- W9 starts only after deterministic preflight is independently 10/10, the
+- W9 closes the credential-free delegation principal-kind regression found
+  during final operator audit. It must preserve the workspace Agent identity,
+  reject an existing recipient of another kind, and leave the retained packet
+  untouched.
+- W10 starts only after deterministic preflight is independently 10/10, the
   frozen 17-check live policy is validated, and the owner has explicitly
   approved credential, provider/model, spend, synthetic data, evidence
   retention, and the human approver. Those policy/evidence prerequisites now
-  pass; execution remains stopped at the credential boundary until
-  `OPENAI_API_KEY` is securely available to the host process.
-- W10 starts only after all writers quiesce. The orchestrator reconciles root
+  pass. Before provider construction, host context must replay the full CLI
+  suite and the immutable readiness packet after E0001-14. Execution remains
+  stopped until `OPENAI_API_KEY` is securely available to that host process.
+- W11 starts only after all writers quiesce. The orchestrator reconciles root
   manifests, runs impact plus final workspace verification, and requests Gate C.

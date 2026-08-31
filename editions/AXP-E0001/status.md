@@ -3,14 +3,14 @@
 - Edition: `AXP-E0001`
 - Last updated: 2026-08-30
 - Overall: `active`
-- Current wave/task: W9 / E0001-04 live dogfood, owner-deferred until the morning of 2026-08-31 before provider construction
+- Current wave/task: W10 / E0001-04 live dogfood, owner-deferred until the morning of 2026-08-31 before provider construction
 - Owner action needed on 2026-08-31: make `OPENAI_API_KEY` available through the secure agent environment; do not put the value in chat, Git, an edition record, or the workspace
 
 ## Gates
 
 - [x] Gate A — direction approved 2026-08-30
 - [x] Gate B — B1-B4/B6 approved 2026-08-30
-- [x] Gate B — B5 conditionally approved 2026-08-30; its W2-W4, E0001-10/11/13, and independently verified E0001-09 10/10 activation prerequisites now pass
+- [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence passes, with E0001-14 host CLI/readiness replay retained as a pre-provider entry check
 - [x] Gate B clarification — D-E0001-009 narrows E0001 to a trusted fresh local workspace after E0001-12 proved strong stock-SQLite descriptor pinning impossible
 - [ ] Human approval — exact preview consequence signed during live run
 - [ ] Gate C — release accepted
@@ -38,6 +38,8 @@
 - [x] Revised thirteen-task W1-W10 graph with E0001-12 negative evidence and E0001-13 trusted-open repair validates
 - [x] E0001-09 public fresh preparation passed independent verification: stable immutable replay, exact ordered 10/10, all nine static live digests, exact authority/edition/next-argv bindings, and zero provider/live-v2/artifact/failure evidence
 - [x] Final quiescent reverse-impact reruns passed after E0001-09: Runtime plus CLI 178 tests; Storage plus CLI/HTTP/MCP/WebSocket 259 tests; CLI 68 tests
+- [x] E0001-14 repaired CLI delegation principal-kind mutation: focused delegation tests 5/5, all test targets compile, and format/diff checks pass
+- [x] Revised fourteen-task W1-W11 graph preserves one CLI writer and makes host-context CLI/readiness replay an explicit pre-provider W10 barrier
 
 ## Risks and next actions
 
@@ -49,6 +51,7 @@
 | Provider usage has tokens but no `cost_microusd` | resolved locally with nullable provider cost plus sealed conservative calculated cost | E0001-02/product owner | E0001-09 now passes; enforce the 120000 micro-USD runtime ceiling and preserve null provider cost as unavailable during E0001-04 |
 | Live call sends data to a paid external provider | high; credential/data/external effect | product owner | B5 evidence prerequisites pass; retain the exact direct `gpt-5.6-sol`, one-run, USD 0.15, synthetic-only boundary |
 | CLI delegation SQL omitted v12 `scope_json` | resolved in E0001-08 with exact save/load/list/validate/transfer scope round trips | E0001-08 | independent credential/authority audit and reverse-impact gate passed |
+| CLI delegation grant could reclassify the workspace Agent as Human for a distinct recipient, or an enrolled Human recipient as Agent | resolved in E0001-14; issuer uses its actual keypair principal and existing recipient identity is immutable | E0001-14 | focused 5/5 and compile/format clean; retained packet independently remains Agent requester plus Human approver; rerun full CLI in host context before live start |
 | CLI read `OPENAI_API_KEY` before deterministic and authority checks | resolved in E0001-08 with the audited deferred factory seam and zero-call failure spies | E0001-08 | direct live factory remains the only live-command reader at the credential boundary |
 | Runtime authoritative live setup/target-agent validator was private | resolved by E0001-10 public read-only exact-validator path | E0001-10 | 99 tests and independent audit passed; CLI integration remains under E0001-09 |
 | Generic runtime start can die after run save but before checkpoint/Started | resolved and independently audited in E0001-11 | E0001-11 | owner/root runtime suites pass 110/110; focused adversarial recovery 11/11; final audit PASS |
