@@ -37,6 +37,7 @@ impl Workspace {
     pub fn init(root: &PathBuf) -> Result<Self> {
         let proof_dir = root.join(".proof");
         ensure_private_directory(&proof_dir)?;
+        refuse_existing_workspace_identity(&proof_dir)?;
         std::fs::create_dir_all(proof_dir.join("registry"))?;
         ensure_private_directory(&proof_dir.join("storage"))?;
         for subdir in [
@@ -55,7 +56,7 @@ impl Workspace {
             "actor_id": actor.to_string(),
             "version": "0.1.0",
         });
-        write_private_file(
+        write_new_private_file(
             &proof_dir.join("config.json"),
             serde_json::to_string_pretty(&config)?.as_bytes(),
         )?;
@@ -67,7 +68,7 @@ impl Workspace {
             "signing_key": base64::engine::general_purpose::STANDARD
                 .encode(keypair.signing_key.to_bytes()),
         });
-        write_private_file(
+        write_new_private_file(
             &proof_dir.join("keypair.json"),
             serde_json::to_string_pretty(&keypair_json)?.as_bytes(),
         )?;
@@ -84,7 +85,11 @@ impl Workspace {
     }
 
     pub fn open(root: &PathBuf) -> Result<Self> {
-        let config_path = root.join(".proof/config.json");
+        let proof_dir = root.join(".proof");
+        harden_private_directory(&proof_dir)
+            .context("workspace not initialized — run `proof init` first")?;
+        let config_path = proof_dir.join("config.json");
+        harden_private_file(&config_path)?;
         let config: Value = serde_json::from_str(
             &std::fs::read_to_string(&config_path)
                 .context("workspace not initialized — run `proof init` first")?,
@@ -95,6 +100,7 @@ impl Workspace {
         let actor: PrincipalId =
             PrincipalId::new(uuid::Uuid::parse_str(actor_text).context("invalid actor_id")?);
         let keypair = Self::load_keypair(root)?;
+        ensure_workspace_identity(actor, &keypair)?;
         Ok(Self {
             root: root.clone(),
             keypair,
@@ -117,9 +123,7 @@ impl Workspace {
         let actor =
             PrincipalId::new(uuid::Uuid::parse_str(actor_text).context("invalid actor_id")?);
         let keypair = decode_stored_keypair(&proof_directory.read_private_file("keypair.json")?)?;
-        if keypair.principal_id != actor {
-            bail!("workspace config actor differs from the securely loaded keypair");
-        }
+        ensure_workspace_identity(actor, &keypair)?;
         Ok(Self {
             root,
             keypair,
@@ -196,12 +200,18 @@ impl Workspace {
     }
 
     pub fn rotate(root: &PathBuf) -> Result<proof_kernel::Keypair> {
-        let old_keypair = Self::load_keypair(root)?;
+        // Validate the actor/key binding before archiving or replacing either
+        // identity file. A partial prior rotation therefore fails closed.
+        let old_keypair = Self::open(root)?.keypair;
         let proof_dir = root.join(".proof");
         let rotated_dir = proof_dir.join("rotated");
         ensure_private_directory(&rotated_dir)?;
         let rotated_at = chrono::Utc::now();
-        let rotated_file_name = format!("keypair-{}.json", rotated_at.timestamp_millis());
+        let rotated_file_name = format!(
+            "keypair-{}-{}.json",
+            rotated_at.timestamp_millis(),
+            uuid::Uuid::now_v7()
+        );
         let old_keypair_json = serde_json::json!({
             "principal_id": old_keypair.principal_id.as_uuid(),
             "kind": old_keypair.kind,
@@ -211,7 +221,7 @@ impl Workspace {
                 .encode(old_keypair.signing_key.to_bytes()),
             "rotated_at": rotated_at,
         });
-        write_private_file(
+        write_new_private_file(
             &rotated_dir.join(rotated_file_name),
             serde_json::to_string_pretty(&old_keypair_json)?.as_bytes(),
         )?;
@@ -221,7 +231,10 @@ impl Workspace {
         let config_path = proof_dir.join("config.json");
         let mut config: Value = serde_json::from_str(&std::fs::read_to_string(&config_path)?)?;
         config["actor_id"] = serde_json::json!(actor.to_string());
-        std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+        write_private_file(
+            &config_path,
+            serde_json::to_string_pretty(&config)?.as_bytes(),
+        )?;
         let keypair_json = serde_json::json!({
             "principal_id": new_keypair.principal_id.as_uuid(),
             "kind": new_keypair.kind,
@@ -245,6 +258,26 @@ impl Workspace {
 
         Ok(new_keypair)
     }
+}
+
+fn ensure_workspace_identity(actor: PrincipalId, keypair: &proof_kernel::Keypair) -> Result<()> {
+    if keypair.principal_id != actor {
+        bail!("workspace config actor differs from the workspace signing key");
+    }
+    Ok(())
+}
+
+fn refuse_existing_workspace_identity(proof_dir: &Path) -> Result<()> {
+    for name in ["config.json", "keypair.json"] {
+        match std::fs::symlink_metadata(proof_dir.join(name)) {
+            Ok(_) => bail!(
+                "workspace identity already exists or is incomplete; refusing to replace it — use `proof keypair rotate` for an intentional identity change"
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 fn decode_stored_keypair(raw: &[u8]) -> Result<proof_kernel::Keypair> {
@@ -289,9 +322,12 @@ fn harden_private_directory(path: &Path) -> Result<()> {
 
 fn harden_private_file(path: &Path) -> Result<()> {
     let metadata = std::fs::symlink_metadata(path)
-        .with_context(|| format!("private key file missing: {}", path.display()))?;
+        .with_context(|| format!("private workspace file missing: {}", path.display()))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
-        bail!("private key path is not a regular file: {}", path.display());
+        bail!(
+            "private workspace path is not a regular file: {}",
+            path.display()
+        );
     }
     #[cfg(unix)]
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
@@ -314,7 +350,10 @@ fn write_private_file(path: &Path, contents: &[u8]) -> Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) => {
             if metadata.file_type().is_symlink() || !metadata.is_file() {
-                bail!("private key path is not a regular file: {}", path.display());
+                bail!(
+                    "private workspace path is not a regular file: {}",
+                    path.display()
+                );
             }
             #[cfg(unix)]
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
@@ -329,7 +368,25 @@ fn write_private_file(path: &Path, contents: &[u8]) -> Result<()> {
     options.mode(PRIVATE_FILE_MODE);
     let mut file = options
         .open(path)
-        .with_context(|| format!("could not write private key: {}", path.display()))?;
+        .with_context(|| format!("could not write private workspace file: {}", path.display()))?;
+    #[cfg(unix)]
+    file.set_permissions(std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
+    file.write_all(contents)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn write_new_private_file(path: &Path, contents: &[u8]) -> Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(PRIVATE_FILE_MODE);
+    let mut file = options.open(path).with_context(|| {
+        format!(
+            "refusing to replace private workspace file: {}",
+            path.display()
+        )
+    })?;
     #[cfg(unix)]
     file.set_permissions(std::fs::Permissions::from_mode(PRIVATE_FILE_MODE))?;
     file.write_all(contents)?;
@@ -370,14 +427,18 @@ mod tests {
         Workspace::init(&root).unwrap();
 
         let proof_dir = root.join(".proof");
+        let config_path = proof_dir.join("config.json");
         let key_path = proof_dir.join("keypair.json");
         assert_eq!(mode(&proof_dir), PRIVATE_DIRECTORY_MODE);
+        assert_eq!(mode(&config_path), PRIVATE_FILE_MODE);
         assert_eq!(mode(&key_path), PRIVATE_FILE_MODE);
 
         std::fs::set_permissions(&proof_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o644)).unwrap();
         std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o644)).unwrap();
         Workspace::open(&root).unwrap();
         assert_eq!(mode(&proof_dir), PRIVATE_DIRECTORY_MODE);
+        assert_eq!(mode(&config_path), PRIVATE_FILE_MODE);
         assert_eq!(mode(&key_path), PRIVATE_FILE_MODE);
 
         Workspace::rotate(&root).unwrap();
@@ -400,5 +461,107 @@ mod tests {
         Workspace::open(&root).unwrap();
         assert_eq!(mode(&rotated_dir), PRIVATE_DIRECTORY_MODE);
         assert_eq!(mode(&rotated_keys[0].path()), PRIVATE_FILE_MODE);
+
+        let newest_keypair = Workspace::rotate(&root).unwrap();
+        assert_eq!(
+            Workspace::open(&root).unwrap().actor,
+            newest_keypair.principal_id
+        );
+        let rotated_keys = std::fs::read_dir(&rotated_dir)
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(rotated_keys.len(), 2);
+        assert!(rotated_keys
+            .iter()
+            .all(|entry| mode(&entry.path()) == PRIVATE_FILE_MODE));
+    }
+
+    #[test]
+    fn workspace_open_and_rotation_reject_actor_key_mismatch_without_mutation() {
+        let directory = assert_fs::TempDir::new().unwrap();
+        let root = directory.path().to_path_buf();
+        Workspace::init(&root).unwrap();
+
+        let proof_dir = root.join(".proof");
+        let config_path = proof_dir.join("config.json");
+        let key_path = proof_dir.join("keypair.json");
+        let mut config: Value =
+            serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+        config["actor_id"] = serde_json::json!(uuid::Uuid::now_v7().to_string());
+        std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+
+        let config_before = std::fs::read(&config_path).unwrap();
+        let key_before = std::fs::read(&key_path).unwrap();
+        let open_error = Workspace::open(&root)
+            .err()
+            .expect("mismatch must fail open");
+        assert!(
+            open_error
+                .to_string()
+                .contains("workspace config actor differs from the workspace signing key"),
+            "unexpected error: {open_error:#}"
+        );
+
+        let rotate_error = Workspace::rotate(&root)
+            .err()
+            .expect("mismatch must fail rotation");
+        assert!(
+            rotate_error
+                .to_string()
+                .contains("workspace config actor differs from the workspace signing key"),
+            "unexpected error: {rotate_error:#}"
+        );
+        assert_eq!(std::fs::read(&config_path).unwrap(), config_before);
+        assert_eq!(std::fs::read(&key_path).unwrap(), key_before);
+        assert!(!proof_dir.join("rotated").exists());
+    }
+
+    #[test]
+    fn workspace_init_refuses_to_replace_existing_identity() {
+        let directory = assert_fs::TempDir::new().unwrap();
+        let root = directory.path().to_path_buf();
+        Workspace::init(&root).unwrap();
+
+        let proof_dir = root.join(".proof");
+        let config_path = proof_dir.join("config.json");
+        let key_path = proof_dir.join("keypair.json");
+        let config_before = std::fs::read(&config_path).unwrap();
+        let key_before = std::fs::read(&key_path).unwrap();
+
+        let error = Workspace::init(&root)
+            .err()
+            .expect("reinitialization must fail");
+        assert!(
+            error.to_string().contains("refusing to replace it"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(std::fs::read(config_path).unwrap(), config_before);
+        assert_eq!(std::fs::read(key_path).unwrap(), key_before);
+        assert!(!proof_dir.join("rotated").exists());
+    }
+
+    #[test]
+    fn workspace_open_rejects_linked_config() {
+        use std::os::unix::fs::symlink;
+
+        let directory = assert_fs::TempDir::new().unwrap();
+        let root = directory.path().to_path_buf();
+        Workspace::init(&root).unwrap();
+
+        let config_path = root.join(".proof/config.json");
+        let linked_config = root.join("linked-config.json");
+        std::fs::rename(&config_path, &linked_config).unwrap();
+        symlink(&linked_config, &config_path).unwrap();
+
+        let error = Workspace::open(&root)
+            .err()
+            .expect("linked config must fail open");
+        assert!(
+            error
+                .to_string()
+                .contains("private workspace path is not a regular file"),
+            "unexpected error: {error:#}"
+        );
     }
 }

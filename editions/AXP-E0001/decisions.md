@@ -400,3 +400,31 @@ dogfood to W12 and integration to W13, and requires the exact immutable
 readiness replay once more after the final source tree. That replay passed with
 both provider variables unset, returning the exact retained 10/10 packet,
 `next_argv`, and binding digest; the paid boundary remains closed.
+
+## D-E0001-014 — Workspace actor and signing key are one fail-closed identity
+
+Status: implemented protective correction · Date: 2026-08-30 · Decision owner: orchestrator
+
+Continued credential-free identity audit found that ordinary `Workspace::open`
+trusted the config actor and signing key independently. It could construct
+proofs naming one principal while signing with another key. Rotation loaded
+only the key before archiving and replacing identity state. Initialization
+also truncated existing config/key files, silently creating a new identity
+over prior workspace proofs and delegations, while millisecond-only rotation
+archive names could collide and truncate history.
+
+E0001-17 makes the actor/key equality check one shared invariant for ordinary
+and descriptor-relative open. Ordinary config must first be a private regular
+file. Rotation enters through the invariant before any archive or identity
+mutation. Initialization refuses when either identity leaf exists and creates
+both with no-replace semantics; rotation archives add a UUID and are likewise
+no-replace. Rejections preserve exact identity bytes and create no archive.
+
+The repair deliberately makes a partial intentional rotation unavailable for
+signing rather than adding automatic destructive recovery or claiming a
+multi-file transaction. Recovery protocol design remains separate. E0001-17
+adds W12, moves live dogfood to W13 and integration to W14, and repeats the
+source-sensitive host/readiness barrier. The host CLI passes 81/81, and the
+exact retained 10/10 packet, `next_argv`, and binding digest replay with both
+provider variables unset. No historical workspace, credential, provider call,
+live v2 run, artifact, failure, or charge was created or changed.

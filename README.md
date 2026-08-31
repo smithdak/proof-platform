@@ -460,7 +460,7 @@ The default workspace is `.`.
 
 | Command                                     | Arguments                                                                    | Purpose                                                                            |
 | ------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `proof init`                                | none                                                                         | Initialize `.proof`, create workspace keypair and data directories                 |
+| `proof init`                                | none                                                                         | Initialize `.proof` without replacing an existing workspace identity               |
 | `proof schema-create`                       | `--name <name>`, `--fields <json>`                                           | Validate, save, and prove a schema creation                                        |
 | `proof object-create`                       | `--schema-id <uuid>`, `--locale <locale>` (default `en-US`), `--data <json>` | Validate against schema, save, and prove object creation                           |
 | `proof changeset-create`                    | `--intent <text>`                                                            | Create a changeset and signed proof                                                |
@@ -472,7 +472,7 @@ The default workspace is `.`.
 | `proof registry inspect <operation>`        | operation name                                                               | Print matching registry entries                                                    |
 | `proof verify <proof-id>`                   | proof ID                                                                     | Verify a saved proof with the workspace keypair                                    |
 | `proof execute <operation> <version>`       | `--input <json>`                                                             | Execute through the engine with a local content handler, sign, and persist a proof |
-| `proof workspace init <path>`               | workspace path                                                               | Initialize an additional workspace                                                 |
+| `proof workspace init <path>`               | workspace path                                                               | Initialize another workspace without replacing an existing identity                |
 | `proof workspace status`                    | none                                                                         | Report registry, proof, and principal counts for the selected workspace            |
 | `proof keypair export`                      | none                                                                         | Print the principal ID and public key                                              |
 | `proof keypair rotate`                      | none                                                                         | Archive the current keypair and generate a new workspace identity                  |
@@ -480,6 +480,11 @@ The default workspace is `.`.
 | `proof delegation list`                     | none                                                                         | List persisted delegations                                                         |
 | `proof delegation revoke <delegation-id>`   | none                                                                         | Revoke a grant issued by the workspace identity                                    |
 | `proof delegation validate <delegation-id>` | none                                                                         | Validate a grant as a delegation chain                                             |
+
+Commands that open a workspace for actor-bearing work fail closed when
+`.proof/config.json` names an actor other than `.proof/keypair.json`. Re-running
+either initialization command never replaces an existing or partial identity;
+use `proof keypair rotate` for an intentional identity change.
 
 `schema-create` field objects accept:
 
