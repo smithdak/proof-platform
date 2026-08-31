@@ -17,10 +17,12 @@ assigned to one worker for the whole wave. Recommended tiers are
 normal implementation, and `gpt-5.6-sol` only for contracts, security, or
 cross-crate integration.
 
-E0000 has frozen task packets and may be dispatched after Gate A. E0001-E0005
-rows are ranked candidates: a low-cost discovery worker expands them into an
-owner-approved charter, assignments, and exact task packets before any writer
-starts.
+AXP-E0001 is activated at its W14 live credential boundary. Its tracked
+`editions/AXP-E0001/assignments.tsv` is the dispatch source of truth;
+`workgraph.md` and the exact task packets are required supporting dispatch
+context. The E0000 rows preserve the earlier plan, while E0002-E0005 remain
+ranked candidates that require an owner-approved charter, assignments, and
+exact task packets before any writer starts.
 
 ## Ranked editions
 
@@ -61,12 +63,28 @@ deterministic release-manager evaluation; owner sign-off.
 **Outcome:** A real model completes a bounded release journey, pauses for
 signed human approval, resumes durably, and publishes a verified preview.
 
+**Status:** Activated. The authoritative eighteen-task W1-W15 graph has
+completed E0001-01..03 and E0001-06..18. W14 E0001-04 is stopped only at the
+approved credential boundary; W15 E0001-05 and Gate C remain blocked on the
+live journey and independent 17/17 verification.
+
+**Dispatch source of truth:** `editions/AXP-E0001/assignments.tsv`.
+`workgraph.md` and `tasks/E0001-*.md` are required supporting dispatch context.
+The original seed rows are non-authoritative and cannot assign or authorize
+work.
+
+| ID | Current work item | Depends on | Exclusive path | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0001-04 | Live dogfood and independent verification | E0001-02,03,06..18 plus paid-use Gate B | `docs/dogfood/release-manager-live.md`<br>`editions/AXP-E0001/handoffs/E0001-04.md` | Final-source host 81/81 and immutable 10/10 replay; one exact approved live run; signed approval chronology; same-run resume; independent 17/17; cost and rollback evidence | critical | `gpt-5.6-sol` |
+| E0001-05 | Quiescent integration and owner release gate | E0001-01..04,06..18 | edition release records and root integration files listed in the task packet | Quiescent verification passes and the product owner records a dated Gate C accept, defer, or reject decision | high | `gpt-5.6-sol` |
+
+**Historical seed decomposition (not dispatch authority):**
+
 | ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
 |---|---|---|---|---|---|---|
 | E0001-01 | Define live release-manager contract and sealed evaluation policy | E0000 | `evals/**`, `contracts/**` | Versioned policy rejects unknown fields and binds trace digest | high | `gpt-5.6-sol` |
 | E0001-02 | Provider-backed model/tool continuation and failure recovery | E0001-01 | `crates/proof-agent-runtime/**` | Live run pauses, resumes same step, never blindly replays mutation | high | `gpt-5.6-terra` |
 | E0001-03 | Preview release adapter with safe side-effect boundary | E0001-01 | `crates/proof-content/**` release paths | Preview artifact and signed proof match requested version | high | `gpt-5.6-terra` |
-| E0001-04 | Live dogfood and independent verification | E0001-02,03 | `docs/dogfood/**` | Fresh workspace, approval chronology, proof verification, cost report | critical | `gpt-5.6-sol` |
 
 ### AXP-E0002 — One Human Oversees Many Runs
 
