@@ -216,6 +216,7 @@ Each step records an operation/version, canonical input digest, ordinal, attempt
 - Deterministic lifecycle evaluation validates run and step timestamp windows, contiguous step ordinals and attempts, retry parent lineage and call identity, contiguous event sequences and digests, and approval chronology from tool request through request, decision, resume, and execution.
 - Evaluation rows are historical assertions, not mutable current-state slots. Consumers distinguish assertions by run, evaluator, policy digest, and trace digest; a later row does not silently supersede an earlier one.
 - `AgentRunStore` implementations enforce monotonic revisions for mutable runs and steps, and insert-once semantics for checkpoints and evaluations.
+- `LiveRunStartClaim` is the strict `proof-live-run-start-claim/v1` identity for one live-start authorization. `readiness_binding_digest` is its primary replay key and `setup_digest` is independently unique. `AgentRunStore::claim_live_run_start` atomically persists the claim plus the exact initial Running session run, sequence-zero `agent_runtime_v2` checkpoint, and sequence-zero `Started` event. It returns `Acquired`, `Existing(original_run_id)`, `Conflict`, or the default-compatible `Unsupported`; an exact replay verifies the original immutable bundle before returning its run ID, while either cross-paired digest conflicts before provider construction.
 - In SQLite, a matching terminal event seals the run trace: later non-idempotent run, step, checkpoint, or event writes fail, and event sequences must be contiguous. The seal also covers approval request, decision, and execution evidence bound to a sealed step: exact existing evidence may be retried idempotently, but missing or conflicting evidence cannot be inserted after the seal. Cancelled runs seal immediately because the event enum has no cancellation variant.
 - MCP results expose the active run and step in `_meta["com.proofplatform/run"]`; callers resume a session or retry attempt with its `runId` and optional `stepId`.
 
@@ -321,7 +322,7 @@ tests require legacy handlers to retain the default operation-wide behavior.
 ## SQLite Schema
 
 Migrations live in `crates/proof-storage/src/sqlite/migrations.rs`. Current
-active version: **12**.
+active version: **13**.
 
 | Version | Contents |
 |---|---|
@@ -337,8 +338,27 @@ active version: **12**.
 | 10 | unique single-use approval-request bindings for agent run steps |
 | 11 | exact execution replay ledger (`execution_replays`) |
 | 12 | strict structured delegation scope persistence (`delegations.scope_json`) |
+| 13 | atomic live-run start claims and initial run/checkpoint/event barrier |
 
-### SQLite v12 delegation scope (active; added by AXP-E0001)
+### SQLite v13 live-start claim
+
+Migration v13 appends `live_run_start_claims`. Its primary key is the
+64-character `readiness_binding_digest`; `setup_digest`, `run_id`, initial
+checkpoint ID, and Started-event ID are independently unique. The row retains
+the strict claim JSON and immutable initial Running-run JSON, while foreign
+keys bind the sequence-zero checkpoint and event.
+
+`claim_live_run_start` uses one `BEGIN IMMEDIATE` transaction. A first claim
+inserts the Running revision-1 session run, exact sequence-zero
+`agent_runtime_v2` checkpoint, exact sequence-zero `Started` event, and claim
+row, or none of them. An exact digest pair verifies the stored claim, initial
+bundle, and current run identity before returning `Existing(original_run_id)`.
+The same readiness digest with another setup digest, or the same setup digest
+with another readiness digest, returns `Conflict` without writing. The down
+migration removes only the claim table; operators must quiesce live-start
+writers before rollback.
+
+### SQLite v12 delegation scope (added by AXP-E0001)
 
 Migration v12 is appended after versions 1-11 and adds
 `scope_json TEXT NOT NULL DEFAULT '{}'` to `delegations`. The default preserves

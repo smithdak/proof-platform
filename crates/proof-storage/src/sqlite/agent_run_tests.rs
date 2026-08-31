@@ -2,9 +2,10 @@
 
 use chrono::{Duration, TimeZone, Utc};
 use proof_kernel::{
-    generate_keypair, AgentCheckpoint, AgentEvaluationOutcome, AgentRun, AgentRunEvaluation,
-    AgentRunMode, AgentRunStatus, AgentRunStep, AgentRunStepStatus, ApprovalOutcome,
-    SignedApprovalDecision, SignedApprovalRequest,
+    canonicalize, digest, generate_keypair, AgentCheckpoint, AgentEvaluationOutcome, AgentRun,
+    AgentRunEvaluation, AgentRunEvent, AgentRunEventKind, AgentRunMode, AgentRunStatus,
+    AgentRunStep, AgentRunStepStatus, ApprovalOutcome, ArtifactKind, LiveRunStartClaim,
+    LiveRunStartClaimResult, SignedApprovalDecision, SignedApprovalRequest,
 };
 use serde_json::json;
 
@@ -13,6 +14,220 @@ use crate::StorageError;
 
 fn now() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 8, 29, 15, 0, 0).unwrap()
+}
+
+fn live_claim(seed: &str) -> LiveRunStartClaim {
+    LiveRunStartClaim::create(
+        digest(
+            ArtifactKind::Generic,
+            &canonicalize(&json!({"readiness": seed})).unwrap(),
+        ),
+        digest(
+            ArtifactKind::Generic,
+            &canonicalize(&json!({"setup": seed})).unwrap(),
+        ),
+    )
+    .unwrap()
+}
+
+fn live_start_bundle(claim: &LiveRunStartClaim) -> (AgentRun, AgentCheckpoint, AgentRunEvent) {
+    let started_at = now();
+    let agent_id = uuid::Uuid::now_v7();
+    let mut run = AgentRun::new_for_agent(
+        proof_kernel::PrincipalId::now(),
+        agent_id,
+        AgentRunMode::Session,
+        "Publish one exact preview",
+        started_at,
+    )
+    .unwrap();
+    run.start(started_at).unwrap();
+    let process_epoch_id = uuid::Uuid::now_v7();
+    let checkpoint = AgentCheckpoint::create(
+        run.id,
+        0,
+        json!({
+            "kind": "agent_runtime_v2",
+            "runtime": {
+                "schema": "proof-agent-runtime-state/v2",
+                "agent_id": agent_id,
+                "run_id": run.id,
+                "started_at": started_at,
+                "process_epoch_id": process_epoch_id,
+                "policy_binding": {"setup_digest": claim.setup_digest},
+                "authority": {"delegation_id": uuid::Uuid::now_v7()},
+            }
+        }),
+        started_at,
+    )
+    .unwrap();
+    let event = AgentRunEvent::create(
+        run.id,
+        0,
+        AgentRunEventKind::Started,
+        json!({
+            "live": true,
+            "schema": "proof-agent-runtime-state/v2",
+            "process_epoch_id": process_epoch_id,
+            "policy_binding": checkpoint.state["runtime"]["policy_binding"].clone(),
+            "authority": checkpoint.state["runtime"]["authority"].clone(),
+        }),
+        started_at,
+    )
+    .unwrap();
+    (run, checkpoint, event)
+}
+
+#[test]
+fn live_start_claim_round_trips_reopens_and_returns_original_run() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let database = directory.path().join("proof.db");
+    let claim = live_claim("round-trip");
+    let (run, checkpoint, event) = live_start_bundle(&claim);
+    {
+        let store = SqliteStore::open(&database).unwrap();
+        assert_eq!(
+            store
+                .claim_live_run_start(&claim, &run, &checkpoint, &event)
+                .unwrap(),
+            LiveRunStartClaimResult::Acquired
+        );
+        assert_eq!(store.load_agent_run(&run.id).unwrap(), Some(run.clone()));
+        assert_eq!(
+            store.list_agent_checkpoints(&run.id).unwrap(),
+            vec![checkpoint.clone()]
+        );
+        assert_eq!(
+            store.list_agent_run_events(&run.id).unwrap(),
+            vec![event.clone()]
+        );
+    }
+
+    let reopened = SqliteStore::open(&database).unwrap();
+    let (proposed_run, proposed_checkpoint, proposed_event) = live_start_bundle(&claim);
+    assert_eq!(
+        reopened
+            .claim_live_run_start(&claim, &proposed_run, &proposed_checkpoint, &proposed_event,)
+            .unwrap(),
+        LiveRunStartClaimResult::Existing(run.id)
+    );
+    assert_eq!(reopened.list_agent_runs().unwrap(), vec![run]);
+}
+
+#[test]
+fn live_start_claim_replay_rejects_tampered_indexed_bundle_evidence() {
+    let store = SqliteStore::in_memory().unwrap();
+    let claim = live_claim("tampered-indexed-evidence");
+    let (run, checkpoint, event) = live_start_bundle(&claim);
+    assert_eq!(
+        store
+            .claim_live_run_start(&claim, &run, &checkpoint, &event)
+            .unwrap(),
+        LiveRunStartClaimResult::Acquired
+    );
+
+    store
+        .conn
+        .lock()
+        .unwrap()
+        .execute(
+            "UPDATE agent_run_events SET data_digest = ?1 WHERE id = ?2",
+            rusqlite::params!["0".repeat(64), event.id.to_string()],
+        )
+        .unwrap();
+
+    let (proposed_run, proposed_checkpoint, proposed_event) = live_start_bundle(&claim);
+    assert!(matches!(
+        store.claim_live_run_start(&claim, &proposed_run, &proposed_checkpoint, &proposed_event,),
+        Err(StorageError::Conflict(_))
+    ));
+}
+
+#[test]
+fn live_start_claim_conflicts_on_either_unique_digest() {
+    let store = SqliteStore::in_memory().unwrap();
+    let claim = live_claim("original");
+    let (run, checkpoint, event) = live_start_bundle(&claim);
+    assert_eq!(
+        store
+            .claim_live_run_start(&claim, &run, &checkpoint, &event)
+            .unwrap(),
+        LiveRunStartClaimResult::Acquired
+    );
+
+    let mut changed_setup = live_claim("changed-setup");
+    changed_setup.readiness_binding_digest = claim.readiness_binding_digest;
+    let (other_run, other_checkpoint, other_event) = live_start_bundle(&changed_setup);
+    assert_eq!(
+        store
+            .claim_live_run_start(&changed_setup, &other_run, &other_checkpoint, &other_event,)
+            .unwrap(),
+        LiveRunStartClaimResult::Conflict
+    );
+
+    let mut changed_binding = live_claim("changed-binding");
+    changed_binding.setup_digest = claim.setup_digest;
+    let (other_run, other_checkpoint, other_event) = live_start_bundle(&changed_binding);
+    assert_eq!(
+        store
+            .claim_live_run_start(
+                &changed_binding,
+                &other_run,
+                &other_checkpoint,
+                &other_event,
+            )
+            .unwrap(),
+        LiveRunStartClaimResult::Conflict
+    );
+    assert_eq!(store.list_agent_runs().unwrap(), vec![run]);
+}
+
+#[test]
+fn live_start_claim_rolls_back_every_new_row_on_bundle_insert_failure() {
+    let store = SqliteStore::in_memory().unwrap();
+    let mut unrelated = AgentRun::new(
+        proof_kernel::PrincipalId::now(),
+        AgentRunMode::Session,
+        "Unrelated run",
+        now(),
+    )
+    .unwrap();
+    store.save_agent_run(&unrelated).unwrap();
+    unrelated.start(now()).unwrap();
+    store.save_agent_run(&unrelated).unwrap();
+    let collision = AgentCheckpoint::create(
+        unrelated.id,
+        0,
+        json!({"kind": "unrelated", "runtime": {}}),
+        now(),
+    )
+    .unwrap();
+    store.save_agent_checkpoint(&collision).unwrap();
+
+    let claim = live_claim("rollback");
+    let (proposed_run, mut proposed_checkpoint, proposed_event) = live_start_bundle(&claim);
+    proposed_checkpoint.id = collision.id;
+    assert!(store
+        .claim_live_run_start(&claim, &proposed_run, &proposed_checkpoint, &proposed_event,)
+        .is_err());
+    assert_eq!(store.load_agent_run(&proposed_run.id).unwrap(), None);
+    assert!(store
+        .list_agent_run_events(&proposed_run.id)
+        .unwrap()
+        .is_empty());
+    assert!(store
+        .list_agent_checkpoints(&proposed_run.id)
+        .unwrap()
+        .is_empty());
+    let claim_count: i64 = store
+        .conn
+        .lock()
+        .unwrap()
+        .query_row("SELECT COUNT(*) FROM live_run_start_claims", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(claim_count, 0);
 }
 
 #[test]

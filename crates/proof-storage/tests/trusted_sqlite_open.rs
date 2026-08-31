@@ -44,7 +44,7 @@ fn existing_database_migrates_round_trips_checkpoints_and_reopens() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 12);
+    assert_eq!(version, 13);
     let journal_mode: String = store
         .connection()
         .query_row("PRAGMA journal_mode", [], |row| row.get(0))

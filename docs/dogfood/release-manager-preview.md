@@ -208,6 +208,12 @@ URL was intentionally not recorded.
 
 ## Live-provider gate
 
+> **Superseded for AXP-E0001 and later live-v2 execution.** The commands in
+> this historical section create a different legacy v1 journey and are not
+> authorized for the frozen Release Manager live run. Use
+> [`release-manager-live.md`](release-manager-live.md) and only its
+> independently verified persisted argv/recovery procedure.
+
 Run the following from the repository root with a fresh workspace. This uses
 the real OpenAI endpoint when `OPENAI_BASE_URL` is unset. This environment had
 neither an `OPENAI_API_KEY` nor `jq`, so the live gate was not run here; copy the

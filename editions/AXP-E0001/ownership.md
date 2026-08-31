@@ -19,11 +19,12 @@
 | CLI workspace identity lifecycle and `README.md` | W12 | E0001-17 orchestrator | host-context CLI verifier | orchestrator |
 | canonical kernel/domain/live contracts | W13 | E0001-18 orchestrator | contract/source verifier | orchestrator |
 | Runtime/CLI live-v2 approval review and watch surfaces | W14 | E0001-19 orchestrator | independent runtime-recovery and CLI-security reviewers | orchestrator |
-| `docs/dogfood/release-manager-live.md` | W15 | E0001-04 live verifier | product owner | orchestrator |
-| root manifests/lockfile and edition release records | W16 | E0001-05 orchestrator | product owner | orchestrator |
+| Kernel/Storage/Runtime/CLI live-start claim and recovery; live runbooks | W15 | E0001-20 orchestrator | independent runtime-recovery, CLI-security, and runbook reviewers | orchestrator |
+| live dogfood record and final operator evidence | W16 | E0001-04 live verifier | product owner | orchestrator |
+| root manifests/lockfile and edition release records | W17 | E0001-05 orchestrator | product owner | orchestrator |
 
 No task may write an unowned surface. Cross-crate requirements go to the named
 owner and are integrated only after that owner quiesces. The live verifier must
 not be an E0001-02, E0001-03, E0001-06, E0001-07, E0001-08, E0001-09, or
 E0001-10/E0001-11/E0001-12/E0001-13/E0001-14/E0001-15/E0001-16/E0001-17/
-E0001-18/E0001-19 author.
+E0001-18/E0001-19/E0001-20 author.

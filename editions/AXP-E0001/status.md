@@ -3,14 +3,14 @@
 - Edition: `AXP-E0001`
 - Last updated: 2026-08-31
 - Overall: `active`
-- Current wave/task: W15 / E0001-04 live dogfood, stopped before provider construction until the approved credential is securely available
-- Owner action needed on 2026-08-31: make `OPENAI_API_KEY` available through the secure agent environment; do not put the value in chat, Git, an edition record, or the workspace
+- Current wave/task: W16 / E0001-04 live dogfood, stopped before provider construction until the approved credential is securely available
+- Owner action needed: make `OPENAI_API_KEY` available through the secure agent environment when possible; do not put the value in chat, Git, an edition record, or the workspace
 
 ## Gates
 
 - [x] Gate A — direction approved 2026-08-30
 - [x] Gate B — B1-B4/B6 approved 2026-08-30
-- [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence, E0001-19 host CLI 88/88, two independent repair audits, and final-source exact readiness replay pass
+- [x] Gate B — B5 conditionally approved 2026-08-30; activation evidence, E0001-20 host CLI 93/93, three independent repair/runbook audits, and final-source exact readiness replay pass
 - [x] Gate B clarification — D-E0001-009 narrows E0001 to a trusted fresh local workspace after E0001-12 proved strong stock-SQLite descriptor pinning impossible
 - [ ] Human approval — exact preview consequence signed during live run
 - [ ] Gate C — release accepted
@@ -50,7 +50,11 @@
 - [x] E0001-19 separated diagnostic crash-state viewing from approval actionability; exact v2 history/event/call/request/step/Human binding and no-generic-resume behavior pass real-SQLite and adversarial regressions
 - [x] E0001-19 scoped gates pass: Runtime 116/116, host CLI 88/88, both crate formatting checks, diff check, and two independent security/recovery audits
 - [x] Final-source immutable credential-free readiness replay retained the exact 10/10 packet, `next_argv`, binding digest, ready-record SHA-256, and private modes after E0001-19
-- [x] Revised nineteen-task W1-W16 graph preserves one writer edition and makes final-source host/readiness replay an explicit pre-provider W15 barrier
+- [x] E0001-20 atomically claims one live start and its initial four records, makes exact/concurrent replay provider-free, and recovers only the exact pristine same run after a post-claim crash
+- [x] E0001-20 binds emitted review/decision/recovery/watch argv to workspace, policy, exact five arguments, and sealed Human; generic resume and approval UI are absent from the operator path
+- [x] E0001-20 gates pass: Kernel 98/98, Storage 128/128, Runtime 119/119, host CLI 93/93, Runtime/CLI impact 212/212, full reverse impact 597/597 across 49 suites, formatting/diff, and independent runtime/CLI audits
+- [x] Final-source immutable credential-free readiness replay retained the exact 10/10 packet, `next_argv`, binding digest, ready-record SHA-256, and private modes after E0001-20
+- [x] Revised twenty-task W1-W17 graph preserves one writer edition and makes final-source host/readiness replay an explicit pre-provider W16 barrier
 
 ## Risks and next actions
 
@@ -68,12 +72,13 @@
 | Ordinary workspace open could name a config actor different from its signing key; reinitialization could silently replace both identity leaves; rotation could archive before validating the binding or collide on a timestamp name | resolved in E0001-17 with one shared actor/key invariant, regular private config enforcement, no-replace initialization/archive writes, and pre-mutation rotation validation | E0001-17 | lifecycle 4/4, host 81/81, compile/format clean; exact final-source readiness replay passes; multi-file rotation crash recovery remains separate |
 | Canonical kernel/domain/live contracts still labeled shipped Gate B prerequisites as proposed, named SQLite v11 current, and called activated B5 inactive | resolved in E0001-18 by synchronizing status with exact code/registry/migration evidence while preserving historical proposal text and pending Gate C | E0001-18 | stale-label and active-state scans, edition validation, host 81/81, and exact final-source readiness replay pass; no normative behavior changed |
 | Live-v2 pending arguments were absent from the human review surface; a naïve watch projection would also hide valid pre-event crash checkpoints or make unbound evidence actionable | resolved in E0001-19 with separate typed diagnostic and strict actionable projections | E0001-19 | complete sequence-zero/exact-envelope validation; committed event/call plus sealed request/step/Human binding; real-SQLite UI/router regressions; Runtime 116/116, host CLI 88/88, two independent PASS verdicts, and final-source readiness replay clean |
+| Exact live-start replay could allocate a second paid run; follow-ups lost workspace/policy/Human bindings; post-claim crash stranded the sole pristine run; no secure live-v2 runbook existed | resolved in E0001-20 with an atomic four-record start claim, provider-free Existing replay, exact pristine same-run recovery, emitted bound argv, and a fail-closed operator procedure | E0001-20 | Kernel 98/98, Storage 128/128, Runtime 119/119, host CLI 93/93, reverse impact 597/597, independent runtime/CLI/runbook audits, and exact final-source readiness replay pass |
 | CLI read `OPENAI_API_KEY` before deterministic and authority checks | resolved in E0001-08 with the audited deferred factory seam and zero-call failure spies | E0001-08 | direct live factory remains the only live-command reader at the credential boundary |
 | Runtime authoritative live setup/target-agent validator was private | resolved by E0001-10 public read-only exact-validator path | E0001-10 | 99 tests and independent audit passed; CLI integration remains under E0001-09 |
 | Generic runtime start can die after run save but before checkpoint/Started | resolved and independently audited in E0001-11 | E0001-11 | owner/root runtime suites pass 110/110; focused adversarial recovery 11/11; final audit PASS |
 | Strong descriptor-pinned SQLite main/WAL/sidecar semantics | impossible with stock Unix VFS; `/proc/self/fd` conflicts with native nofollow and canonicalizes without it | E0001-12/D-E0001-009 | preserve negative evidence; do not claim the impossible guarantee or add a custom VFS in E0001 |
 | Path-only SQLite open follows a storage/database symlink before CLI secure checks | resolved within D-E0001-009's explicit fresh-workspace threat boundary | E0001-13/E0001-09 | storage 124/124 and independent PASS; CLI 68/68, 11 child tests, and independent PASS |
 | No public command can create fresh terminal 10/10 evidence plus a safe synthetic edition without credentials | resolved | E0001-09 | fresh public packet independently verified exactly 10/10 with stable replay and zero provider attempts |
-| Host process has no `OPENAI_API_KEY` | blocks the sole approved paid request before provider construction; no charge or external effect occurred | product owner/operator | owner-deferred until the morning of 2026-08-31; then inject the credential through the secure agent environment and resume only the persisted exact `next_argv` |
+| Host process has no `OPENAI_API_KEY` | blocks the sole approved paid request before provider construction; no charge or external effect occurred | product owner/operator | when available, inject the credential through the secure agent environment and execute only the replay-verified persisted exact `next_argv` |
 | Fresh readiness workspace is under `/tmp` | host cleanup or reboot could remove the retained packet before morning | orchestrator/operator | preserve the workspace overnight; if it disappears, stop and regenerate/reverify credential-free readiness before any paid attempt |
 | Historical E0000 workspace identity is compromised | critical if reused | orchestrator | use only a fresh temporary workspace and newly generated test identities |

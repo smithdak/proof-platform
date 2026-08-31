@@ -373,6 +373,9 @@ pub(crate) fn cmd_live_prepare_start(cli: &Cli, preparation_id: &str) -> Result<
         AgentRuntimeOutcome::Failed { error, .. } => {
             bail!("deterministic preparation failed before approval: {error}")
         }
+        AgentRuntimeOutcome::AlreadyStarted { .. } => {
+            bail!("deterministic preparation unexpectedly returned a live start claim")
+        }
     };
     let awaiting = sealed_record(AwaitingRecord {
         schema: format!("{PREP_SCHEMA}/awaiting-approval"),
@@ -466,6 +469,9 @@ fn finish_with_check_factory(
         }
         AgentRuntimeOutcome::Failed { error, .. } => {
             bail!("deterministic preparation failed after approval: {error}")
+        }
+        AgentRuntimeOutcome::AlreadyStarted { .. } => {
+            bail!("deterministic preparation unexpectedly returned a live start claim")
         }
     };
     if run.status != AgentRunStatus::Succeeded {

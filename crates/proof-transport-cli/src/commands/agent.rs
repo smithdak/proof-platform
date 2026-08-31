@@ -377,6 +377,9 @@ fn parse_id(value: &str, kind: &str) -> Result<Uuid> {
 
 fn print_outcome(outcome: AgentRuntimeOutcome) -> Result<()> {
     let next = match &outcome {
+        AgentRuntimeOutcome::AlreadyStarted { run } => {
+            Some(serde_json::json!({"watch": format!("proof agent watch {}", run.id)}))
+        }
         AgentRuntimeOutcome::WaitingForApproval { run, request, .. } => Some(serde_json::json!({
             "approve": format!(
                 "proof approval approve {} --approver <approver-id>",

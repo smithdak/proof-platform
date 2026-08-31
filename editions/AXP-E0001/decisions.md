@@ -494,3 +494,48 @@ workspace was replayed read-only with both provider variables removed. The
 credential remains absent, so provider attempts, live runs, approval decisions,
 publication effects, artifacts, failures, and charges remain zero. E0001-19 is
 W14; live dogfood moves to W15 and integration/Gate C to W16.
+
+## D-E0001-017 — Live start is one-shot and recovery is emitted, exact, and workspace-bound
+
+Status: implemented protective correction · Date: 2026-08-31 · Decision owner: orchestrator
+
+Final pre-provider operator audit found that the retained exact `live-start`
+argv could create a second paid run, follow-up commands lost the selected
+workspace, direct approval could persist a decision from the wrong enrolled
+Human before runtime rejection, and the advertised path neither exposed the
+five exact publication arguments nor supplied a secure live-v2 procedure.
+Fault injection after the initial repair also proved an availability gap: a
+crash immediately after the atomic claim preserved spend safety but stranded
+the only run before its first dispatch.
+
+E0001-20 makes start identity a storage-enforced fact. A canonical claim binds
+the exact readiness and stable setup digests. SQLite migration 13 commits the
+claim, initial Running run, checkpoint zero, and Started event zero under one
+`BEGIN IMMEDIATE`; exact replay validates every stored record/digest and
+returns the original run before gateway construction. Conflicting pairings
+fail closed. Runtime permits first-dispatch recovery only from the exact
+pristine prefix after a fresh durable epoch, with zero attempts, counters,
+usage, cost, steps, approvals, evaluations, or later events. Prepared remains
+certified pre-send; Dispatching/ResponseReceived restart remains ambiguous and
+provider-free.
+
+CLI results now emit array-form workspace-bound review, exact-Human decision,
+policy-bearing live-resume, and watch argv. Native v2 history, signed request,
+waiting step, input digest, committed call, five typed arguments, and required
+Human are exact-validated before decision persistence. Generic resume and the
+session-fragment-printing approval UI are not advertised. The new live runbook
+requires the retained persisted start argv, emitted follow-ups, same-run
+recovery, explicit stop rules, and credential-free terminal replay; the legacy
+preview provider gate is marked superseded.
+
+Final source passes Kernel 98/98, Storage 128/128, Runtime 119/119, host CLI
+93/93, Runtime/CLI reverse impact 212/212, and full Kernel reverse impact
+597/597 across 49 suites. Independent runtime/recovery and CLI/security audits
+pass. The retained packet replays with both provider variables removed at
+exact 10/10, unchanged binding digest and `next_argv`, ready-record SHA-256
+`8bc2784f8ae20cc108fe50715ef31ec46289ed4bcf81da6a32b66554785cc40b`,
+and private modes.
+
+This correction authorizes no credential read, provider call, approval,
+publication, live effect, charge, or Gate C decision. E0001-20 is W15; live
+dogfood moves to W16 and integration/Gate C to W17.

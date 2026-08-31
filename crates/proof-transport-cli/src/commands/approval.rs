@@ -5,9 +5,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use base64::Engine as _;
 use chrono::{DateTime, Utc};
+use proof_agent_runtime::{runtime_approval_context, RuntimeApprovalContext};
 use proof_kernel::{
-    generate_keypair_for, principal_from_keypair, ApprovalOutcome, Keypair, PrincipalKind,
-    SignedApprovalDecision,
+    canonicalize, digest, generate_keypair_for, principal_from_keypair, AgentRunStatus,
+    AgentRunStepStatus, ApprovalOutcome, ArtifactKind, Keypair, PrincipalKind,
+    SignedApprovalDecision, SignedApprovalRequest,
 };
 use proof_storage::SqliteStore;
 use uuid::Uuid;
@@ -156,6 +158,19 @@ pub(crate) fn sign_approval_decision(
         .verify(&requester)
         .context("approval request signature verification failed")?;
 
+    if let Some(runtime) = validated_native_runtime_approval_context(store, &request)? {
+        if runtime.checkpoint_kind == "agent_runtime_v2" {
+            let required_approver_id = runtime
+                .required_approver_id
+                .context("sealed live runtime approval is missing its required human approver")?;
+            if approver_id != required_approver_id {
+                bail!(
+                    "approval request {request_id} requires the sealed human approver {required_approver_id}"
+                );
+            }
+        }
+    }
+
     let approver = load_approver_keypair(root, approver_id)?;
     let trusted = store
         .load_principal(&approver.principal_id)
@@ -171,6 +186,84 @@ pub(crate) fn sign_approval_decision(
         .context("could not sign approval decision")?;
     store.save_approval_decision(&decision)?;
     Ok(decision)
+}
+
+/// Validates the complete native runtime history behind a linked approval.
+///
+/// Generic approvals have no linked step and return `None`. Native v1 remains
+/// compatible, while live v2 is required to reproduce the exact durable
+/// request, waiting step, pending call, and policy-bound Human before a caller
+/// may persist a decision.
+pub(super) fn validated_native_runtime_approval_context(
+    store: &SqliteStore,
+    request: &SignedApprovalRequest,
+) -> Result<Option<RuntimeApprovalContext>> {
+    let Some(step) = store.find_agent_run_step_by_approval(&request.body.id)? else {
+        return Ok(None);
+    };
+    let run = store
+        .load_agent_run(&step.run_id)?
+        .with_context(|| format!("native approval run not found: {}", step.run_id))?;
+    if run.status != AgentRunStatus::WaitingForInput {
+        bail!("native approval run is not waiting for input");
+    }
+    if run.actor != request.body.requested_by {
+        bail!("native approval run actor does not match the signed requester");
+    }
+    if step.status != AgentRunStepStatus::WaitingForApproval
+        || step.approval_request_id != Some(request.body.id)
+        || step.operation != request.body.operation
+        || step.version != request.body.version
+        || step.input_digest != request.body.input_digest
+    {
+        bail!("native approval step does not match the signed request");
+    }
+
+    let checkpoints = store.list_agent_checkpoints(&run.id)?;
+    let events = store.list_agent_run_events(&run.id)?;
+    let runtime = runtime_approval_context(run.id, &checkpoints, &events)
+        .context("native runtime approval history is missing, mixed, unsupported, or invalid")?;
+    if runtime.run_id != run.id || Some(runtime.agent_id) != run.agent_id {
+        bail!("native runtime approval context does not match the durable run");
+    }
+    let pending = runtime
+        .pending_tool
+        .as_ref()
+        .context("native runtime approval context has no pending tool call")?;
+    if pending.approval_request_id != Some(request.body.id)
+        || pending.step_id != step.id
+        || pending.operation != request.body.operation
+        || pending.version != request.body.version
+    {
+        bail!("native runtime pending tool does not match the signed approval");
+    }
+    let pending_input_digest = digest(
+        ArtifactKind::OperationInput,
+        &canonicalize(&pending.arguments)
+            .context("native runtime pending arguments cannot be canonicalized")?,
+    );
+    if pending_input_digest != request.body.input_digest
+        || pending_input_digest != step.input_digest
+    {
+        bail!("native runtime pending arguments do not match the sealed input digest");
+    }
+
+    match runtime.checkpoint_kind.as_str() {
+        "agent_runtime_v1" => {}
+        "agent_runtime_v2" => {
+            if runtime.sealed_approval_request.as_ref() != Some(request) {
+                bail!("live runtime does not seal the exact signed approval request");
+            }
+            if runtime.sealed_step.as_ref() != Some(&step) {
+                bail!("live runtime does not seal the exact durable waiting step");
+            }
+            if runtime.required_approver_id.is_none() {
+                bail!("live runtime does not seal a required human approver");
+            }
+        }
+        _ => bail!("native runtime approval checkpoint version is unsupported"),
+    }
+    Ok(Some(runtime))
 }
 
 fn approver_key_path(root: &Path, approver_id: Uuid) -> PathBuf {
@@ -367,5 +460,147 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(denied.body.outcome, ApprovalOutcome::Denied);
+    }
+
+    #[test]
+    fn live_v2_decision_rejects_a_different_enrolled_human_before_persistence() {
+        let fixture = crate::commands::live::tests::approval_live_fixture();
+        let cli = Cli::parse_from([
+            "proof",
+            "--workspace",
+            fixture.workspace.root.to_str().unwrap(),
+            "approval",
+            "list",
+        ]);
+        cmd_approver_init(&cli).unwrap();
+        let wrong_approver_id = trusted_approver_ids(&fixture.workspace.root, &fixture.store)
+            .unwrap()
+            .into_iter()
+            .find(|candidate| *candidate != fixture.approver_id)
+            .unwrap();
+
+        let error = sign_approval_decision(
+            &fixture.workspace.root,
+            &fixture.store,
+            fixture.request.body.id,
+            wrong_approver_id,
+            ApprovalOutcome::Approved,
+            Some("wrong human".to_string()),
+            Utc::now(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("requires the sealed human approver"),
+            "{error:#}"
+        );
+        assert_eq!(
+            fixture
+                .store
+                .load_approval_decision(&fixture.request.body.id)
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn live_v2_decision_rejects_a_durable_step_substitution_before_persistence() {
+        let fixture = crate::commands::live::tests::approval_live_fixture();
+        let mut step = fixture
+            .store
+            .find_agent_run_step_by_approval(&fixture.request.body.id)
+            .unwrap()
+            .unwrap();
+        step.updated_at += chrono::Duration::milliseconds(1);
+        let connection =
+            rusqlite::Connection::open(fixture.workspace.root.join(".proof/storage/storage.db"))
+                .unwrap();
+        connection
+            .execute(
+                "UPDATE agent_run_steps SET step_json = ?1 WHERE id = ?2",
+                rusqlite::params![serde_json::to_string(&step).unwrap(), step.id.to_string()],
+            )
+            .unwrap();
+
+        let error = sign_approval_decision(
+            &fixture.workspace.root,
+            &fixture.store,
+            fixture.request.body.id,
+            fixture.approver_id,
+            ApprovalOutcome::Approved,
+            Some("substituted step".to_string()),
+            Utc::now(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("does not seal the exact durable waiting step"),
+            "{error:#}"
+        );
+        assert_eq!(
+            fixture
+                .store
+                .load_approval_decision(&fixture.request.body.id)
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn live_v2_decision_rejects_a_resigned_request_substitution_before_persistence() {
+        use ed25519_dalek::Signer as _;
+
+        let fixture = crate::commands::live::tests::approval_live_fixture();
+        let mut substituted = fixture.request.clone();
+        substituted.body.expires_at += chrono::Duration::seconds(1);
+        let payload = proof_kernel::canonicalize_serialized(&substituted.body).unwrap();
+        substituted.signature = fixture
+            .workspace
+            .keypair
+            .signing_key
+            .sign(payload.as_bytes())
+            .to_bytes()
+            .to_vec();
+        let connection =
+            rusqlite::Connection::open(fixture.workspace.root.join(".proof/storage/storage.db"))
+                .unwrap();
+        connection
+            .execute(
+                "UPDATE approval_requests SET request_json = ?1 WHERE id = ?2",
+                rusqlite::params![
+                    serde_json::to_string(&substituted).unwrap(),
+                    substituted.body.id.to_string()
+                ],
+            )
+            .unwrap();
+
+        let error = sign_approval_decision(
+            &fixture.workspace.root,
+            &fixture.store,
+            fixture.request.body.id,
+            fixture.approver_id,
+            ApprovalOutcome::Approved,
+            Some("substituted request".to_string()),
+            Utc::now(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("does not seal the exact signed approval request"),
+            "{error:#}"
+        );
+        assert_eq!(
+            fixture
+                .store
+                .load_approval_decision(&fixture.request.body.id)
+                .unwrap(),
+            None
+        );
     }
 }

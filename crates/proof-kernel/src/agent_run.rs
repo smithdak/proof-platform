@@ -1,6 +1,6 @@
 //! Durable agent run, step, checkpoint, retry, and evaluation contracts.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
@@ -12,6 +12,9 @@ use uuid::Uuid;
 use crate::canonical::{canonicalize, digest, ArtifactKind, ContentDigest};
 use crate::evidence::Proof;
 use crate::identity::PrincipalId;
+use crate::{AgentDefinition, AgentRunEvent, AgentRunEventKind, AgentStore};
+
+pub const LIVE_RUN_START_CLAIM_SCHEMA: &str = "proof-live-run-start-claim/v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -132,6 +135,27 @@ pub struct AgentRunEvaluation {
     pub created_at: DateTime<Utc>,
 }
 
+/// Stable identity for one paid live-start authorization.
+///
+/// The proposed run ID is deliberately carried by the initial bundle rather
+/// than this claim. An exact replay may propose a fresh UUID while the store
+/// returns the run ID that first acquired this immutable claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LiveRunStartClaim {
+    pub schema: String,
+    pub readiness_binding_digest: ContentDigest,
+    pub setup_digest: ContentDigest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiveRunStartClaimResult {
+    Acquired,
+    Existing(Uuid),
+    Conflict,
+    Unsupported,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum AgentRunError {
     #[error("agent run goal must not be empty")]
@@ -168,6 +192,117 @@ pub enum AgentRunError {
     InvalidScore,
     #[error("agent evaluation metrics could not be canonicalized")]
     InvalidMetrics,
+    #[error("live run start claim or initial evidence bundle is invalid")]
+    InvalidLiveStartClaim,
+}
+
+impl LiveRunStartClaim {
+    pub fn create(
+        readiness_binding_digest: ContentDigest,
+        setup_digest: ContentDigest,
+    ) -> Result<Self, AgentRunError> {
+        if readiness_binding_digest == ContentDigest::from_bytes([0; 32])
+            || setup_digest == ContentDigest::from_bytes([0; 32])
+        {
+            return Err(AgentRunError::InvalidLiveStartClaim);
+        }
+        Ok(Self {
+            schema: LIVE_RUN_START_CLAIM_SCHEMA.to_string(),
+            readiness_binding_digest,
+            setup_digest,
+        })
+    }
+
+    /// Validates the exact initial live-v2 barrier represented by this claim.
+    pub fn validate_initial_bundle(
+        &self,
+        run: &AgentRun,
+        checkpoint: &AgentCheckpoint,
+        started_event: &AgentRunEvent,
+    ) -> Result<(), AgentRunError> {
+        if self.schema != LIVE_RUN_START_CLAIM_SCHEMA
+            || self.readiness_binding_digest == ContentDigest::from_bytes([0; 32])
+            || self.setup_digest == ContentDigest::from_bytes([0; 32])
+            || run.id.get_version_num() != 7
+            || run.agent_id.is_none_or(|id| id.get_version_num() != 7)
+            || run.mode != AgentRunMode::Session
+            || run.status != AgentRunStatus::Running
+            || run.retry_count != 0
+            || run.revision != 1
+            || run.created_at != run.updated_at
+            || run.completed_at.is_some()
+            || checkpoint.id.get_version_num() != 7
+            || checkpoint.run_id != run.id
+            || checkpoint.sequence != 0
+            || checkpoint.created_at < run.created_at
+            || started_event.id.get_version_num() != 7
+            || started_event.run_id != run.id
+            || started_event.sequence != 0
+            || started_event.kind != AgentRunEventKind::Started
+            || started_event.created_at < checkpoint.created_at
+        {
+            return Err(AgentRunError::InvalidLiveStartClaim);
+        }
+
+        let envelope = checkpoint
+            .state
+            .as_object()
+            .ok_or(AgentRunError::InvalidLiveStartClaim)?;
+        if envelope.len() != 2
+            || envelope.get("kind").and_then(Value::as_str) != Some("agent_runtime_v2")
+        {
+            return Err(AgentRunError::InvalidLiveStartClaim);
+        }
+        let runtime = envelope
+            .get("runtime")
+            .and_then(Value::as_object)
+            .ok_or(AgentRunError::InvalidLiveStartClaim)?;
+        let runtime_run_id = runtime
+            .get("run_id")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<Uuid>(value).ok());
+        let runtime_agent_id = runtime
+            .get("agent_id")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<Uuid>(value).ok());
+        let runtime_started_at = runtime
+            .get("started_at")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<DateTime<Utc>>(value).ok());
+        let process_epoch_id = runtime
+            .get("process_epoch_id")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<Uuid>(value).ok());
+        if runtime.get("schema").and_then(Value::as_str) != Some("proof-agent-runtime-state/v2")
+            || runtime_run_id != Some(run.id)
+            || runtime_agent_id != run.agent_id
+            || runtime_started_at != Some(run.created_at)
+            || process_epoch_id.is_none_or(|id| id.get_version_num() != 7)
+        {
+            return Err(AgentRunError::InvalidLiveStartClaim);
+        }
+
+        let checkpoint_canonical =
+            canonicalize(&checkpoint.state).map_err(|_| AgentRunError::InvalidLiveStartClaim)?;
+        if checkpoint.state_digest != digest(ArtifactKind::AgentCheckpoint, &checkpoint_canonical) {
+            return Err(AgentRunError::InvalidLiveStartClaim);
+        }
+        let expected_started_data = serde_json::json!({
+            "live": true,
+            "schema": runtime.get("schema").cloned().unwrap_or(Value::Null),
+            "process_epoch_id": runtime.get("process_epoch_id").cloned().unwrap_or(Value::Null),
+            "policy_binding": runtime.get("policy_binding").cloned().unwrap_or(Value::Null),
+            "authority": runtime.get("authority").cloned().unwrap_or(Value::Null),
+        });
+        let event_canonical =
+            canonicalize(&started_event.data).map_err(|_| AgentRunError::InvalidLiveStartClaim)?;
+        if started_event.data != expected_started_data
+            || started_event.data_digest != digest(ArtifactKind::AgentEvent, &event_canonical)
+        {
+            return Err(AgentRunError::InvalidLiveStartClaim);
+        }
+        Ok(())
+    }
 }
 
 impl AgentRun {
@@ -513,6 +648,18 @@ impl AgentRunEvaluation {
 }
 
 pub trait AgentRunStore: Send + Sync {
+    /// Atomically claims one immutable live start and its initial durable
+    /// run/checkpoint/event barrier. Third-party stores remain compatible and
+    /// fail closed until they implement the capability.
+    fn claim_live_run_start(
+        &self,
+        _claim: &LiveRunStartClaim,
+        _initial_run: &AgentRun,
+        _initial_checkpoint: &AgentCheckpoint,
+        _started_event: &AgentRunEvent,
+    ) -> Result<LiveRunStartClaimResult, String> {
+        Ok(LiveRunStartClaimResult::Unsupported)
+    }
     fn save_agent_run(&self, run: &AgentRun) -> Result<(), String>;
     fn load_agent_run(&self, run_id: &Uuid) -> Result<Option<AgentRun>, String>;
     fn list_agent_runs(&self) -> Result<Vec<AgentRun>, String>;
@@ -536,9 +683,110 @@ pub struct RecordingAgentRunStore {
     steps: Mutex<BTreeMap<Uuid, AgentRunStep>>,
     checkpoints: Mutex<BTreeMap<Uuid, AgentCheckpoint>>,
     evaluations: Mutex<BTreeMap<Uuid, AgentRunEvaluation>>,
+    definitions: Mutex<BTreeMap<Uuid, AgentDefinition>>,
+    events: Mutex<BTreeMap<Uuid, AgentRunEvent>>,
+    live_start_claims: Mutex<HashMap<ContentDigest, RecordingLiveRunStartClaim>>,
+}
+
+#[derive(Clone)]
+struct RecordingLiveRunStartClaim {
+    claim: LiveRunStartClaim,
+    initial_run: AgentRun,
+    checkpoint_id: Uuid,
+    event_id: Uuid,
 }
 
 impl AgentRunStore for RecordingAgentRunStore {
+    fn claim_live_run_start(
+        &self,
+        claim: &LiveRunStartClaim,
+        initial_run: &AgentRun,
+        initial_checkpoint: &AgentCheckpoint,
+        started_event: &AgentRunEvent,
+    ) -> Result<LiveRunStartClaimResult, String> {
+        claim
+            .validate_initial_bundle(initial_run, initial_checkpoint, started_event)
+            .map_err(|error| error.to_string())?;
+        let mut claims = self
+            .live_start_claims
+            .lock()
+            .map_err(|_| "live start claim lock poisoned".to_string())?;
+        let existing = claims.values().find(|existing| {
+            existing.claim.readiness_binding_digest == claim.readiness_binding_digest
+                || existing.claim.setup_digest == claim.setup_digest
+        });
+        if let Some(existing) = existing {
+            if existing.claim != *claim {
+                return Ok(LiveRunStartClaimResult::Conflict);
+            }
+            let runs = self
+                .runs
+                .lock()
+                .map_err(|_| "agent run lock poisoned".to_string())?;
+            let checkpoints = self
+                .checkpoints
+                .lock()
+                .map_err(|_| "agent checkpoint lock poisoned".to_string())?;
+            let events = self
+                .events
+                .lock()
+                .map_err(|_| "agent event lock poisoned".to_string())?;
+            let current_run = runs
+                .get(&existing.initial_run.id)
+                .ok_or_else(|| "claimed live run is missing".to_string())?;
+            let checkpoint = checkpoints
+                .get(&existing.checkpoint_id)
+                .ok_or_else(|| "claimed live start checkpoint is missing".to_string())?;
+            let event = events
+                .get(&existing.event_id)
+                .ok_or_else(|| "claimed live start event is missing".to_string())?;
+            existing
+                .claim
+                .validate_initial_bundle(&existing.initial_run, checkpoint, event)
+                .map_err(|error| error.to_string())?;
+            validate_progressed_claim_run(&existing.initial_run, current_run)?;
+            return Ok(LiveRunStartClaimResult::Existing(existing.initial_run.id));
+        }
+
+        let mut runs = self
+            .runs
+            .lock()
+            .map_err(|_| "agent run lock poisoned".to_string())?;
+        let mut checkpoints = self
+            .checkpoints
+            .lock()
+            .map_err(|_| "agent checkpoint lock poisoned".to_string())?;
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|_| "agent event lock poisoned".to_string())?;
+        if runs.contains_key(&initial_run.id)
+            || checkpoints.contains_key(&initial_checkpoint.id)
+            || checkpoints
+                .values()
+                .any(|checkpoint| checkpoint.run_id == initial_run.id && checkpoint.sequence == 0)
+            || events.contains_key(&started_event.id)
+            || events
+                .values()
+                .any(|event| event.run_id == initial_run.id && event.sequence == 0)
+        {
+            return Err("live start initial evidence conflicts with existing rows".to_string());
+        }
+        runs.insert(initial_run.id, initial_run.clone());
+        checkpoints.insert(initial_checkpoint.id, initial_checkpoint.clone());
+        events.insert(started_event.id, started_event.clone());
+        claims.insert(
+            claim.readiness_binding_digest,
+            RecordingLiveRunStartClaim {
+                claim: claim.clone(),
+                initial_run: initial_run.clone(),
+                checkpoint_id: initial_checkpoint.id,
+                event_id: started_event.id,
+            },
+        );
+        Ok(LiveRunStartClaimResult::Acquired)
+    }
+
     fn save_agent_run(&self, run: &AgentRun) -> Result<(), String> {
         save_versioned(&self.runs, run.id, run.revision, run, |run| run.revision)
     }
@@ -689,6 +937,84 @@ impl AgentRunStore for RecordingAgentRunStore {
     }
 }
 
+impl AgentStore for RecordingAgentRunStore {
+    fn save_agent_definition(&self, agent: &AgentDefinition) -> Result<(), String> {
+        let mut definitions = self
+            .definitions
+            .lock()
+            .map_err(|_| "agent definition lock poisoned".to_string())?;
+        if definitions
+            .values()
+            .any(|existing| existing.name == agent.name && existing.id != agent.id)
+        {
+            return Err(format!("agent name already exists: {}", agent.name));
+        }
+        save_once_locked(&mut definitions, agent.id, agent, "agent definition")
+    }
+
+    fn load_agent_definition(&self, agent_id: &Uuid) -> Result<Option<AgentDefinition>, String> {
+        load_record(&self.definitions, agent_id, "agent definition")
+    }
+
+    fn list_agent_definitions(&self) -> Result<Vec<AgentDefinition>, String> {
+        let mut definitions = self
+            .definitions
+            .lock()
+            .map_err(|_| "agent definition lock poisoned".to_string())?
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        definitions.sort_by_key(|agent| (agent.created_at, agent.id));
+        Ok(definitions)
+    }
+
+    fn save_agent_run_event(&self, event: &AgentRunEvent) -> Result<(), String> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|_| "agent run event lock poisoned".to_string())?;
+        if events.values().any(|existing| {
+            existing.run_id == event.run_id
+                && existing.sequence == event.sequence
+                && existing.id != event.id
+        }) {
+            return Err(format!(
+                "agent run event sequence {} already exists for run {}",
+                event.sequence, event.run_id
+            ));
+        }
+        save_once_locked(&mut events, event.id, event, "agent run event")
+    }
+
+    fn list_agent_run_events(&self, run_id: &Uuid) -> Result<Vec<AgentRunEvent>, String> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|_| "agent run event lock poisoned".to_string())?
+            .values()
+            .filter(|event| event.run_id == *run_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        events.sort_by_key(|event| event.sequence);
+        Ok(events)
+    }
+}
+
+fn validate_progressed_claim_run(initial: &AgentRun, current: &AgentRun) -> Result<(), String> {
+    if current.id != initial.id
+        || current.actor != initial.actor
+        || current.agent_id != initial.agent_id
+        || current.mode != initial.mode
+        || current.goal != initial.goal
+        || current.created_at != initial.created_at
+        || current.revision < initial.revision
+        || current.updated_at < initial.updated_at
+    {
+        return Err("claimed live run identity or history drifted".to_string());
+    }
+    Ok(())
+}
+
 fn save_versioned<T: Clone + PartialEq>(
     records: &Mutex<BTreeMap<Uuid, T>>,
     id: Uuid,
@@ -763,6 +1089,160 @@ mod tests {
     use crate::{canonicalize, create_proof, generate_keypair, ArtifactKind};
     use chrono::Duration;
     use serde_json::json;
+
+    fn live_start_bundle(
+        claim: LiveRunStartClaim,
+    ) -> (LiveRunStartClaim, AgentRun, AgentCheckpoint, AgentRunEvent) {
+        let now = Utc::now();
+        let agent_id = Uuid::now_v7();
+        let mut run = AgentRun::new_for_agent(
+            PrincipalId::now(),
+            agent_id,
+            AgentRunMode::Session,
+            "Publish one preview",
+            now,
+        )
+        .unwrap();
+        run.start(now).unwrap();
+        let process_epoch_id = Uuid::now_v7();
+        let state = json!({
+            "kind": "agent_runtime_v2",
+            "runtime": {
+                "schema": "proof-agent-runtime-state/v2",
+                "agent_id": agent_id,
+                "run_id": run.id,
+                "started_at": now,
+                "process_epoch_id": process_epoch_id,
+                "policy_binding": {"resolved_policy_digest": claim.setup_digest},
+                "authority": {"delegation_id": Uuid::now_v7()},
+            }
+        });
+        let checkpoint = AgentCheckpoint::create(run.id, 0, state, now).unwrap();
+        let event = AgentRunEvent::create(
+            run.id,
+            0,
+            AgentRunEventKind::Started,
+            json!({
+                "live": true,
+                "schema": "proof-agent-runtime-state/v2",
+                "process_epoch_id": process_epoch_id,
+                "policy_binding": {"resolved_policy_digest": claim.setup_digest},
+                "authority": checkpoint.state["runtime"]["authority"].clone(),
+            }),
+            now,
+        )
+        .unwrap();
+        (claim, run, checkpoint, event)
+    }
+
+    fn live_claim(seed: &str) -> LiveRunStartClaim {
+        let readiness = digest(
+            ArtifactKind::Generic,
+            &canonicalize(&json!({"readiness": seed})).unwrap(),
+        );
+        let setup = digest(
+            ArtifactKind::Generic,
+            &canonicalize(&json!({"setup": seed})).unwrap(),
+        );
+        LiveRunStartClaim::create(readiness, setup).unwrap()
+    }
+
+    #[test]
+    fn live_start_claim_is_strict_and_recording_store_replays_exact_bundle() {
+        assert!(LiveRunStartClaim::create(
+            ContentDigest::from_bytes([0; 32]),
+            live_claim("valid").setup_digest,
+        )
+        .is_err());
+        assert!(serde_json::from_value::<LiveRunStartClaim>(json!({
+            "schema": LIVE_RUN_START_CLAIM_SCHEMA,
+            "readiness_binding_digest": live_claim("strict").readiness_binding_digest,
+            "setup_digest": live_claim("strict").setup_digest,
+            "unknown": true,
+        }))
+        .is_err());
+
+        let store = RecordingAgentRunStore::default();
+        let claim = live_claim("one");
+        let (_, run, checkpoint, event) = live_start_bundle(claim.clone());
+        assert_eq!(
+            store
+                .claim_live_run_start(&claim, &run, &checkpoint, &event)
+                .unwrap(),
+            LiveRunStartClaimResult::Acquired
+        );
+        assert_eq!(store.load_agent_run(&run.id).unwrap(), Some(run.clone()));
+        assert_eq!(
+            store.list_agent_checkpoints(&run.id).unwrap(),
+            vec![checkpoint.clone()]
+        );
+        assert_eq!(
+            AgentStore::list_agent_run_events(&store, &run.id).unwrap(),
+            vec![event]
+        );
+
+        let (_, proposed_run, proposed_checkpoint, proposed_event) =
+            live_start_bundle(claim.clone());
+        assert_eq!(
+            store
+                .claim_live_run_start(&claim, &proposed_run, &proposed_checkpoint, &proposed_event,)
+                .unwrap(),
+            LiveRunStartClaimResult::Existing(run.id)
+        );
+        assert_eq!(store.list_agent_runs().unwrap(), vec![run]);
+    }
+
+    #[test]
+    fn recording_live_start_claim_rejects_cross_binding_and_tampered_history() {
+        let store = RecordingAgentRunStore::default();
+        let claim = live_claim("original");
+        let (_, run, checkpoint, event) = live_start_bundle(claim.clone());
+        assert_eq!(
+            store
+                .claim_live_run_start(&claim, &run, &checkpoint, &event)
+                .unwrap(),
+            LiveRunStartClaimResult::Acquired
+        );
+
+        let mut changed_setup = live_claim("changed-setup");
+        changed_setup.readiness_binding_digest = claim.readiness_binding_digest;
+        let (_, changed_run, changed_checkpoint, changed_event) =
+            live_start_bundle(changed_setup.clone());
+        assert_eq!(
+            store
+                .claim_live_run_start(
+                    &changed_setup,
+                    &changed_run,
+                    &changed_checkpoint,
+                    &changed_event,
+                )
+                .unwrap(),
+            LiveRunStartClaimResult::Conflict
+        );
+
+        let mut changed_binding = live_claim("changed-binding");
+        changed_binding.setup_digest = claim.setup_digest;
+        let (_, changed_run, changed_checkpoint, changed_event) =
+            live_start_bundle(changed_binding.clone());
+        assert_eq!(
+            store
+                .claim_live_run_start(
+                    &changed_binding,
+                    &changed_run,
+                    &changed_checkpoint,
+                    &changed_event,
+                )
+                .unwrap(),
+            LiveRunStartClaimResult::Conflict
+        );
+
+        store.events.lock().unwrap().remove(&event.id);
+        let (_, proposed_run, proposed_checkpoint, proposed_event) =
+            live_start_bundle(claim.clone());
+        assert!(store
+            .claim_live_run_start(&claim, &proposed_run, &proposed_checkpoint, &proposed_event,)
+            .is_err());
+    }
 
     #[test]
     fn run_lifecycle_waits_resumes_and_retries() {

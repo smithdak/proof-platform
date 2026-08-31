@@ -18,7 +18,8 @@ pub use agent::{
 pub use agent_run::{
     AgentCheckpoint, AgentEvaluationOutcome, AgentRun, AgentRunError, AgentRunEvaluation,
     AgentRunMode, AgentRunStatus, AgentRunStep, AgentRunStepStatus, AgentRunStore,
-    RecordingAgentRunStore,
+    LiveRunStartClaim, LiveRunStartClaimResult, RecordingAgentRunStore,
+    LIVE_RUN_START_CLAIM_SCHEMA,
 };
 pub use approval::{
     ApprovalDecision, ApprovalError, ApprovalExecution, ApprovalGrant, ApprovalOutcome,

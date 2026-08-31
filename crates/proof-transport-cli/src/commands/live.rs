@@ -264,13 +264,19 @@ pub(crate) fn cmd_agent_live_start(
         preflight_evaluation_id,
         delegation_id,
     )?;
+    let required_approver_id = setup.policy.binding_inputs.approver_principal_id.as_uuid();
     let runtime = build_live_runtime(
         &workspace,
         store,
         load_registry(&workspace.root)?,
         Arc::new(CliOpenAiGatewayFactory::new()),
     )?;
-    print_live_outcome(runtime.run_live(setup)?)
+    print_live_outcome(
+        &workspace.root,
+        policy_file,
+        Some(required_approver_id),
+        runtime.run_live(setup)?,
+    )
 }
 
 pub(crate) fn cmd_agent_live_resume(cli: &Cli, run_id: &str, policy_file: &Path) -> Result<()> {
@@ -278,13 +284,19 @@ pub(crate) fn cmd_agent_live_resume(cli: &Cli, run_id: &str, policy_file: &Path)
     let store = Arc::new(open_store(&workspace.root)?);
     let run_id = parse_uuid(run_id, "run")?;
     let setup = resume_setup(&workspace, &store, run_id, policy_file)?;
+    let required_approver_id = setup.policy.binding_inputs.approver_principal_id.as_uuid();
     let runtime = build_live_runtime(
         &workspace,
         store,
         load_registry(&workspace.root)?,
         Arc::new(CliOpenAiGatewayFactory::new()),
     )?;
-    print_live_outcome(runtime.run_live(setup)?)
+    print_live_outcome(
+        &workspace.root,
+        policy_file,
+        Some(required_approver_id),
+        runtime.run_live(setup)?,
+    )
 }
 
 pub(super) fn start_setup(
@@ -992,23 +1004,95 @@ pub(super) fn build_live_runtime(
     .map_err(anyhow::Error::from)
 }
 
-fn print_live_outcome(outcome: AgentRuntimeOutcome) -> Result<()> {
-    let next = match &outcome {
-        AgentRuntimeOutcome::WaitingForApproval { run, request, .. } => Some(json!({
-            "approve": format!("proof approval approve {} --approver <approver-id>", request.body.id),
-            "deny": format!("proof approval deny {} --approver <approver-id>", request.body.id),
-            "resume": format!("proof agent live-resume {} --policy-file evals/release-manager-live-v1.json", run.id),
-        })),
-        AgentRuntimeOutcome::Completed { run, .. } | AgentRuntimeOutcome::Failed { run, .. } => {
-            Some(json!({"watch": format!("proof agent watch {}", run.id)}))
+fn print_live_outcome(
+    workspace: &Path,
+    policy_file: &Path,
+    required_approver_id: Option<Uuid>,
+    outcome: AgentRuntimeOutcome,
+) -> Result<()> {
+    let value = live_outcome_json(workspace, policy_file, required_approver_id, &outcome)?;
+    println!("{}", serde_json::to_string_pretty(&value)?);
+    Ok(())
+}
+
+pub(super) fn live_outcome_json(
+    workspace: &Path,
+    policy_file: &Path,
+    required_approver_id: Option<Uuid>,
+    outcome: &AgentRuntimeOutcome,
+) -> Result<Value> {
+    let workspace = workspace
+        .to_str()
+        .context("workspace path is not valid UTF-8")?;
+    let policy_file = policy_file
+        .to_str()
+        .context("live policy path is not valid UTF-8")?;
+    let run = match outcome {
+        AgentRuntimeOutcome::AlreadyStarted { run }
+        | AgentRuntimeOutcome::Completed { run, .. }
+        | AgentRuntimeOutcome::WaitingForApproval { run, .. }
+        | AgentRuntimeOutcome::Failed { run, .. } => run,
+    };
+    let watch_argv = json!([
+        "proof",
+        "--workspace",
+        workspace,
+        "agent",
+        "watch",
+        run.id.to_string(),
+    ]);
+    let live_resume_argv = json!([
+        "proof",
+        "--workspace",
+        workspace,
+        "agent",
+        "live-resume",
+        run.id.to_string(),
+        "--policy-file",
+        policy_file,
+    ]);
+    let next = match outcome {
+        AgentRuntimeOutcome::WaitingForApproval { request, .. } => {
+            let required_approver_id = required_approver_id
+                .context("waiting live outcome is missing the sealed human approver")?;
+            json!({
+                "review_argv": watch_argv,
+                "approve_argv": [
+                    "proof",
+                    "--workspace",
+                    workspace,
+                    "approval",
+                    "approve",
+                    request.body.id.to_string(),
+                    "--approver",
+                    required_approver_id.to_string(),
+                ],
+                "deny_argv": [
+                    "proof",
+                    "--workspace",
+                    workspace,
+                    "approval",
+                    "deny",
+                    request.body.id.to_string(),
+                    "--approver",
+                    required_approver_id.to_string(),
+                ],
+                "live_resume_argv": live_resume_argv,
+                "watch_argv": watch_argv,
+            })
+        }
+        AgentRuntimeOutcome::AlreadyStarted { .. } => json!({
+            "review_argv": watch_argv,
+            "live_resume_argv": live_resume_argv,
+            "watch_argv": watch_argv,
+        }),
+        AgentRuntimeOutcome::Completed { .. } | AgentRuntimeOutcome::Failed { .. } => {
+            json!({"watch_argv": watch_argv})
         }
     };
     let mut value = serde_json::to_value(outcome)?;
-    if let Some(next) = next {
-        value["next"] = next;
-    }
-    println!("{}", serde_json::to_string_pretty(&value)?);
-    Ok(())
+    value["next"] = next;
+    Ok(value)
 }
 
 fn value_digest(value: &Value) -> Result<ContentDigest> {
@@ -1409,6 +1493,100 @@ pub(crate) mod tests {
             arguments,
             approver_id,
         }
+    }
+
+    #[test]
+    fn live_outcome_commands_are_exact_workspace_bound_argv_in_required_order() {
+        let fixture = approval_live_fixture();
+        let run = fixture
+            .store
+            .load_agent_run(&fixture.run_id)
+            .unwrap()
+            .unwrap();
+        let step = fixture
+            .store
+            .find_agent_run_step_by_approval(&fixture.request.body.id)
+            .unwrap()
+            .unwrap();
+        let outcome = AgentRuntimeOutcome::WaitingForApproval {
+            run: run.clone(),
+            step,
+            request: fixture.request.clone(),
+        };
+        let supplied_policy = Path::new("operator/policies/exact-live-policy.json");
+
+        let value = live_outcome_json(
+            &fixture.workspace.root,
+            supplied_policy,
+            Some(fixture.approver_id),
+            &outcome,
+        )
+        .unwrap();
+        let workspace = fixture.workspace.root.to_str().unwrap();
+        assert_eq!(
+            value["next"],
+            json!({
+                "review_argv": [
+                    "proof", "--workspace", workspace, "agent", "watch", run.id.to_string()
+                ],
+                "approve_argv": [
+                    "proof", "--workspace", workspace, "approval", "approve",
+                    fixture.request.body.id.to_string(), "--approver", fixture.approver_id.to_string()
+                ],
+                "deny_argv": [
+                    "proof", "--workspace", workspace, "approval", "deny",
+                    fixture.request.body.id.to_string(), "--approver", fixture.approver_id.to_string()
+                ],
+                "live_resume_argv": [
+                    "proof", "--workspace", workspace, "agent", "live-resume",
+                    run.id.to_string(), "--policy-file", supplied_policy.to_str().unwrap()
+                ],
+                "watch_argv": [
+                    "proof", "--workspace", workspace, "agent", "watch", run.id.to_string()
+                ],
+            })
+        );
+        let error = live_outcome_json(&fixture.workspace.root, supplied_policy, None, &outcome)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("missing the sealed human approver"),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn already_started_outcome_recommends_only_same_run_review_resume_and_watch() {
+        let fixture = approval_live_fixture();
+        let run = fixture
+            .store
+            .load_agent_run(&fixture.run_id)
+            .unwrap()
+            .unwrap();
+        let supplied_policy = Path::new("operator/policies/replay-live-policy.json");
+        let outcome = AgentRuntimeOutcome::AlreadyStarted { run: run.clone() };
+
+        let value =
+            live_outcome_json(&fixture.workspace.root, supplied_policy, None, &outcome).unwrap();
+        let workspace = fixture.workspace.root.to_str().unwrap();
+        assert_eq!(
+            value["next"],
+            json!({
+                "review_argv": [
+                    "proof", "--workspace", workspace, "agent", "watch", run.id.to_string()
+                ],
+                "live_resume_argv": [
+                    "proof", "--workspace", workspace, "agent", "live-resume",
+                    run.id.to_string(), "--policy-file", supplied_policy.to_str().unwrap()
+                ],
+                "watch_argv": [
+                    "proof", "--workspace", workspace, "agent", "watch", run.id.to_string()
+                ],
+            })
+        );
+        assert!(value["next"].get("approve_argv").is_none());
+        assert!(value["next"].get("deny_argv").is_none());
     }
 
     fn persist_passing_preflight(workspace: &Workspace, store: &SqliteStore) -> AgentRunEvaluation {

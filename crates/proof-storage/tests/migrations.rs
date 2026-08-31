@@ -11,7 +11,7 @@ fn fresh_database_applies_all_migrations() {
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
     let history_count: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM schema_migrations WHERE version = 1",
@@ -49,6 +49,7 @@ fn fresh_database_applies_all_migrations() {
         "agent_definitions",
         "agent_run_events",
         "execution_replays",
+        "live_run_start_claims",
     ] {
         connection
             .prepare(&format!("SELECT 1 FROM {table}"))
@@ -63,7 +64,7 @@ fn migrations_are_idempotent() {
     run_migrations(&connection).unwrap();
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
 }
 
 #[test]
@@ -73,8 +74,8 @@ fn open_and_in_memory_run_migrations_automatically() {
     let file_store = SqliteStore::open(&path).unwrap();
     let memory_store = SqliteStore::in_memory().unwrap();
 
-    assert_eq!(schema_version(&file_store.connection()).unwrap(), 12);
-    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 12);
+    assert_eq!(schema_version(&file_store.connection()).unwrap(), 13);
+    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 13);
 }
 
 #[test]
@@ -103,9 +104,9 @@ fn rollback_to_current_version_is_a_no_op() {
     let connection = Connection::open_in_memory().unwrap();
     run_migrations(&connection).unwrap();
 
-    rollback_to(&connection, 12).unwrap();
+    rollback_to(&connection, 13).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
 }
 
 #[test]
@@ -127,7 +128,7 @@ fn rolled_back_database_can_be_migrated_again() {
     rollback_to(&connection, 0).unwrap();
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
 }
 
 #[test]
@@ -170,7 +171,7 @@ fn migration_12_upgrades_v11_with_empty_scope_and_rolls_back_losslessly() {
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
     let scope_json: String = connection
         .query_row(
             "SELECT scope_json FROM delegations WHERE id = ?1",
@@ -238,7 +239,7 @@ fn migration_12_upgrades_v11_with_empty_scope_and_rolls_back_losslessly() {
     );
 
     run_migrations(&connection).unwrap();
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
     let restored_scope: String = connection
         .query_row(
             "SELECT scope_json FROM delegations WHERE id = ?1",
@@ -264,7 +265,7 @@ fn migration_11_upgrades_v10_with_an_empty_ledger_and_preserves_existing_data() 
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
     let schema_name: String = connection
         .query_row(
             "SELECT name FROM schemas WHERE id = 'schema-1'",
@@ -326,7 +327,7 @@ fn migration_11_is_reversible_and_can_be_reapplied_without_touching_v10_data() {
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 12);
+    assert_eq!(schema_version(&connection).unwrap(), 13);
     connection
         .prepare("SELECT 1 FROM execution_replays")
         .unwrap();
@@ -514,13 +515,13 @@ fn concurrent_openers_apply_pending_migration_once() {
         .collect::<Vec<_>>();
 
     for handle in handles {
-        assert_eq!(handle.join().unwrap().unwrap(), 12);
+        assert_eq!(handle.join().unwrap().unwrap(), 13);
     }
 
     let connection = Connection::open(&path).unwrap();
     let history_count: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version = 12",
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 13",
             [],
             |row| row.get(0),
         )

@@ -11,8 +11,9 @@ use proof_kernel::{
     AgentRunEventKind, AgentRunMode, AgentRunStatus, AgentRunStep, AgentRunStepStatus,
     AgentRunStore, AgentStore, ApprovalError, ApprovalExecution, ApprovalGrant, ApprovalOutcome,
     ApprovalRequest, ApprovalStore, ArtifactKind, ContentDigest, Delegation, DelegationChain,
-    ExecutionContext, ExecutionEngine, ExecutionOutcome, Governance, Keypair, PrincipalId,
-    PrincipalKind, Proof, Registry, RegistryEntry, SignedApprovalRequest,
+    ExecutionContext, ExecutionEngine, ExecutionOutcome, Governance, Keypair, LiveRunStartClaim,
+    LiveRunStartClaimResult, PrincipalId, PrincipalKind, Proof, Registry, RegistryEntry,
+    SignedApprovalRequest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -171,6 +172,9 @@ struct GenericToolRequestEvidence {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum AgentRuntimeOutcome {
+    /// The readiness/start tuple was already durably claimed by this run.
+    /// Returning it is read-only and never constructs a provider gateway.
+    AlreadyStarted { run: AgentRun },
     Completed {
         run: AgentRun,
         output: String,
@@ -2049,12 +2053,10 @@ impl AgentRuntime {
             self.identity.principal_id,
             agent.id,
             AgentRunMode::Session,
-            goal,
+            goal.clone(),
             now,
         )?;
-        self.save_run(&run)?;
         run.start(now)?;
-        self.save_run(&run)?;
         let binding = resolved_live_bindings(
             run.id,
             agent.id,
@@ -2082,19 +2084,119 @@ impl AgentRuntime {
             resolved_policy_digest,
             request,
         );
-        self.save_live_state(run.id, &state)?;
-        self.append_event(
+        let initial_checkpoint = AgentCheckpoint::create(
             run.id,
+            0,
+            json!({"kind": LIVE_RUNTIME_CHECKPOINT_KIND, "runtime": &state}),
+            now,
+        )?;
+        let started_event = AgentRunEvent::create(
+            run.id,
+            0,
             AgentRunEventKind::Started,
             live_started_event(&state),
-        )?;
+            now,
+        )
+        .map_err(|error| AgentRuntimeError::InconsistentState(error.to_string()))?;
+        let readiness_binding_digest = live_readiness_binding_digest(agent.id, &goal, &setup)?;
+        let setup_digest = live_start_setup_digest(agent.id, &goal, &setup)?;
+        let claim = LiveRunStartClaim::create(readiness_binding_digest, setup_digest)?;
+        match self
+            .run_store
+            .claim_live_run_start(&claim, &run, &initial_checkpoint, &started_event)
+            .map_err(AgentRuntimeError::Store)?
+        {
+            LiveRunStartClaimResult::Acquired => {}
+            LiveRunStartClaimResult::Existing(existing_run_id) => {
+                return self.existing_live_start_outcome(&setup, agent.id, &goal, existing_run_id);
+            }
+            LiveRunStartClaimResult::Conflict => {
+                return Err(AgentRuntimeError::LiveSetup(
+                    "live readiness or setup is already bound to a different start claim"
+                        .to_string(),
+                ));
+            }
+            LiveRunStartClaimResult::Unsupported => {
+                return Err(AgentRuntimeError::LiveSetup(
+                    "live run store does not support atomic start claims".to_string(),
+                ));
+            }
+        }
+        self.reread_exact_run(&run)?;
+        let checkpoints = self
+            .run_store
+            .list_agent_checkpoints(&run.id)
+            .map_err(AgentRuntimeError::Store)?;
+        let events = self
+            .agent_store
+            .list_agent_run_events(&run.id)
+            .map_err(AgentRuntimeError::Store)?;
+        if checkpoints != [initial_checkpoint] || events != [started_event] {
+            return Err(AgentRuntimeError::InconsistentState(format!(
+                "live run {} atomic start claim did not reread exactly",
+                run.id
+            )));
+        }
         self.reread_live_state(run.id, &state)?;
-        self.reread_live_event(
-            run.id,
-            AgentRunEventKind::Started,
-            &live_started_event(&state),
-        )?;
         self.prepare_and_dispatch_live(run, agent, &mut state)
+    }
+
+    fn existing_live_start_outcome(
+        &self,
+        setup: &LiveRunSetup,
+        expected_agent_id: Uuid,
+        expected_goal: &str,
+        run_id: Uuid,
+    ) -> Result<AgentRuntimeOutcome, AgentRuntimeError> {
+        let run = self
+            .run_store
+            .load_agent_run(&run_id)
+            .map_err(AgentRuntimeError::Store)?
+            .ok_or(AgentRuntimeError::RunNotFound(run_id))?;
+        if run.actor != self.identity.principal_id
+            || run.agent_id != Some(expected_agent_id)
+            || run.mode != AgentRunMode::Session
+            || run.goal != expected_goal
+        {
+            return Err(AgentRuntimeError::InconsistentState(format!(
+                "claimed live run {run_id} does not match the exact start intent"
+            )));
+        }
+        let agent = self.load_live_agent(expected_agent_id)?;
+        let state = self.live_state(run_id)?;
+        self.validate_live_setup(setup, expected_goal, run_deadline(state.started_at, 300))?;
+        self.validate_live_agent(&agent, setup, expected_goal)?;
+        self.validate_live_state_material(&state, setup)?;
+        let checkpoints = self
+            .run_store
+            .list_agent_checkpoints(&run_id)
+            .map_err(AgentRuntimeError::Store)?;
+        let events = self
+            .agent_store
+            .list_agent_run_events(&run_id)
+            .map_err(AgentRuntimeError::Store)?;
+        let initial_state: LiveRuntimeState = checkpoints
+            .first()
+            .and_then(|checkpoint| checkpoint.state.get("runtime"))
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|_| AgentRuntimeError::InvalidCheckpoint(run_id))?
+            .ok_or(AgentRuntimeError::InvalidCheckpoint(run_id))?;
+        if events.first().is_none_or(|event| {
+            validate_exact_event_record(
+                run_id,
+                AgentRunEventKind::Started,
+                &live_started_event(&initial_state),
+                event,
+            )
+            .is_err()
+        }) {
+            return Err(AgentRuntimeError::InconsistentState(format!(
+                "claimed live run {run_id} has no exact atomic Started event"
+            )));
+        }
+        Ok(AgentRuntimeOutcome::AlreadyStarted { run })
     }
 
     fn resume_live(
@@ -2210,6 +2312,10 @@ impl AgentRuntime {
                 Some("pending live approval differs from committed tool decision".to_string());
             self.save_live_state(run_id, &state)?;
             return self.fail_live_run(run, state, AgentRunEventKind::Failed);
+        }
+        if live_state_is_pristine_start(&state) {
+            self.validate_pristine_live_start_recovery(&run, &state, &events)?;
+            return self.prepare_and_dispatch_live(run, agent, &mut state);
         }
         let approval_resume_epoch = if let Some(pending) = state.pending_tool.as_ref() {
             let has_resumed = events
@@ -2335,6 +2441,129 @@ impl AgentRuntime {
         }
         self.reread_live_state(run_id, &state)?;
         self.prepare_and_dispatch_live(run, agent, &mut state)
+    }
+
+    fn validate_pristine_live_start_recovery(
+        &self,
+        run: &AgentRun,
+        state: &LiveRuntimeState,
+        events: &[AgentRunEvent],
+    ) -> Result<(), AgentRuntimeError> {
+        let inconsistent = |detail: &str| {
+            AgentRuntimeError::InconsistentState(format!(
+                "live run {} has inexact pristine-start recovery evidence: {detail}",
+                run.id
+            ))
+        };
+        if run.status != AgentRunStatus::Running
+            || run.revision != 1
+            || run.retry_count != 0
+            || run.created_at != state.started_at
+            || run.updated_at != state.started_at
+            || run.completed_at.is_some()
+            || run.agent_id != Some(state.agent_id)
+            || !matches!(&state.next_input, LiveModelInput::Goal { text } if text == &run.goal)
+        {
+            return Err(inconsistent(
+                "run chronology or goal differs from the atomic claim",
+            ));
+        }
+
+        let checkpoints = self
+            .run_store
+            .list_agent_checkpoints(&run.id)
+            .map_err(AgentRuntimeError::Store)?;
+        let initial_checkpoint = checkpoints
+            .first()
+            .ok_or(AgentRuntimeError::MissingCheckpoint(run.id))?;
+        validate_runtime_checkpoint_envelope(run.id, initial_checkpoint)?;
+        let initial_state: LiveRuntimeState = serde_json::from_value(
+            initial_checkpoint
+                .state
+                .get("runtime")
+                .cloned()
+                .ok_or(AgentRuntimeError::InvalidCheckpoint(run.id))?,
+        )
+        .map_err(|_| AgentRuntimeError::InvalidCheckpoint(run.id))?;
+        if initial_checkpoint.sequence != 0
+            || initial_checkpoint.created_at != state.started_at
+            || initial_state.started_at != state.started_at
+            || initial_state.process_epoch_id
+                != initial_state
+                    .policy_evidence
+                    .resolved_bindings
+                    .process_epoch_id
+            || !live_state_is_pristine_start(&initial_state)
+            || !matches!(&initial_state.next_input, LiveModelInput::Goal { text } if text == &run.goal)
+            || self.request_from_live_state(&initial_state)?.input_digest
+                != initial_state.policy_binding.initial_input_digest
+        {
+            return Err(inconsistent(
+                "checkpoint zero is not the exact claimed initial state",
+            ));
+        }
+
+        let mut epochs = BTreeSet::new();
+        let mut previous_created_at = state.started_at;
+        for checkpoint in &checkpoints {
+            validate_runtime_checkpoint_envelope(run.id, checkpoint)?;
+            let observed: LiveRuntimeState = serde_json::from_value(
+                checkpoint
+                    .state
+                    .get("runtime")
+                    .cloned()
+                    .ok_or(AgentRuntimeError::InvalidCheckpoint(run.id))?,
+            )
+            .map_err(|_| AgentRuntimeError::InvalidCheckpoint(run.id))?;
+            let mut expected = initial_state.clone();
+            expected.process_epoch_id = observed.process_epoch_id;
+            if observed != expected
+                || !epochs.insert(observed.process_epoch_id)
+                || checkpoint.created_at < previous_created_at
+            {
+                return Err(inconsistent(
+                    "pre-dispatch checkpoints contain more than unique epoch barriers",
+                ));
+            }
+            previous_created_at = checkpoint.created_at;
+        }
+        if checkpoints
+            .last()
+            .is_none_or(|checkpoint| checkpoint.state["runtime"] != json!(state))
+        {
+            return Err(inconsistent(
+                "latest checkpoint differs from the resumed state",
+            ));
+        }
+
+        if events.len() != 1
+            || events[0].sequence != 0
+            || events[0].created_at != state.started_at
+            || validate_exact_event_record(
+                run.id,
+                AgentRunEventKind::Started,
+                &live_started_event(&initial_state),
+                &events[0],
+            )
+            .is_err()
+        {
+            return Err(inconsistent("Started event zero is not exact-one"));
+        }
+        let steps = self
+            .run_store
+            .list_agent_run_steps(&run.id)
+            .map_err(AgentRuntimeError::Store)?;
+        let evaluations = self
+            .run_store
+            .list_agent_run_evaluations(&run.id)
+            .map_err(AgentRuntimeError::Store)?;
+        self.reject_bound_bootstrap_approval_evidence(run.id)?;
+        if !steps.is_empty() || !evaluations.is_empty() {
+            return Err(inconsistent(
+                "step, approval, or evaluation evidence exists before first dispatch",
+            ));
+        }
+        Ok(())
     }
 
     fn prepare_and_dispatch_live(
@@ -5285,6 +5514,51 @@ fn wrapped_digest(
 ) -> Result<ContentDigest, AgentRuntimeError> {
     value_digest(&json!({"schema": schema, field: value}))
 }
+
+/// Stable owner/readiness identity for one live start. The process epoch and
+/// proposed run ID are intentionally absent so an exact argv replay reaches
+/// the same durable claim instead of allocating another paid run.
+fn live_readiness_binding_digest(
+    agent_id: Uuid,
+    goal: &str,
+    setup: &LiveRunSetup,
+) -> Result<ContentDigest, AgentRuntimeError> {
+    wrapped_digest(
+        "proof-release-manager-live-readiness-binding/v1",
+        "binding",
+        &json!({
+            "agent_id": agent_id,
+            "goal": goal,
+            "binding_inputs": &setup.policy.binding_inputs,
+        }),
+    )
+}
+
+/// Complete stable start material paired with the readiness identity. This
+/// excludes only the per-process epoch and proposed run ID; any policy,
+/// authority, preflight, goal, or binding substitution conflicts pre-provider.
+fn live_start_setup_digest(
+    agent_id: Uuid,
+    goal: &str,
+    setup: &LiveRunSetup,
+) -> Result<ContentDigest, AgentRuntimeError> {
+    wrapped_digest(
+        "proof-release-manager-live-start-setup/v1",
+        "setup",
+        &json!({
+            "intent": {
+                "type": "start",
+                "agent_id": agent_id,
+                "goal": goal,
+            },
+            "preflight_evidence": &setup.preflight_evidence,
+            "preflight_evidence_digest": setup.preflight_evidence_digest,
+            "authority": &setup.authority,
+            "policy": &setup.policy,
+        }),
+    )
+}
+
 fn delegation_digest(delegation: &Delegation) -> Result<ContentDigest, AgentRuntimeError> {
     Ok(digest(
         ArtifactKind::Delegation,
@@ -5400,6 +5674,24 @@ fn continuation_live_request(
 }
 fn live_started_event(state: &LiveRuntimeState) -> Value {
     json!({"live": true, "schema": state.schema, "process_epoch_id": state.process_epoch_id, "policy_binding": state.policy_binding, "authority": state.authority})
+}
+
+fn live_state_is_pristine_start(state: &LiveRuntimeState) -> bool {
+    state.attempts.is_empty()
+        && state.previous_response_id.is_none()
+        && matches!(state.next_input, LiveModelInput::Goal { .. })
+        && state.pending_tool.is_none()
+        && state.counters.logical_model_turns == 0
+        && state.counters.provider_dispatches == 0
+        && state.counters.retries == 0
+        && state.counters.tool_attempts == 0
+        && state.counters.successful_publication_mutations == 0
+        && state.cumulative_usage == LiveUsage::default()
+        && state.cumulative_cost.provider_cost_microusd.is_none()
+        && state.cumulative_cost.provider_cost_status == ProviderCostStatus::Unavailable
+        && state.cumulative_cost.calculated_cost_microusd == 0
+        && state.final_output.is_none()
+        && state.terminal_error.is_none()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -9065,7 +9357,7 @@ mod tests {
     use std::collections::VecDeque;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-    use std::sync::Mutex;
+    use std::sync::{Barrier, Mutex};
 
     use proof_kernel::{
         create_proof, generate_keypair, generate_keypair_for, principal_from_keypair, AgentLimits,
@@ -9097,7 +9389,7 @@ mod tests {
         requests: Mutex<Vec<ModelTurnRequest>>,
         sends: AtomicUsize,
         run_store: Arc<RecordingAgentRunStore>,
-        agent_store: Arc<RecordingAgentStore>,
+        agent_store: Arc<RecordingAgentRunStore>,
         factory_context: Mutex<Option<ModelGatewayFactoryContext>>,
     }
 
@@ -9105,7 +9397,7 @@ mod tests {
         fn new(
             actions: Vec<LiveGatewayAction>,
             run_store: Arc<RecordingAgentRunStore>,
-            agent_store: Arc<RecordingAgentStore>,
+            agent_store: Arc<RecordingAgentRunStore>,
         ) -> Self {
             Self {
                 actions: Mutex::new(actions.into()),
@@ -9254,6 +9546,7 @@ mod tests {
 
     #[derive(Clone, Copy)]
     enum LiveRunFault {
+        AfterStartClaim,
         DispatchSave,
         DispatchRead,
         PendingCheckpoint,
@@ -9288,6 +9581,28 @@ mod tests {
     }
 
     impl AgentRunStore for FaultingLiveRunStore {
+        fn claim_live_run_start(
+            &self,
+            claim: &LiveRunStartClaim,
+            initial_run: &AgentRun,
+            initial_checkpoint: &AgentCheckpoint,
+            started_event: &AgentRunEvent,
+        ) -> Result<LiveRunStartClaimResult, String> {
+            let outcome = self.inner.claim_live_run_start(
+                claim,
+                initial_run,
+                initial_checkpoint,
+                started_event,
+            )?;
+            if matches!(self.fault, LiveRunFault::AfterStartClaim)
+                && matches!(outcome, LiveRunStartClaimResult::Acquired)
+                && self.armed.swap(false, Ordering::SeqCst)
+            {
+                return Err("injected crash after atomic live start claim".to_string());
+            }
+            Ok(outcome)
+        }
+
         fn save_agent_run(&self, run: &AgentRun) -> Result<(), String> {
             self.inner.save_agent_run(run)
         }
@@ -9415,7 +9730,7 @@ mod tests {
     }
 
     struct FaultingLiveAgentStore {
-        inner: Arc<RecordingAgentStore>,
+        inner: Arc<RecordingAgentRunStore>,
         fault: LiveAgentFault,
         armed: AtomicBool,
         requested_saved: AtomicBool,
@@ -9479,7 +9794,7 @@ mod tests {
     }
 
     struct FailAfterApprovalResumedAgentStore {
-        inner: Arc<RecordingAgentStore>,
+        inner: Arc<RecordingAgentRunStore>,
         armed: AtomicBool,
         resumed_saved: AtomicBool,
     }
@@ -9514,7 +9829,7 @@ mod tests {
     }
 
     struct WaitEpochApprovalEventStore {
-        inner: Arc<RecordingAgentStore>,
+        inner: Arc<RecordingAgentRunStore>,
         wait_epoch: Uuid,
     }
 
@@ -9554,7 +9869,7 @@ mod tests {
     }
 
     struct TamperingFailureEventStore {
-        inner: Arc<RecordingAgentStore>,
+        inner: Arc<RecordingAgentRunStore>,
         mutation: usize,
     }
 
@@ -9620,7 +9935,7 @@ mod tests {
     }
 
     struct MutatingRespondedAgentStore {
-        inner: Arc<RecordingAgentStore>,
+        inner: Arc<RecordingAgentRunStore>,
         mutation: usize,
     }
 
@@ -9632,7 +9947,7 @@ mod tests {
     }
 
     struct TamperingLiveEventStore {
-        inner: Arc<RecordingAgentStore>,
+        inner: Arc<RecordingAgentRunStore>,
         target: LiveEventTamperTarget,
         mutation: usize,
     }
@@ -9795,6 +10110,17 @@ mod tests {
     }
 
     impl AgentRunStore for RejectCommittedRunStore {
+        fn claim_live_run_start(
+            &self,
+            claim: &LiveRunStartClaim,
+            initial_run: &AgentRun,
+            initial_checkpoint: &AgentCheckpoint,
+            started_event: &AgentRunEvent,
+        ) -> Result<LiveRunStartClaimResult, String> {
+            self.inner
+                .claim_live_run_start(claim, initial_run, initial_checkpoint, started_event)
+        }
+
         fn save_agent_run(&self, run: &AgentRun) -> Result<(), String> {
             self.inner.save_agent_run(run)
         }
@@ -9845,7 +10171,7 @@ mod tests {
     }
 
     struct RejectModelRespondedAgentStore {
-        inner: Arc<RecordingAgentStore>,
+        inner: Arc<RecordingAgentRunStore>,
     }
 
     impl AgentStore for RejectModelRespondedAgentStore {
@@ -10811,7 +11137,7 @@ mod tests {
         identity: Keypair,
         approver: Keypair,
         agent: AgentDefinition,
-        agent_store: Arc<RecordingAgentStore>,
+        agent_store: Arc<RecordingAgentRunStore>,
         run_store: Arc<RecordingAgentRunStore>,
         approval_store: Arc<RecordingApprovalStore>,
         execution_store: Arc<RecordingStore>,
@@ -10848,9 +11174,9 @@ mod tests {
                 Utc::now(),
             )
             .unwrap();
-            let agent_store = Arc::new(RecordingAgentStore::default());
-            agent_store.save_agent_definition(&agent).unwrap();
             let run_store = Arc::new(RecordingAgentRunStore::default());
+            let agent_store = run_store.clone();
+            agent_store.save_agent_definition(&agent).unwrap();
             let approval_store = Arc::new(RecordingApprovalStore::default());
             approval_store
                 .trust_approver(principal_from_keypair(&approver))
@@ -13038,6 +13364,150 @@ mod tests {
         assert_eq!(factory.creates.load(Ordering::SeqCst), 0);
         assert!(factory.contexts.lock().unwrap().is_empty());
         assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn exact_live_start_replay_returns_claimed_run_without_another_dispatch() {
+        let fixture = LiveFixture::new();
+        let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
+        let runtime = fixture.runtime(factory.clone());
+
+        let AgentRuntimeOutcome::WaitingForApproval { run, .. } =
+            runtime.run_live(fixture.setup.clone()).unwrap()
+        else {
+            panic!("first live start must reach its signed approval boundary")
+        };
+        let before = live_store_snapshot(&fixture);
+        let mut replay = fixture.setup.clone();
+        replay.process_epoch_id = Uuid::now_v7();
+
+        let AgentRuntimeOutcome::AlreadyStarted { run: existing } =
+            runtime.run_live(replay).unwrap()
+        else {
+            panic!("exact live start replay must return the claimed run")
+        };
+
+        assert_eq!(existing, run);
+        assert_eq!(live_store_snapshot(&fixture), before);
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 1);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn crash_after_atomic_live_start_claim_resumes_same_run_with_one_dispatch() {
+        let fixture = LiveFixture::new();
+        let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
+        let faulting_store = Arc::new(FaultingLiveRunStore::new(
+            fixture.run_store.clone(),
+            LiveRunFault::AfterStartClaim,
+        ));
+        let crashed = fixture.runtime_with_stores(
+            factory.clone(),
+            faulting_store,
+            fixture.agent_store.clone(),
+        );
+
+        let error = crashed
+            .run_live(fixture.setup.clone())
+            .expect_err("injected post-claim crash must escape before provider dispatch");
+        assert!(error
+            .to_string()
+            .contains("injected crash after atomic live start claim"));
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 0);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 0);
+
+        let claimed = fixture
+            .run_store
+            .list_agent_runs()
+            .unwrap()
+            .into_iter()
+            .filter(|run| run.agent_id == Some(fixture.agent.id))
+            .collect::<Vec<_>>();
+        assert_eq!(claimed.len(), 1);
+        let run = claimed[0].clone();
+        let runtime = fixture.runtime(factory.clone());
+        let mut replay = fixture.setup.clone();
+        replay.process_epoch_id = Uuid::now_v7();
+        let AgentRuntimeOutcome::AlreadyStarted { run: replayed } =
+            runtime.run_live(replay).unwrap()
+        else {
+            panic!("start replay must remain read-only after the claim crash")
+        };
+        assert_eq!(replayed, run);
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 0);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 0);
+
+        let AgentRuntimeOutcome::WaitingForApproval { run: resumed, .. } =
+            runtime.run_live(fixture.resume_setup(run.id)).unwrap()
+        else {
+            panic!("exact pristine claim recovery must reach the approval boundary")
+        };
+        assert_eq!(resumed.id, run.id);
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 1);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            fixture
+                .run_store
+                .list_agent_runs()
+                .unwrap()
+                .into_iter()
+                .filter(|candidate| candidate.agent_id == Some(fixture.agent.id))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn concurrent_exact_live_starts_acquire_one_run_and_one_dispatch() {
+        let fixture = LiveFixture::new();
+        let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
+        let runtime = Arc::new(fixture.runtime(factory.clone()));
+        let barrier = Arc::new(Barrier::new(3));
+        let mut handles = Vec::new();
+        for _ in 0..2 {
+            let runtime = runtime.clone();
+            let barrier = barrier.clone();
+            let mut setup = fixture.setup.clone();
+            setup.process_epoch_id = Uuid::now_v7();
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                runtime.run_live(setup)
+            }));
+        }
+        barrier.wait();
+        let outcomes = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap().unwrap())
+            .collect::<Vec<_>>();
+
+        let waiting = outcomes
+            .iter()
+            .filter_map(|outcome| match outcome {
+                AgentRuntimeOutcome::WaitingForApproval { run, .. } => Some(run.id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let existing = outcomes
+            .iter()
+            .filter_map(|outcome| match outcome {
+                AgentRuntimeOutcome::AlreadyStarted { run } => Some(run.id),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(waiting.len(), 1);
+        assert_eq!(existing, waiting);
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 1);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            fixture
+                .run_store
+                .list_agent_runs()
+                .unwrap()
+                .into_iter()
+                .filter(|run| run.agent_id == Some(fixture.agent.id))
+                .count(),
+            1
+        );
     }
 
     #[test]

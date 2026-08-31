@@ -561,6 +561,29 @@ pub const MIGRATIONS: &[Migration] = &[
             ALTER TABLE delegations DROP COLUMN scope_json;
             ",
     },
+    Migration {
+        version: 13,
+        description: "claim live agent starts atomically",
+        up: "
+            CREATE TABLE live_run_start_claims (
+                readiness_binding_digest TEXT PRIMARY KEY
+                    CHECK (length(readiness_binding_digest) = 64),
+                setup_digest TEXT NOT NULL UNIQUE
+                    CHECK (length(setup_digest) = 64),
+                schema TEXT NOT NULL
+                    CHECK (schema = 'proof-live-run-start-claim/v1'),
+                run_id TEXT NOT NULL UNIQUE REFERENCES agent_runs(id),
+                initial_checkpoint_id TEXT NOT NULL UNIQUE REFERENCES agent_checkpoints(id),
+                started_event_id TEXT NOT NULL UNIQUE REFERENCES agent_run_events(id),
+                claimed_at TEXT NOT NULL,
+                claim_json TEXT NOT NULL,
+                initial_run_json TEXT NOT NULL
+            );
+            ",
+        down: "
+            DROP TABLE IF EXISTS live_run_start_claims;
+            ",
+    },
 ];
 
 /// A SQLite-backed store for Proof data.
