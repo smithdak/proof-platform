@@ -1035,7 +1035,7 @@ fn parse_canonical_uuid(value: &str, label: &str) -> Result<Uuid> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1317,6 +1317,97 @@ mod tests {
             delegation,
             preflight_evaluation,
             policy_path,
+        }
+    }
+
+    pub(crate) struct ApprovalLiveFixture {
+        pub(crate) _directory: assert_fs::TempDir,
+        pub(crate) workspace: Workspace,
+        pub(crate) store: Arc<SqliteStore>,
+        pub(crate) run_id: Uuid,
+        pub(crate) request: SignedApprovalRequest,
+        pub(crate) arguments: Value,
+        pub(crate) approver_id: Uuid,
+    }
+
+    pub(crate) fn approval_live_fixture() -> ApprovalLiveFixture {
+        let fixture = live_fixture();
+        let registry_source =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../registry/content");
+        let registry_target = fixture.workspace.root.join(".proof/registry/content");
+        std::fs::create_dir_all(&registry_target).unwrap();
+        for file in [
+            "release-publish-v2.json",
+            "release-publish-v2.input.json",
+            "release-publish-v2.output.json",
+        ] {
+            std::fs::copy(registry_source.join(file), registry_target.join(file)).unwrap();
+        }
+        let parsed = parse_live_goal(&fixture.goal).unwrap();
+        let template: Value = serde_json::from_str(LIVE_POLICY_SOURCE).unwrap();
+        let tool_name = template["tool"]["declaration"]["name"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let arguments = json!({
+            "idempotency_key": parsed.idempotency_key,
+            "edition_id": parsed.edition_id,
+            "environment": "preview",
+            "version_label": parsed.version_label,
+            "manifest_digest": parsed.manifest_digest,
+        });
+        let factory = Arc::new(ScriptedLiveFactory {
+            creates: Arc::new(AtomicUsize::new(0)),
+            gateway: Arc::new(ScriptedLiveGateway {
+                actions: Mutex::new(
+                    vec![ScriptedLiveAction::Tool {
+                        name: tool_name,
+                        arguments: arguments.clone(),
+                    }]
+                    .into(),
+                ),
+                sends: Arc::new(AtomicUsize::new(0)),
+            }),
+        });
+        let start = start_setup(
+            &fixture.workspace,
+            &fixture.store,
+            fixture.agent.id,
+            &fixture.goal,
+            &fixture.policy_path,
+            fixture.preflight_evaluation.id,
+            fixture.delegation.id,
+        )
+        .unwrap();
+        let runtime = build_live_runtime(
+            &fixture.workspace,
+            fixture.store.clone(),
+            load_registry(&fixture.workspace.root).unwrap(),
+            factory,
+        )
+        .unwrap();
+        let AgentRuntimeOutcome::WaitingForApproval { run, request, .. } =
+            runtime.run_live(start).unwrap()
+        else {
+            panic!("exact live fixture must wait for approval")
+        };
+        let approver_id = sole_live_approver(&fixture.workspace, &fixture.store)
+            .unwrap()
+            .as_uuid();
+        let LiveFixture {
+            _directory,
+            workspace,
+            store,
+            ..
+        } = fixture;
+        ApprovalLiveFixture {
+            _directory,
+            workspace,
+            store,
+            run_id: run.id,
+            request,
+            arguments,
+            approver_id,
         }
     }
 

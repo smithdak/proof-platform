@@ -10,10 +10,10 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
-use proof_agent_runtime::AgentRuntimeState;
+use proof_agent_runtime::{runtime_approval_context, RuntimeApprovalContext};
 use proof_kernel::{
-    canonicalize, digest, AgentRunStatus, AgentRunStepStatus, ApprovalOutcome, ArtifactKind,
-    Governance, Registry, SignedApprovalRequest,
+    canonicalize, digest, AgentRunStatus, AgentRunStep, AgentRunStepStatus, ApprovalOutcome,
+    ArtifactKind, Governance, Registry, SignedApprovalRequest,
 };
 use proof_storage::SqliteStore;
 use rand::rngs::OsRng;
@@ -26,7 +26,6 @@ use super::approval::{sign_approval_decision, trusted_approver_ids};
 use crate::{load_registry, open_store, Cli, Workspace};
 
 const SESSION_HEADER: &str = "x-proof-session";
-const RUNTIME_CHECKPOINT_KIND: &str = "agent_runtime_v1";
 const APPROVAL_UI_HTML: &str = include_str!("approval_ui.html");
 
 #[derive(Clone)]
@@ -141,6 +140,10 @@ struct ApprovalReview {
     run: Option<RunReview>,
     step: Option<StepReview>,
     agent: Option<AgentReview>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    runtime_checkpoint_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    required_approver_id: Option<Uuid>,
     decision: Option<DecisionReview>,
     execution_proof_id: Option<Uuid>,
 }
@@ -295,11 +298,18 @@ async fn get_approval(
         &state.store,
         &state.registry,
         &request,
-        !approvers.is_empty(),
+        &approvers,
         Utc::now(),
     ) {
         Ok(review) => review,
         Err(error) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+    };
+    let approvers = match review.required_approver_id {
+        Some(required) => approvers
+            .into_iter()
+            .filter(|approver| *approver == required)
+            .collect(),
+        None => approvers,
     };
     api_json(
         StatusCode::OK,
@@ -342,11 +352,16 @@ async fn post_decision(
         return api_error(StatusCode::NOT_FOUND, "approval request not found");
     };
     let review_time = Utc::now();
-    let review =
-        match build_approval_review(&state.store, &state.registry, &request, true, review_time) {
-            Ok(review) => review,
-            Err(error) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
-        };
+    let review = match build_approval_review(
+        &state.store,
+        &state.registry,
+        &request,
+        &approvers,
+        review_time,
+    ) {
+        Ok(review) => review,
+        Err(error) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+    };
     if !review.actionable {
         return api_json(
             StatusCode::CONFLICT,
@@ -356,6 +371,16 @@ async fn post_decision(
             }),
         );
     }
+    if !decision_approver_matches(review.required_approver_id, input.approver_id) {
+        return api_error(
+            StatusCode::BAD_REQUEST,
+            "approver does not match the sealed live approver",
+        );
+    }
+    let resume_command = resume_command_for_review(
+        review.runtime_checkpoint_kind.as_deref(),
+        review.run.as_ref().map(|run| run.id),
+    );
     let reason = input
         .reason
         .map(|reason| reason.trim().to_string())
@@ -392,7 +417,7 @@ async fn post_decision(
         &json!({
             "status": status,
             "decision": decision,
-            "resume_command": review.run.map(|run| format!("proof agent resume {}", run.id)),
+            "resume_command": resume_command,
         }),
     )
 }
@@ -407,13 +432,7 @@ fn build_reviews(
         .list_approval_requests()?
         .iter()
         .map(|request| {
-            build_approval_review(
-                &state.store,
-                &state.registry,
-                request,
-                !approvers.is_empty(),
-                now,
-            )
+            build_approval_review(&state.store, &state.registry, request, approvers, now)
         })
         .collect::<Result<Vec<_>>>()?;
     reviews.sort_by(|left, right| {
@@ -430,11 +449,97 @@ fn step_approval_link_mismatch(step_request_id: Option<Uuid>, request_id: Uuid) 
     step_request_id != Some(request_id)
 }
 
+fn decision_approver_matches(required: Option<Uuid>, candidate: Uuid) -> bool {
+    required.is_none_or(|required| required == candidate)
+}
+
+fn resume_command_for_review(
+    runtime_checkpoint_kind: Option<&str>,
+    run_id: Option<Uuid>,
+) -> Option<String> {
+    match (runtime_checkpoint_kind, run_id) {
+        (Some("agent_runtime_v1"), Some(run_id)) => Some(format!("proof agent resume {run_id}")),
+        _ => None,
+    }
+}
+
+fn validated_runtime_approval_context(
+    store: &SqliteStore,
+    run_id: Uuid,
+) -> std::result::Result<RuntimeApprovalContext, String> {
+    let checkpoints = store
+        .list_agent_checkpoints(&run_id)
+        .map_err(|error| error.to_string())?;
+    let events = store
+        .list_agent_run_events(&run_id)
+        .map_err(|error| error.to_string())?;
+    runtime_approval_context(run_id, &checkpoints, &events).map_err(|_| {
+        "native runtime checkpoint history is missing, mixed, unsupported, or invalid".to_string()
+    })
+}
+
+fn bind_runtime_approval_context(
+    runtime: RuntimeApprovalContext,
+    run_agent_id: Option<Uuid>,
+    step: &AgentRunStep,
+    request: &SignedApprovalRequest,
+    arguments: &mut Option<Value>,
+    runtime_checkpoint_kind: &mut Option<String>,
+    required_approver_id: &mut Option<Uuid>,
+    blocked_reasons: &mut Vec<String>,
+) {
+    *runtime_checkpoint_kind = Some(runtime.checkpoint_kind.clone());
+    *required_approver_id = runtime.required_approver_id;
+    let is_live_v2 = runtime.checkpoint_kind == "agent_runtime_v2";
+    if runtime.run_id != step.run_id {
+        blocked_reasons.push("runtime checkpoint references a different run".to_string());
+    }
+    if Some(runtime.agent_id) != run_agent_id {
+        blocked_reasons.push("runtime checkpoint references a different agent".to_string());
+    }
+    if is_live_v2 && runtime.sealed_approval_request.as_ref() != Some(request) {
+        blocked_reasons.push(
+            "runtime checkpoint does not match the exact signed approval request".to_string(),
+        );
+    }
+    if is_live_v2 && runtime.sealed_step.as_ref() != Some(step) {
+        blocked_reasons
+            .push("runtime checkpoint does not match the exact durable waiting step".to_string());
+    }
+    match runtime.pending_tool {
+        Some(pending) => {
+            *arguments = Some(pending.arguments.clone());
+            if pending.approval_request_id != Some(request.body.id)
+                || pending.step_id != step.id
+                || pending.operation != request.body.operation
+                || pending.version != request.body.version
+            {
+                blocked_reasons
+                    .push("runtime checkpoint does not match the pending approval".to_string());
+            }
+            match canonicalize(&pending.arguments) {
+                Ok(canonical) => {
+                    let actual = digest(ArtifactKind::OperationInput, &canonical);
+                    if actual != request.body.input_digest || actual != step.input_digest {
+                        blocked_reasons.push(
+                            "displayed arguments do not match the signed input digest".to_string(),
+                        );
+                    }
+                }
+                Err(_) => {
+                    blocked_reasons.push("pending arguments cannot be canonicalized".to_string())
+                }
+            }
+        }
+        None => blocked_reasons.push("runtime checkpoint has no pending tool call".to_string()),
+    }
+}
+
 fn build_approval_review(
     store: &SqliteStore,
     registry: &Registry,
     request: &SignedApprovalRequest,
-    has_approver: bool,
+    available_approvers: &[Uuid],
     now: DateTime<Utc>,
 ) -> Result<ApprovalReview> {
     let decision = store.load_approval_decision(&request.body.id)?;
@@ -464,7 +569,7 @@ fn build_approval_review(
             blocked_reasons.push("approved operation was already executed".to_string())
         }
     }
-    if status == ApprovalReviewStatus::Pending && !has_approver {
+    if status == ApprovalReviewStatus::Pending && available_approvers.is_empty() {
         blocked_reasons.push("no enrolled local human approver is available".to_string());
     }
 
@@ -495,6 +600,8 @@ fn build_approval_review(
     let mut step_review = None;
     let mut agent_review = None;
     let mut arguments = None;
+    let mut runtime_checkpoint_kind = None;
+    let mut required_approver_id = None;
     match store.find_agent_run_step_by_approval(&request.body.id)? {
         Some(step) => {
             step_review = Some(StepReview {
@@ -557,67 +664,30 @@ fn build_approval_review(
                             .push("approval is not attached to a native agent run".to_string()),
                     }
 
-                    let runtime_state = store
-                        .list_agent_checkpoints(&run.id)?
-                        .into_iter()
-                        .rev()
-                        .find(|checkpoint| {
-                            checkpoint.state.get("kind").and_then(Value::as_str)
-                                == Some(RUNTIME_CHECKPOINT_KIND)
-                        })
-                        .and_then(|checkpoint| checkpoint.state.get("runtime").cloned())
-                        .and_then(|value| serde_json::from_value::<AgentRuntimeState>(value).ok());
-                    match runtime_state {
-                        Some(runtime) => {
-                            if Some(runtime.agent_id) != run.agent_id {
-                                blocked_reasons.push(
-                                    "runtime checkpoint references a different agent".to_string(),
-                                );
-                            }
-                            match runtime.pending_tool {
-                                Some(pending) => {
-                                    arguments = Some(pending.arguments.clone());
-                                    if pending.approval_request_id != Some(request.body.id)
-                                        || pending.step_id != step.id
-                                        || pending.operation != request.body.operation
-                                        || pending.version != request.body.version
-                                    {
-                                        blocked_reasons.push(
-                                            "runtime checkpoint does not match the pending approval"
-                                                .to_string(),
-                                        );
-                                    }
-                                    match canonicalize(&pending.arguments) {
-                                        Ok(canonical) => {
-                                            let actual =
-                                                digest(ArtifactKind::OperationInput, &canonical);
-                                            if actual != request.body.input_digest
-                                                || actual != step.input_digest
-                                            {
-                                                blocked_reasons.push(
-                                                    "displayed arguments do not match the signed input digest"
-                                                        .to_string(),
-                                                );
-                                            }
-                                        }
-                                        Err(_) => blocked_reasons.push(
-                                            "pending arguments cannot be canonicalized".to_string(),
-                                        ),
-                                    }
-                                }
-                                None => blocked_reasons.push(
-                                    "runtime checkpoint has no pending tool call".to_string(),
-                                ),
-                            }
-                        }
-                        None => blocked_reasons
-                            .push("native runtime checkpoint is missing or invalid".to_string()),
+                    match validated_runtime_approval_context(store, run.id) {
+                        Ok(runtime) => bind_runtime_approval_context(
+                            runtime,
+                            run.agent_id,
+                            &step,
+                            request,
+                            &mut arguments,
+                            &mut runtime_checkpoint_kind,
+                            &mut required_approver_id,
+                            &mut blocked_reasons,
+                        ),
+                        Err(reason) => blocked_reasons.push(reason),
                     }
                 }
                 None => blocked_reasons.push("agent run is missing".to_string()),
             }
         }
         None => blocked_reasons.push("native approval context is missing".to_string()),
+    }
+    if status == ApprovalReviewStatus::Pending
+        && required_approver_id.is_some_and(|required| !available_approvers.contains(&required))
+    {
+        blocked_reasons
+            .push("sealed live approver is not an enrolled local human approver".to_string());
     }
 
     Ok(ApprovalReview {
@@ -634,6 +704,8 @@ fn build_approval_review(
         run: run_review,
         step: step_review,
         agent: agent_review,
+        runtime_checkpoint_kind,
+        required_approver_id,
         decision: decision.map(|decision| DecisionReview {
             outcome: decision.body.outcome,
             decided_by: decision.body.decided_by.to_string(),
@@ -701,7 +773,7 @@ mod tests {
     use axum::body::{to_bytes, Body};
     use axum::http::{Method, Request};
     use clap::Parser;
-    use proof_agent_runtime::{ModelInput, PendingToolCall};
+    use proof_agent_runtime::{AgentRuntimeState, ModelInput, PendingToolCall};
     use proof_kernel::{
         AgentCheckpoint, AgentDefinition, AgentLimits, AgentRun, AgentRunMode, AgentRunStep,
         AgentTool, PrincipalKind, RegistryEntry, SignedApprovalRequest, VersionStatus,
@@ -714,6 +786,7 @@ mod tests {
     const TOKEN: &str = "test-session-token";
     const HOST_VALUE: &str = "127.0.0.1:4173";
     const ORIGIN_VALUE: &str = "http://127.0.0.1:4173";
+    const V1_RUNTIME_CHECKPOINT_KIND: &str = "agent_runtime_v1";
 
     struct NativeFixture {
         request: SignedApprovalRequest,
@@ -842,7 +915,7 @@ mod tests {
         let checkpoint = AgentCheckpoint::create(
             run.id,
             0,
-            json!({"kind": RUNTIME_CHECKPOINT_KIND, "runtime": runtime}),
+            json!({"kind": V1_RUNTIME_CHECKPOINT_KIND, "runtime": runtime}),
             requested_at,
         )
         .unwrap();
@@ -909,6 +982,34 @@ mod tests {
         serde_json::from_slice(&bytes).unwrap()
     }
 
+    fn append_resealed_runtime_checkpoint(
+        store: &SqliteStore,
+        run_id: Uuid,
+        mutate: impl FnOnce(&mut Value),
+    ) {
+        let checkpoints = store.list_agent_checkpoints(&run_id).unwrap();
+        let latest = checkpoints.last().unwrap();
+        let mut state = latest.state.clone();
+        mutate(&mut state);
+        let checkpoint =
+            AgentCheckpoint::create(run_id, latest.sequence + 1, state, Utc::now()).unwrap();
+        store.save_agent_checkpoint(&checkpoint).unwrap();
+    }
+
+    fn recompute_pending_decision_digest(state: &mut Value) {
+        let pending = &state["runtime"]["pending_tool"];
+        let decision = json!({
+            "type": "tool_call",
+            "call_id": pending["call_id"],
+            "name": pending["tool_name"],
+            "arguments": pending["arguments"],
+        });
+        state["runtime"]["attempts"][0]["response"]["decision_digest"] = json!(digest(
+            ArtifactKind::Generic,
+            &canonicalize(&decision).unwrap(),
+        ));
+    }
+
     #[test]
     fn embedded_ui_guards_detail_selection_and_confirmation_identity() {
         assert!(APPROVAL_UI_HTML.contains("const generation = ++selectionGeneration"));
@@ -949,7 +1050,7 @@ mod tests {
 
     #[test]
     fn view_model_joins_and_verifies_native_approval_context() {
-        let (_directory, _cli, workspace, store, _approver_id) = initialized_workspace();
+        let (_directory, _cli, workspace, store, approver_id) = initialized_workspace();
         let now = Utc::now();
         let fixture = save_native_approval(
             &store,
@@ -960,9 +1061,14 @@ mod tests {
             now + chrono::Duration::minutes(15),
         );
 
-        let review =
-            build_approval_review(&store, &human_only_registry(), &fixture.request, true, now)
-                .unwrap();
+        let review = build_approval_review(
+            &store,
+            &human_only_registry(),
+            &fixture.request,
+            &[approver_id],
+            now,
+        )
+        .unwrap();
 
         assert_eq!(review.status, ApprovalReviewStatus::Pending);
         assert!(review.actionable, "{:?}", review.blocked_reasons);
@@ -993,8 +1099,382 @@ mod tests {
     }
 
     #[test]
+    fn view_binding_renders_a_validated_live_v2_projection() {
+        let (_directory, _cli, workspace, store, approver_id) = initialized_workspace();
+        let now = Utc::now();
+        let fixture = save_native_approval(
+            &store,
+            &workspace,
+            json!({
+                "idempotency_key": Uuid::now_v7(),
+                "edition_id": Uuid::now_v7(),
+                "environment": "preview",
+                "version_label": "2026.08.31-rc1",
+                "manifest_digest": "sha256:fixture"
+            }),
+            json!({"unused": true}),
+            now,
+            now + chrono::Duration::minutes(15),
+        );
+        let step = store
+            .find_agent_run_step_by_approval(&fixture.request.body.id)
+            .unwrap()
+            .unwrap();
+        let run = store.load_agent_run(&fixture.run_id).unwrap().unwrap();
+        let runtime = RuntimeApprovalContext {
+            checkpoint_kind: "agent_runtime_v2".to_string(),
+            run_id: fixture.run_id,
+            agent_id: run.agent_id.unwrap(),
+            required_approver_id: Some(approver_id),
+            pending_tool: Some(PendingToolCall {
+                call_id: "call-live-v2".to_string(),
+                tool_name: "proof_content_v2_release_publish".to_string(),
+                operation: fixture.request.body.operation.clone(),
+                version: fixture.request.body.version.clone(),
+                arguments: fixture.arguments.clone(),
+                step_id: step.id,
+                approval_request_id: Some(fixture.request.body.id),
+            }),
+            sealed_approval_request: Some(fixture.request.clone()),
+            sealed_step: Some(step.clone()),
+        };
+        let mut arguments = None;
+        let mut runtime_checkpoint_kind = None;
+        let mut required_approver_id = None;
+        let mut blocked_reasons = Vec::new();
+
+        bind_runtime_approval_context(
+            runtime,
+            run.agent_id,
+            &step,
+            &fixture.request,
+            &mut arguments,
+            &mut runtime_checkpoint_kind,
+            &mut required_approver_id,
+            &mut blocked_reasons,
+        );
+
+        assert!(blocked_reasons.is_empty(), "{blocked_reasons:?}");
+        assert_eq!(arguments, Some(fixture.arguments));
+        assert_eq!(runtime_checkpoint_kind.as_deref(), Some("agent_runtime_v2"));
+        assert_eq!(required_approver_id, Some(approver_id));
+        assert!(decision_approver_matches(required_approver_id, approver_id));
+        assert!(!decision_approver_matches(
+            required_approver_id,
+            Uuid::now_v7()
+        ));
+        assert_eq!(
+            resume_command_for_review(runtime_checkpoint_kind.as_deref(), Some(fixture.run_id)),
+            None
+        );
+    }
+
+    #[test]
+    fn approval_review_from_sqlite_live_v2_history_is_actionable_and_renders_exact_five_arguments()
+    {
+        let fixture = crate::commands::live::tests::approval_live_fixture();
+        let registry = load_registry(&fixture.workspace.root).unwrap();
+        let review = build_approval_review(
+            &fixture.store,
+            &registry,
+            &fixture.request,
+            &[fixture.approver_id],
+            Utc::now(),
+        )
+        .unwrap();
+
+        assert!(review.actionable, "{:?}", review.blocked_reasons);
+        assert_eq!(review.run.as_ref().unwrap().id, fixture.run_id);
+        assert_eq!(
+            review.runtime_checkpoint_kind.as_deref(),
+            Some("agent_runtime_v2")
+        );
+        assert_eq!(review.required_approver_id, Some(fixture.approver_id));
+        assert_eq!(review.arguments, Some(fixture.arguments.clone()));
+        assert_eq!(
+            review
+                .arguments
+                .as_ref()
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .len(),
+            5
+        );
+        assert_eq!(
+            review
+                .arguments
+                .as_ref()
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            [
+                "edition_id".to_string(),
+                "environment".to_string(),
+                "idempotency_key".to_string(),
+                "manifest_digest".to_string(),
+                "version_label".to_string(),
+            ]
+            .into_iter()
+            .collect()
+        );
+    }
+
+    #[test]
+    fn approval_review_rejects_recomputed_pending_call_argument_request_and_step_substitutions() {
+        for mutation in 0..4 {
+            let fixture = crate::commands::live::tests::approval_live_fixture();
+            append_resealed_runtime_checkpoint(&fixture.store, fixture.run_id, |state| {
+                match mutation {
+                    0 => {
+                        let byte = state["runtime"]["pending_tool"]["approval_request"]
+                            ["signature"][0]
+                            .as_u64()
+                            .unwrap();
+                        state["runtime"]["pending_tool"]["approval_request"]["signature"][0] =
+                            json!((byte + 1) % 256);
+                    }
+                    1 => {
+                        let created_at = state["runtime"]["pending_tool"]["step_intent"]
+                            ["created_at"]
+                            .as_str()
+                            .unwrap()
+                            .parse::<DateTime<Utc>>()
+                            .unwrap();
+                        state["runtime"]["pending_tool"]["step_intent"]["updated_at"] =
+                            json!(created_at + chrono::Duration::seconds(1));
+                    }
+                    2 => {
+                        state["runtime"]["pending_tool"]["call_id"] = json!("call-substituted");
+                        recompute_pending_decision_digest(state);
+                    }
+                    3 => {
+                        state["runtime"]["pending_tool"]["arguments"]["version_label"] =
+                            json!("2026.08.31-substituted");
+                        recompute_pending_decision_digest(state);
+                    }
+                    _ => unreachable!(),
+                }
+            });
+            let registry = load_registry(&fixture.workspace.root).unwrap();
+            let review = build_approval_review(
+                &fixture.store,
+                &registry,
+                &fixture.request,
+                &[fixture.approver_id],
+                Utc::now(),
+            )
+            .unwrap();
+
+            assert!(!review.actionable, "mutation {mutation} was actionable");
+            let expected = match mutation {
+                0 => "exact signed approval request",
+                1 => "exact durable waiting step",
+                2 | 3 => "native runtime checkpoint history",
+                _ => unreachable!(),
+            };
+            assert!(
+                review
+                    .blocked_reasons
+                    .iter()
+                    .any(|reason| reason.contains(expected)),
+                "mutation {mutation}: {:?}",
+                review.blocked_reasons
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn live_v2_approval_response_never_recommends_generic_resume() {
+        let fixture = crate::commands::live::tests::approval_live_fixture();
+        let cli = Cli::parse_from([
+            "proof",
+            "-w",
+            fixture.workspace.root.to_str().unwrap(),
+            "approval",
+            "approver-init",
+        ]);
+        cmd_approver_init(&cli).unwrap();
+        let store = open_store(&fixture.workspace.root).unwrap();
+        let wrong_approver = trusted_approver_ids(&fixture.workspace.root, &store)
+            .unwrap()
+            .into_iter()
+            .find(|candidate| *candidate != fixture.approver_id)
+            .unwrap();
+        let registry = load_registry(&fixture.workspace.root).unwrap();
+        let app = approval_ui_router(ApprovalUiState::from_parts(
+            fixture.workspace.root.clone(),
+            store,
+            registry,
+            TOKEN,
+            4173,
+        ));
+        let uri = format!("/api/approvals/{}/decision", fixture.request.body.id);
+
+        let detail = app
+            .clone()
+            .oneshot(request(
+                Method::GET,
+                &format!("/api/approvals/{}", fixture.request.body.id),
+                Some(TOKEN),
+                None,
+                None,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(detail.status(), StatusCode::OK);
+        let detail = json_body(detail).await;
+        assert_eq!(detail["approvers"], json!([fixture.approver_id]));
+        assert_eq!(detail["approval"]["actionable"], true);
+
+        let wrong = app
+            .clone()
+            .oneshot(request(
+                Method::POST,
+                &uri,
+                Some(TOKEN),
+                Some(ORIGIN_VALUE),
+                Some(json!({
+                    "approver_id": wrong_approver,
+                    "outcome": "approved",
+                    "reason": "wrong sealed human",
+                })),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(wrong.status(), StatusCode::BAD_REQUEST);
+
+        let approved = app
+            .oneshot(request(
+                Method::POST,
+                &uri,
+                Some(TOKEN),
+                Some(ORIGIN_VALUE),
+                Some(json!({
+                    "approver_id": fixture.approver_id,
+                    "outcome": "approved",
+                    "reason": "exact sealed live review",
+                })),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(approved.status(), StatusCode::OK);
+        let approved = json_body(approved).await;
+        assert_eq!(approved["status"], "approved");
+        assert_eq!(approved["resume_command"], Value::Null);
+    }
+
+    #[test]
+    fn view_model_fails_closed_for_mixed_malformed_and_unsupported_runtime_history() {
+        let (_directory, _cli, workspace, store, approver_id) = initialized_workspace();
+        let now = Utc::now();
+        let mixed = save_native_approval(
+            &store,
+            &workspace,
+            json!({"release_id": "mixed"}),
+            json!({"release_id": "mixed"}),
+            now,
+            now + chrono::Duration::minutes(15),
+        );
+        let mixed_checkpoint = AgentCheckpoint::create(
+            mixed.run_id,
+            1,
+            json!({"kind": "agent_runtime_v2", "runtime": {}}),
+            now,
+        )
+        .unwrap();
+        store.save_agent_checkpoint(&mixed_checkpoint).unwrap();
+        let mixed_review = build_approval_review(
+            &store,
+            &human_only_registry(),
+            &mixed.request,
+            &[approver_id],
+            now,
+        )
+        .unwrap();
+        assert!(!mixed_review.actionable);
+        assert!(mixed_review
+            .blocked_reasons
+            .iter()
+            .any(|reason| reason.contains("mixed, unsupported, or invalid")));
+
+        let malformed = save_native_approval(
+            &store,
+            &workspace,
+            json!({"release_id": "malformed"}),
+            json!({"release_id": "malformed"}),
+            now,
+            now + chrono::Duration::minutes(15),
+        );
+        let malformed_checkpoint = AgentCheckpoint::create(
+            malformed.run_id,
+            1,
+            json!({"kind": V1_RUNTIME_CHECKPOINT_KIND, "runtime": {}}),
+            now,
+        )
+        .unwrap();
+        store.save_agent_checkpoint(&malformed_checkpoint).unwrap();
+        let malformed_review = build_approval_review(
+            &store,
+            &human_only_registry(),
+            &malformed.request,
+            &[approver_id],
+            now,
+        )
+        .unwrap();
+        assert!(!malformed_review.actionable);
+        assert!(malformed_review
+            .blocked_reasons
+            .iter()
+            .any(|reason| reason.contains("mixed, unsupported, or invalid")));
+
+        let unsupported = save_native_approval(
+            &store,
+            &workspace,
+            json!({"release_id": "unsupported"}),
+            json!({"release_id": "unsupported"}),
+            now,
+            now + chrono::Duration::minutes(15),
+        );
+        let connection =
+            rusqlite::Connection::open(workspace.root.join(".proof/storage/storage.db")).unwrap();
+        connection
+            .execute(
+                "DELETE FROM agent_checkpoints WHERE run_id = ?1",
+                [unsupported.run_id.to_string()],
+            )
+            .unwrap();
+        let unsupported_checkpoint = AgentCheckpoint::create(
+            unsupported.run_id,
+            0,
+            json!({"kind": "agent_runtime_v3", "runtime": {}}),
+            now,
+        )
+        .unwrap();
+        store
+            .save_agent_checkpoint(&unsupported_checkpoint)
+            .unwrap();
+        let unsupported_review = build_approval_review(
+            &store,
+            &human_only_registry(),
+            &unsupported.request,
+            &[approver_id],
+            now,
+        )
+        .unwrap();
+        assert!(!unsupported_review.actionable);
+        assert!(unsupported_review
+            .blocked_reasons
+            .iter()
+            .any(|reason| reason.contains("mixed, unsupported, or invalid")));
+    }
+
+    #[test]
     fn view_model_fails_closed_for_expired_mismatched_and_missing_context() {
-        let (_directory, _cli, workspace, store, _approver_id) = initialized_workspace();
+        let (_directory, _cli, workspace, store, approver_id) = initialized_workspace();
         let now = Utc::now();
         let expired = save_native_approval(
             &store,
@@ -1016,10 +1496,13 @@ mod tests {
         let registry = human_only_registry();
 
         let expired =
-            build_approval_review(&store, &registry, &expired.request, true, now).unwrap();
+            build_approval_review(&store, &registry, &expired.request, &[approver_id], now)
+                .unwrap();
         let mismatched =
-            build_approval_review(&store, &registry, &mismatched.request, true, now).unwrap();
-        let missing = build_approval_review(&store, &registry, &missing, true, now).unwrap();
+            build_approval_review(&store, &registry, &mismatched.request, &[approver_id], now)
+                .unwrap();
+        let missing =
+            build_approval_review(&store, &registry, &missing, &[approver_id], now).unwrap();
 
         assert_eq!(expired.status, ApprovalReviewStatus::Expired);
         assert!(!expired.actionable);
@@ -1037,7 +1520,7 @@ mod tests {
 
     #[test]
     fn view_model_fails_closed_when_step_payload_points_to_another_approval() {
-        let (_directory, _cli, workspace, store, _approver_id) = initialized_workspace();
+        let (_directory, _cli, workspace, store, approver_id) = initialized_workspace();
         let now = Utc::now();
         let fixture = save_native_approval(
             &store,
@@ -1075,9 +1558,14 @@ mod tests {
             )
             .unwrap();
 
-        let error =
-            build_approval_review(&store, &human_only_registry(), &fixture.request, true, now)
-                .unwrap_err();
+        let error = build_approval_review(
+            &store,
+            &human_only_registry(),
+            &fixture.request,
+            &[approver_id],
+            now,
+        )
+        .unwrap_err();
 
         assert!(error
             .to_string()

@@ -70,6 +70,34 @@ pub struct AgentRuntimeState {
     pub terminal_error: Option<String>,
 }
 
+/// Version-neutral, validated runtime evidence used by human approval review
+/// surfaces. The projection intentionally exposes only the fields needed to
+/// bind displayed arguments to the durable run, step, and signed request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeApprovalContext {
+    pub checkpoint_kind: String,
+    pub run_id: Uuid,
+    pub agent_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_approver_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_tool: Option<PendingToolCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed_approval_request: Option<SignedApprovalRequest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed_step: Option<AgentRunStep>,
+}
+
+/// Event-independent, typed projection of the newest checkpoint in one
+/// complete native runtime history. This is safe for diagnostic surfaces in
+/// crash windows where a durable checkpoint intentionally precedes its causal
+/// event, but it does not make a pending approval actionable.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeStateView {
+    pub checkpoint_kind: String,
+    pub state: Value,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GenericModelRequestedEvent {
@@ -2177,6 +2205,12 @@ impl AgentRuntime {
             self.save_live_state(run_id, &state)?;
             return self.fail_live_run(run, state, AgentRunEventKind::Failed);
         };
+        if !live_pending_matches_committed_decision(&state, &committed_decisions) {
+            state.terminal_error =
+                Some("pending live approval differs from committed tool decision".to_string());
+            self.save_live_state(run_id, &state)?;
+            return self.fail_live_run(run, state, AgentRunEventKind::Failed);
+        }
         let approval_resume_epoch = if let Some(pending) = state.pending_tool.as_ref() {
             let has_resumed = events
                 .iter()
@@ -7707,6 +7741,24 @@ fn validate_persisted_live_state(
         .iter()
         .filter(|attempt| attempt.dispatched_at.is_some())
         .count() as u32;
+    let pending_decision_digest_valid = match state.pending_tool.as_ref() {
+        Some(pending) => state
+            .attempts
+            .iter()
+            .rev()
+            .find(|attempt| attempt.state == ProviderAttemptState::Committed)
+            .and_then(|attempt| attempt.response.as_ref())
+            .is_some_and(|response| {
+                LiveCommittedDecision::ToolCall {
+                    call_id: pending.call_id.clone(),
+                    name: pending.tool_name.clone(),
+                    arguments: pending.arguments.clone(),
+                }
+                .digest()
+                .is_ok_and(|digest| digest == response.decision_digest)
+            }),
+        None => true,
+    };
     if state.counters.provider_dispatches != dispatches
         || state.counters.logical_model_turns
             != state
@@ -7731,6 +7783,7 @@ fn validate_persisted_live_state(
         || state.counters.tool_attempts > 1
         || state.counters.successful_publication_mutations > 1
         || state.counters.successful_publication_mutations > state.counters.tool_attempts
+        || !pending_decision_digest_valid
         || (state.pending_tool.is_some()
             && (state.counters.tool_attempts != 1
                 || state.counters.successful_publication_mutations != 0))
@@ -7794,6 +7847,400 @@ fn validate_persisted_live_state(
         return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
     }
     Ok(())
+}
+
+fn validate_runtime_checkpoint_envelope(
+    expected_run_id: Uuid,
+    checkpoint: &AgentCheckpoint,
+) -> Result<(), AgentRuntimeError> {
+    let invalid = || AgentRuntimeError::InvalidCheckpoint(expected_run_id);
+    let canonical = canonicalize(&checkpoint.state).map_err(|_| invalid())?;
+    let state = checkpoint.state.as_object().ok_or_else(invalid)?;
+    let kind = state
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(invalid)?;
+    let exact_shape = match kind {
+        RUNTIME_CHECKPOINT_KIND => {
+            state.len() == 2
+                || (state.len() == 3
+                    && state.get("terminal_event_kind").is_some_and(|value| {
+                        serde_json::from_value::<AgentRunEventKind>(value.clone()).is_ok_and(
+                            |kind| {
+                                matches!(
+                                    kind,
+                                    AgentRunEventKind::Failed | AgentRunEventKind::BudgetExceeded
+                                )
+                            },
+                        )
+                    }))
+        }
+        LIVE_RUNTIME_CHECKPOINT_KIND => state.len() == 2,
+        _ => false,
+    };
+    if checkpoint.run_id != expected_run_id
+        || checkpoint.id.get_version_num() != 7
+        || checkpoint.state_digest != digest(ArtifactKind::AgentCheckpoint, &canonical)
+        || !exact_shape
+        || !state.contains_key("kind")
+        || !state.contains_key("runtime")
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+fn validated_live_state_history(
+    run_id: Uuid,
+    checkpoints: &[AgentCheckpoint],
+) -> Result<LiveRuntimeState, AgentRuntimeError> {
+    if checkpoints.iter().enumerate().any(|(index, checkpoint)| {
+        checkpoint.sequence != u32::try_from(index).unwrap_or(u32::MAX)
+            || checkpoint.state["kind"] != LIVE_RUNTIME_CHECKPOINT_KIND
+    }) {
+        return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+    }
+    let live_checkpoints = checkpoints
+        .iter()
+        .filter(|checkpoint| checkpoint.state["kind"] == LIVE_RUNTIME_CHECKPOINT_KIND)
+        .collect::<Vec<_>>();
+    if live_checkpoints.is_empty() {
+        return Err(AgentRuntimeError::MissingCheckpoint(run_id));
+    }
+
+    // Checkpoint history is append-only. Counter, terminal, and attempt
+    // regressions are therefore corrupt rather than a permissible resume or
+    // approval-review source.
+    let mut prior: Option<LiveRuntimeState> = None;
+    let mut immutable_epochs = BTreeSet::new();
+    let mut previous_sequence = None;
+    let mut checkpoint_ids = BTreeSet::new();
+    for checkpoint in live_checkpoints {
+        validate_runtime_checkpoint_envelope(run_id, checkpoint)?;
+        if !checkpoint_ids.insert(checkpoint.id)
+            || previous_sequence.is_some_and(|sequence| checkpoint.sequence <= sequence)
+        {
+            return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+        }
+        previous_sequence = Some(checkpoint.sequence);
+        let current: LiveRuntimeState = serde_json::from_value(checkpoint.state["runtime"].clone())
+            .map_err(|_| AgentRuntimeError::InvalidCheckpoint(run_id))?;
+        validate_persisted_live_state(run_id, &current)?;
+        immutable_epochs.insert(current.process_epoch_id);
+        if current
+            .attempts
+            .iter()
+            .any(|attempt| !immutable_epochs.contains(&attempt.process_epoch_id))
+        {
+            return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+        }
+        if let Some(previous) = prior.as_ref() {
+            if current.schema != previous.schema
+                || current.agent_id != previous.agent_id
+                || current.run_id != previous.run_id
+                || current.started_at != previous.started_at
+                || current.authority != previous.authority
+                || current.policy_evidence != previous.policy_evidence
+                || current.policy_binding != previous.policy_binding
+                || current.provider != previous.provider
+                || current.cumulative_cost.pricing_schedule_id
+                    != previous.cumulative_cost.pricing_schedule_id
+                || current.cumulative_cost.pricing_schedule_digest
+                    != previous.cumulative_cost.pricing_schedule_digest
+                || current.attempts.len() < previous.attempts.len()
+                || current.counters.provider_dispatches < previous.counters.provider_dispatches
+                || current.counters.logical_model_turns < previous.counters.logical_model_turns
+                || current.counters.retries < previous.counters.retries
+                || current.counters.tool_attempts < previous.counters.tool_attempts
+                || current.counters.successful_publication_mutations
+                    < previous.counters.successful_publication_mutations
+                || current.cumulative_usage.input_tokens < previous.cumulative_usage.input_tokens
+                || current.cumulative_usage.output_tokens < previous.cumulative_usage.output_tokens
+                || current.cumulative_usage.total_tokens < previous.cumulative_usage.total_tokens
+                || current.cumulative_cost.calculated_cost_microusd
+                    < previous.cumulative_cost.calculated_cost_microusd
+                || (previous.terminal_error.is_some() && current.terminal_error.is_none())
+                || previous
+                    .terminal_error
+                    .as_ref()
+                    .is_some_and(|error| current.terminal_error.as_ref() != Some(error))
+                || previous
+                    .final_output
+                    .as_ref()
+                    .is_some_and(|output| current.final_output.as_ref() != Some(output))
+            {
+                return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+            }
+            for (index, before) in previous.attempts.iter().enumerate() {
+                let after = &current.attempts[index];
+                let immutable = before.schema == after.schema
+                    && before.attempt_id == after.attempt_id
+                    && before.logical_turn == after.logical_turn
+                    && before.dispatch_ordinal == after.dispatch_ordinal
+                    && before.retry_of == after.retry_of
+                    && before.process_epoch_id == after.process_epoch_id
+                    && before.prepared_at == after.prepared_at
+                    && before.request == after.request
+                    && before
+                        .dispatched_at
+                        .is_none_or(|value| after.dispatched_at == Some(value))
+                    && before
+                        .finished_at
+                        .is_none_or(|value| after.finished_at == Some(value))
+                    && before
+                        .response
+                        .as_ref()
+                        .is_none_or(|value| after.response.as_ref() == Some(value))
+                    && before
+                        .failure
+                        .as_ref()
+                        .is_none_or(|value| after.failure.as_ref() == Some(value));
+                let valid_transition = before.state == after.state
+                    || matches!(
+                        (before.state, after.state),
+                        (
+                            ProviderAttemptState::Prepared,
+                            ProviderAttemptState::Dispatching
+                                | ProviderAttemptState::FailedTerminal
+                        ) | (
+                            ProviderAttemptState::Dispatching,
+                            ProviderAttemptState::ResponseReceived
+                                | ProviderAttemptState::RejectedRetryable
+                                | ProviderAttemptState::FailedRetryable
+                                | ProviderAttemptState::FailedTerminal
+                                | ProviderAttemptState::Ambiguous
+                        ) | (
+                            ProviderAttemptState::ResponseReceived,
+                            ProviderAttemptState::Committed
+                        )
+                    );
+                if !immutable || !valid_transition {
+                    return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+                }
+            }
+            if current.attempts[previous.attempts.len()..]
+                .iter()
+                .any(|attempt| attempt.process_epoch_id != current.process_epoch_id)
+            {
+                return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+            }
+        } else if current
+            .attempts
+            .iter()
+            .any(|attempt| attempt.process_epoch_id != current.process_epoch_id)
+        {
+            return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+        }
+        prior = Some(current);
+    }
+    prior.ok_or(AgentRuntimeError::MissingCheckpoint(run_id))
+}
+
+fn live_pending_matches_committed_decision(
+    state: &LiveRuntimeState,
+    committed_decisions: &[LiveCommittedDecision],
+) -> bool {
+    state.pending_tool.as_ref().is_none_or(|pending| {
+        matches!(
+            committed_decisions.last(),
+            Some(LiveCommittedDecision::ToolCall {
+                call_id,
+                name,
+                arguments,
+            }) if call_id == &pending.call_id
+                && name == &pending.tool_name
+                && arguments == &pending.arguments
+        )
+    })
+}
+
+/// Validates and projects the newest state from a complete, ordered native
+/// runtime checkpoint history. The slice must start at sequence zero and must
+/// contain exactly one supported runtime version. This validator deliberately
+/// does not require causal events: checkpoints are durable barriers that can
+/// validly precede their corresponding event during crash recovery.
+pub fn runtime_state_view(
+    expected_run_id: Uuid,
+    checkpoints: &[AgentCheckpoint],
+) -> Result<RuntimeStateView, AgentRuntimeError> {
+    let invalid = || AgentRuntimeError::InvalidCheckpoint(expected_run_id);
+    if checkpoints.is_empty() {
+        return Err(AgentRuntimeError::MissingCheckpoint(expected_run_id));
+    }
+    let mut kinds = BTreeSet::new();
+    for (index, checkpoint) in checkpoints.iter().enumerate() {
+        let kind = checkpoint
+            .state
+            .get("kind")
+            .and_then(Value::as_str)
+            .ok_or_else(invalid)?;
+        if checkpoint.sequence != u32::try_from(index).map_err(|_| invalid())?
+            || !kind.starts_with("agent_runtime_")
+        {
+            return Err(invalid());
+        }
+        validate_runtime_checkpoint_envelope(expected_run_id, checkpoint)?;
+        kinds.insert(kind);
+    }
+    if kinds.len() != 1 {
+        return Err(invalid());
+    }
+    let checkpoint_kind = *kinds.first().ok_or_else(invalid)?;
+
+    match checkpoint_kind {
+        RUNTIME_CHECKPOINT_KIND => {
+            let mut latest = None;
+            let mut identity = None;
+            let mut checkpoint_ids = BTreeSet::new();
+            for checkpoint in checkpoints {
+                if !checkpoint_ids.insert(checkpoint.id) {
+                    return Err(invalid());
+                }
+                let persisted = checkpoint
+                    .state
+                    .get("runtime")
+                    .cloned()
+                    .ok_or_else(invalid)?;
+                let state: AgentRuntimeState =
+                    serde_json::from_value(persisted.clone()).map_err(|_| invalid())?;
+                let projected = serde_json::to_value(&state).map_err(|_| invalid())?;
+                if projected != persisted
+                    || state.agent_id.get_version_num() != 7
+                    || identity.is_some_and(|(agent_id, started_at)| {
+                        agent_id != state.agent_id || started_at != state.started_at
+                    })
+                {
+                    return Err(invalid());
+                }
+                identity = Some((state.agent_id, state.started_at));
+                latest = Some(projected);
+            }
+            Ok(RuntimeStateView {
+                checkpoint_kind: checkpoint_kind.to_string(),
+                state: latest.ok_or_else(invalid)?,
+            })
+        }
+        LIVE_RUNTIME_CHECKPOINT_KIND => {
+            let state = validated_live_state_history(expected_run_id, checkpoints)?;
+            let projected = serde_json::to_value(&state).map_err(|_| invalid())?;
+            if checkpoints
+                .last()
+                .and_then(|checkpoint| checkpoint.state.get("runtime"))
+                != Some(&projected)
+            {
+                return Err(invalid());
+            }
+            Ok(RuntimeStateView {
+                checkpoint_kind: checkpoint_kind.to_string(),
+                state: projected,
+            })
+        }
+        _ => Err(invalid()),
+    }
+}
+
+/// Validates a durable runtime checkpoint and projects the exact pending tool
+/// call needed by an approval review surface.
+///
+/// `checkpoints` must be the complete native history beginning at sequence
+/// zero. Live-v2 checkpoints pass the authoritative state validator and are
+/// also bound to their exact committed response events before any arguments
+/// are returned. Unsupported versions and malformed envelopes fail closed.
+pub fn runtime_approval_context(
+    expected_run_id: Uuid,
+    checkpoints: &[AgentCheckpoint],
+    events: &[AgentRunEvent],
+) -> Result<RuntimeApprovalContext, AgentRuntimeError> {
+    let invalid = || AgentRuntimeError::InvalidCheckpoint(expected_run_id);
+    let view = runtime_state_view(expected_run_id, checkpoints)?;
+    let checkpoint_kind = view.checkpoint_kind.as_str();
+
+    match checkpoint_kind {
+        RUNTIME_CHECKPOINT_KIND => {
+            let state: AgentRuntimeState =
+                serde_json::from_value(view.state).map_err(|_| invalid())?;
+            Ok(RuntimeApprovalContext {
+                checkpoint_kind: checkpoint_kind.to_string(),
+                run_id: expected_run_id,
+                agent_id: state.agent_id,
+                required_approver_id: None,
+                pending_tool: state.pending_tool,
+                sealed_approval_request: None,
+                sealed_step: None,
+            })
+        }
+        LIVE_RUNTIME_CHECKPOINT_KIND => {
+            let state = validated_live_state_history(expected_run_id, checkpoints)?;
+            let requested_count = events
+                .iter()
+                .filter(|event| event.kind == AgentRunEventKind::ModelRequested)
+                .count();
+            if requested_count != state.counters.provider_dispatches as usize
+                || state.attempts.iter().any(|attempt| {
+                    attempt.dispatched_at.is_some()
+                        && exact_model_requested_event(expected_run_id, attempt, events).is_err()
+                })
+            {
+                return Err(invalid());
+            }
+            let committed_attempts = state
+                .attempts
+                .iter()
+                .filter(|attempt| attempt.state == ProviderAttemptState::Committed)
+                .collect::<Vec<_>>();
+            if events
+                .iter()
+                .filter(|event| event.kind == AgentRunEventKind::ModelResponded)
+                .count()
+                != committed_attempts.len()
+            {
+                return Err(invalid());
+            }
+            let committed_decisions = committed_attempts
+                .iter()
+                .map(|attempt| exact_committed_event(expected_run_id, attempt, events))
+                .collect::<Result<Vec<_>, _>>()?;
+            if !live_pending_matches_committed_decision(&state, &committed_decisions) {
+                return Err(invalid());
+            }
+            let (pending_tool, sealed_approval_request, sealed_step) = match state.pending_tool {
+                Some(pending) => {
+                    let sealed_request = pending.approval_request.clone().into();
+                    let sealed_step = pending.step_intent.as_step();
+                    (
+                        Some(PendingToolCall {
+                            call_id: pending.call_id,
+                            tool_name: pending.tool_name,
+                            operation: pending.operation,
+                            version: pending.version,
+                            arguments: pending.arguments.as_value()?,
+                            step_id: pending.step_id,
+                            approval_request_id: Some(pending.approval_request_id),
+                        }),
+                        Some(sealed_request),
+                        Some(sealed_step),
+                    )
+                }
+                None => (None, None, None),
+            };
+            Ok(RuntimeApprovalContext {
+                checkpoint_kind: checkpoint_kind.to_string(),
+                run_id: state.run_id,
+                agent_id: state.agent_id,
+                required_approver_id: Some(
+                    state
+                        .policy_evidence
+                        .resolved_bindings
+                        .approver_principal_id
+                        .as_uuid(),
+                ),
+                pending_tool,
+                sealed_approval_request,
+                sealed_step,
+            })
+        }
+        _ => Err(invalid()),
+    }
 }
 
 impl AgentRuntime {
@@ -8325,137 +8772,7 @@ impl AgentRuntime {
             .run_store
             .list_agent_checkpoints(&run_id)
             .map_err(AgentRuntimeError::Store)?;
-        let checkpoint = checkpoints
-            .iter()
-            .rev()
-            .find(|checkpoint| checkpoint.state["kind"] == LIVE_RUNTIME_CHECKPOINT_KIND)
-            .ok_or(AgentRuntimeError::MissingCheckpoint(run_id))?;
-        let state: LiveRuntimeState = serde_json::from_value(checkpoint.state["runtime"].clone())
-            .map_err(|_| AgentRuntimeError::InvalidCheckpoint(run_id))?;
-        validate_persisted_live_state(run_id, &state)?;
-        // Checkpoint history is append-only.  Counter, terminal, and attempt
-        // regressions are therefore corrupt rather than a permissible resume.
-        let mut prior: Option<LiveRuntimeState> = None;
-        let mut immutable_epochs = BTreeSet::new();
-        for checkpoint in checkpoints
-            .iter()
-            .filter(|checkpoint| checkpoint.state["kind"] == LIVE_RUNTIME_CHECKPOINT_KIND)
-        {
-            let current: LiveRuntimeState =
-                serde_json::from_value(checkpoint.state["runtime"].clone())
-                    .map_err(|_| AgentRuntimeError::InvalidCheckpoint(run_id))?;
-            validate_persisted_live_state(run_id, &current)?;
-            immutable_epochs.insert(current.process_epoch_id);
-            if current
-                .attempts
-                .iter()
-                .any(|attempt| !immutable_epochs.contains(&attempt.process_epoch_id))
-            {
-                return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
-            }
-            if let Some(previous) = prior.as_ref() {
-                if current.schema != previous.schema
-                    || current.agent_id != previous.agent_id
-                    || current.run_id != previous.run_id
-                    || current.started_at != previous.started_at
-                    || current.authority != previous.authority
-                    || current.policy_evidence != previous.policy_evidence
-                    || current.policy_binding != previous.policy_binding
-                    || current.provider != previous.provider
-                    || current.cumulative_cost.pricing_schedule_id
-                        != previous.cumulative_cost.pricing_schedule_id
-                    || current.cumulative_cost.pricing_schedule_digest
-                        != previous.cumulative_cost.pricing_schedule_digest
-                    || current.attempts.len() < previous.attempts.len()
-                    || current.counters.provider_dispatches < previous.counters.provider_dispatches
-                    || current.counters.logical_model_turns < previous.counters.logical_model_turns
-                    || current.counters.retries < previous.counters.retries
-                    || current.counters.tool_attempts < previous.counters.tool_attempts
-                    || current.counters.successful_publication_mutations
-                        < previous.counters.successful_publication_mutations
-                    || current.cumulative_usage.input_tokens
-                        < previous.cumulative_usage.input_tokens
-                    || current.cumulative_usage.output_tokens
-                        < previous.cumulative_usage.output_tokens
-                    || current.cumulative_usage.total_tokens
-                        < previous.cumulative_usage.total_tokens
-                    || current.cumulative_cost.calculated_cost_microusd
-                        < previous.cumulative_cost.calculated_cost_microusd
-                    || (previous.terminal_error.is_some() && current.terminal_error.is_none())
-                    || previous
-                        .terminal_error
-                        .as_ref()
-                        .is_some_and(|error| current.terminal_error.as_ref() != Some(error))
-                    || previous
-                        .final_output
-                        .as_ref()
-                        .is_some_and(|output| current.final_output.as_ref() != Some(output))
-                {
-                    return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
-                }
-                for (index, before) in previous.attempts.iter().enumerate() {
-                    let after = &current.attempts[index];
-                    let immutable = before.schema == after.schema
-                        && before.attempt_id == after.attempt_id
-                        && before.logical_turn == after.logical_turn
-                        && before.dispatch_ordinal == after.dispatch_ordinal
-                        && before.retry_of == after.retry_of
-                        && before.process_epoch_id == after.process_epoch_id
-                        && before.prepared_at == after.prepared_at
-                        && before.request == after.request
-                        && before
-                            .dispatched_at
-                            .is_none_or(|value| after.dispatched_at == Some(value))
-                        && before
-                            .finished_at
-                            .is_none_or(|value| after.finished_at == Some(value))
-                        && before
-                            .response
-                            .as_ref()
-                            .is_none_or(|value| after.response.as_ref() == Some(value))
-                        && before
-                            .failure
-                            .as_ref()
-                            .is_none_or(|value| after.failure.as_ref() == Some(value));
-                    let valid_transition = before.state == after.state
-                        || matches!(
-                            (before.state, after.state),
-                            (
-                                ProviderAttemptState::Prepared,
-                                ProviderAttemptState::Dispatching
-                                    | ProviderAttemptState::FailedTerminal
-                            ) | (
-                                ProviderAttemptState::Dispatching,
-                                ProviderAttemptState::ResponseReceived
-                                    | ProviderAttemptState::RejectedRetryable
-                                    | ProviderAttemptState::FailedRetryable
-                                    | ProviderAttemptState::FailedTerminal
-                                    | ProviderAttemptState::Ambiguous
-                            ) | (
-                                ProviderAttemptState::ResponseReceived,
-                                ProviderAttemptState::Committed
-                            )
-                        );
-                    if !immutable || !valid_transition {
-                        return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
-                    }
-                }
-                if current.attempts[previous.attempts.len()..]
-                    .iter()
-                    .any(|attempt| attempt.process_epoch_id != current.process_epoch_id)
-                {
-                    return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
-                }
-            } else if current
-                .attempts
-                .iter()
-                .any(|attempt| attempt.process_epoch_id != current.process_epoch_id)
-            {
-                return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
-            }
-            prior = Some(current);
-        }
-        Ok(state)
+        validated_live_state_history(run_id, &checkpoints)
     }
 
     fn live_epoch_seen(
@@ -13087,6 +13404,249 @@ mod tests {
     }
 
     #[test]
+    fn approval_context_projects_v1_and_validated_live_v2_without_trusting_tampered_state() {
+        let run_id = Uuid::now_v7();
+        let agent_id = Uuid::now_v7();
+        let step_id = Uuid::now_v7();
+        let request_id = Uuid::now_v7();
+        let arguments = json!({"name": "review-v1"});
+        let v1 = AgentRuntimeState {
+            agent_id,
+            started_at: Utc::now(),
+            previous_response_id: Some("response-v1".to_string()),
+            next_input: ModelInput::Goal {
+                text: "review the request".to_string(),
+            },
+            pending_tool: Some(PendingToolCall {
+                call_id: "call-v1".to_string(),
+                tool_name: "proof_catalog_v1_catalog_create".to_string(),
+                operation: "catalog.create".to_string(),
+                version: "v1".to_string(),
+                arguments: arguments.clone(),
+                step_id,
+                approval_request_id: Some(request_id),
+            }),
+            model_calls: 1,
+            tool_attempts: 1,
+            input_tokens: 10,
+            output_tokens: 4,
+            total_tokens: 14,
+            cost_microusd: None,
+            final_output: None,
+            terminal_error: None,
+        };
+        let v1_checkpoint = AgentCheckpoint::create(
+            run_id,
+            0,
+            json!({"kind": RUNTIME_CHECKPOINT_KIND, "runtime": v1}),
+            Utc::now(),
+        )
+        .unwrap();
+        let v1_context = runtime_approval_context(run_id, &[v1_checkpoint], &[]).unwrap();
+        assert_eq!(v1_context.checkpoint_kind, RUNTIME_CHECKPOINT_KIND);
+        assert_eq!(v1_context.run_id, run_id);
+        assert_eq!(v1_context.agent_id, agent_id);
+        assert_eq!(v1_context.required_approver_id, None);
+        assert_eq!(v1_context.pending_tool.unwrap().arguments, arguments);
+
+        let fixture = LiveFixture::new();
+        let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
+        let waiting = fixture
+            .runtime(factory)
+            .run_live(fixture.setup.clone())
+            .unwrap();
+        let AgentRuntimeOutcome::WaitingForApproval { run, request, .. } = waiting else {
+            panic!("expected live approval wait")
+        };
+        let checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let events = fixture.agent_store.list_agent_run_events(&run.id).unwrap();
+        let live_context = runtime_approval_context(run.id, &checkpoints, &events).unwrap();
+        assert_eq!(live_context.checkpoint_kind, LIVE_RUNTIME_CHECKPOINT_KIND);
+        assert_eq!(live_context.run_id, run.id);
+        assert_eq!(live_context.agent_id, fixture.agent.id);
+        assert_eq!(
+            live_context.required_approver_id,
+            Some(fixture.approver.principal_id.as_uuid())
+        );
+        let pending = live_context.pending_tool.unwrap();
+        assert_eq!(pending.arguments, fixture.arguments.as_value().unwrap());
+        assert_eq!(pending.approval_request_id, Some(request.body.id));
+        assert_eq!(live_context.sealed_approval_request, Some(request.clone()));
+        assert_eq!(
+            live_context.sealed_step,
+            Some(
+                fixture
+                    .run_store
+                    .find_agent_run_step_by_approval(&request.body.id)
+                    .unwrap()
+                    .unwrap()
+            )
+        );
+
+        let mut substituted = checkpoints;
+        let latest = substituted.last_mut().unwrap();
+        latest.state["runtime"]["pending_tool"]["arguments"]["version_label"] =
+            json!("substituted");
+        latest.state_digest = digest(
+            ArtifactKind::AgentCheckpoint,
+            &canonicalize(&latest.state).unwrap(),
+        );
+        assert!(matches!(
+            runtime_approval_context(run.id, &substituted, &events),
+            Err(AgentRuntimeError::InvalidCheckpoint(id)) if id == run.id
+        ));
+    }
+
+    #[test]
+    fn approval_context_rejects_live_v2_history_with_omitted_sequence_zero_prefix() {
+        let fixture = LiveFixture::new();
+        let waiting = fixture
+            .runtime(fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]))
+            .run_live(fixture.setup.clone())
+            .unwrap();
+        let AgentRuntimeOutcome::WaitingForApproval { run, .. } = waiting else {
+            panic!("expected live approval wait")
+        };
+        let checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let events = fixture.agent_store.list_agent_run_events(&run.id).unwrap();
+        assert!(checkpoints.len() > 1);
+
+        assert!(matches!(
+            runtime_approval_context(run.id, &checkpoints[1..], &events),
+            Err(AgentRuntimeError::InvalidCheckpoint(id)) if id == run.id
+        ));
+    }
+
+    #[test]
+    fn approval_context_rejects_recomputed_live_v2_envelope_unknown_field() {
+        let fixture = LiveFixture::new();
+        let waiting = fixture
+            .runtime(fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]))
+            .run_live(fixture.setup.clone())
+            .unwrap();
+        let AgentRuntimeOutcome::WaitingForApproval { run, .. } = waiting else {
+            panic!("expected live approval wait")
+        };
+        let mut checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let events = fixture.agent_store.list_agent_run_events(&run.id).unwrap();
+        let latest = checkpoints.last_mut().unwrap();
+        latest.state["unexpected"] = json!(true);
+        latest.state_digest = digest(
+            ArtifactKind::AgentCheckpoint,
+            &canonicalize(&latest.state).unwrap(),
+        );
+
+        assert!(matches!(
+            runtime_approval_context(run.id, &checkpoints, &events),
+            Err(AgentRuntimeError::InvalidCheckpoint(id)) if id == run.id
+        ));
+    }
+
+    #[test]
+    fn approval_context_rejects_pending_call_id_not_bound_to_committed_decision() {
+        let fixture = LiveFixture::new();
+        let waiting = fixture
+            .runtime(fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]))
+            .run_live(fixture.setup.clone())
+            .unwrap();
+        let AgentRuntimeOutcome::WaitingForApproval { run, .. } = waiting else {
+            panic!("expected live approval wait")
+        };
+        let mut checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let events = fixture.agent_store.list_agent_run_events(&run.id).unwrap();
+        let substituted_call_id = "call-substituted";
+        let substituted_digest = LiveCommittedDecision::ToolCall {
+            call_id: substituted_call_id.to_string(),
+            name: LIVE_TOOL_NAME.to_string(),
+            arguments: fixture.arguments.clone(),
+        }
+        .digest()
+        .unwrap();
+        for checkpoint in &mut checkpoints {
+            let mut changed = false;
+            if !checkpoint.state["runtime"]["attempts"][0]["response"].is_null() {
+                checkpoint.state["runtime"]["attempts"][0]["response"]["decision_digest"] =
+                    json!(substituted_digest);
+                changed = true;
+            }
+            if !checkpoint.state["runtime"]["pending_tool"].is_null() {
+                checkpoint.state["runtime"]["pending_tool"]["call_id"] = json!(substituted_call_id);
+                changed = true;
+            }
+            if changed {
+                checkpoint.state_digest = digest(
+                    ArtifactKind::AgentCheckpoint,
+                    &canonicalize(&checkpoint.state).unwrap(),
+                );
+            }
+        }
+
+        assert!(matches!(
+            runtime_approval_context(run.id, &checkpoints, &events),
+            Err(AgentRuntimeError::InvalidCheckpoint(id)) if id == run.id
+        ));
+    }
+
+    #[test]
+    fn live_resume_rejects_pending_call_id_substitution_before_approval_or_effect() {
+        let fixture = LiveFixture::new();
+        let waiting = fixture
+            .runtime(fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]))
+            .run_live(fixture.setup.clone())
+            .unwrap();
+        let AgentRuntimeOutcome::WaitingForApproval { run, request, .. } = waiting else {
+            panic!("expected live approval wait")
+        };
+        approve_live_wait(&fixture, &request);
+        let checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let mut state = checkpoints.last().unwrap().state.clone();
+        let substituted_call_id = "call-substituted";
+        state["runtime"]["pending_tool"]["call_id"] = json!(substituted_call_id);
+        state["runtime"]["attempts"][0]["response"]["decision_digest"] =
+            json!(LiveCommittedDecision::ToolCall {
+                call_id: substituted_call_id.to_string(),
+                name: LIVE_TOOL_NAME.to_string(),
+                arguments: fixture.arguments.clone(),
+            }
+            .digest()
+            .unwrap());
+        let substituted = AgentCheckpoint::create(
+            run.id,
+            checkpoints.last().unwrap().sequence + 1,
+            state,
+            Utc::now(),
+        )
+        .unwrap();
+        fixture
+            .run_store
+            .save_agent_checkpoint(&substituted)
+            .unwrap();
+
+        let factory = fixture.factory(vec![]);
+        let result = fixture
+            .runtime(factory.clone())
+            .run_live(fixture.resume_setup(run.id));
+        assert!(matches!(
+            result,
+            Err(AgentRuntimeError::InvalidCheckpoint(id)) if id == run.id
+        ));
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 0);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 0);
+        assert!(fixture.execution_store.proofs.lock().unwrap().is_empty());
+        assert!(fixture.execution_store.contexts.lock().unwrap().is_empty());
+        assert_eq!(
+            fixture
+                .agent_store
+                .list_agent_run_events(&run.id)
+                .unwrap()
+                .iter()
+                .filter(|event| event.kind == AgentRunEventKind::ApprovalResumed)
+                .count(),
+            0
+        );
+    }
+
+    #[test]
     fn live_one_retry_success_is_17_of_17_and_retry_evidence_is_exact() {
         for first_failure in [
             ModelGatewayError::CertifiedNoBytes("no bytes written".to_string()),
@@ -13246,6 +13806,43 @@ mod tests {
     }
 
     #[test]
+    fn runtime_state_view_exposes_dispatching_checkpoint_before_requested_event() {
+        let fixture = LiveFixture::new();
+        let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
+        let result = fixture
+            .runtime_with_stores(
+                factory.clone(),
+                fixture.run_store.clone(),
+                Arc::new(FaultingLiveAgentStore {
+                    inner: fixture.agent_store.clone(),
+                    fault: LiveAgentFault::RequestedSave,
+                    armed: AtomicBool::new(true),
+                    requested_saved: AtomicBool::new(false),
+                }),
+            )
+            .run_live(fixture.setup.clone());
+        assert!(matches!(result, Err(AgentRuntimeError::Store(_))));
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 0);
+        let run = fixture
+            .run_store
+            .list_agent_runs()
+            .unwrap()
+            .into_iter()
+            .find(|run| run.agent_id == Some(fixture.agent.id))
+            .unwrap();
+        let checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let events = fixture.agent_store.list_agent_run_events(&run.id).unwrap();
+
+        let view = runtime_state_view(run.id, &checkpoints).unwrap();
+        assert_eq!(view.checkpoint_kind, LIVE_RUNTIME_CHECKPOINT_KIND);
+        assert_eq!(view.state["attempts"][0]["state"], "dispatching");
+        assert!(matches!(
+            runtime_approval_context(run.id, &checkpoints, &events),
+            Err(AgentRuntimeError::InvalidCheckpoint(id)) if id == run.id
+        ));
+    }
+
+    #[test]
     fn live_prepared_restart_reuses_exact_attempt_before_first_send() {
         let fixture = LiveFixture::new();
         let panic_factory = Arc::new(PanicFactory {
@@ -13350,6 +13947,15 @@ mod tests {
             .live_state(run.id)
             .unwrap();
         assert_eq!(committed.attempts[0].state, ProviderAttemptState::Committed);
+        let checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let events = fixture.agent_store.list_agent_run_events(&run.id).unwrap();
+        let view = runtime_state_view(run.id, &checkpoints).unwrap();
+        assert_eq!(view.checkpoint_kind, LIVE_RUNTIME_CHECKPOINT_KIND);
+        assert_eq!(view.state["attempts"][0]["state"], "committed");
+        assert!(matches!(
+            runtime_approval_context(run.id, &checkpoints, &events),
+            Err(AgentRuntimeError::InvalidCheckpoint(id)) if id == run.id
+        ));
         let resume_factory = fixture.factory(vec![]);
         let outcome = fixture
             .runtime(resume_factory.clone())

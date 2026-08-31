@@ -17,7 +17,8 @@ assigned to one worker for the whole wave. Recommended tiers are
 normal implementation, and `gpt-5.6-sol` only for contracts, security, or
 cross-crate integration.
 
-AXP-E0001 is activated at its W14 live credential boundary. Its tracked
+AXP-E0001 is activated at its W15 live credential boundary after the W14
+live-v2 review repair. Its tracked
 `editions/AXP-E0001/assignments.tsv` is the dispatch source of truth;
 `workgraph.md` and the exact task packets are required supporting dispatch
 context. The E0000 rows preserve the earlier plan, while E0002-E0005 remain
@@ -63,9 +64,9 @@ deterministic release-manager evaluation; owner sign-off.
 **Outcome:** A real model completes a bounded release journey, pauses for
 signed human approval, resumes durably, and publishes a verified preview.
 
-**Status:** Activated. The authoritative eighteen-task W1-W15 graph has
-completed E0001-01..03 and E0001-06..18. W14 E0001-04 is stopped only at the
-approved credential boundary; W15 E0001-05 and Gate C remain blocked on the
+**Status:** Activated. The authoritative nineteen-task W1-W16 graph has
+completed E0001-01..03 and E0001-06..19. W15 E0001-04 is stopped only at the
+approved credential boundary; W16 E0001-05 and Gate C remain blocked on the
 live journey and independent 17/17 verification.
 
 **Dispatch source of truth:** `editions/AXP-E0001/assignments.tsv`.
@@ -75,8 +76,8 @@ work.
 
 | ID | Current work item | Depends on | Exclusive path | Acceptance evidence | Risk | Tier |
 |---|---|---|---|---|---|---|
-| E0001-04 | Live dogfood and independent verification | E0001-02,03,06..18 plus paid-use Gate B | `docs/dogfood/release-manager-live.md`<br>`editions/AXP-E0001/handoffs/E0001-04.md` | Final-source host 81/81 and immutable 10/10 replay; one exact approved live run; signed approval chronology; same-run resume; independent 17/17; cost and rollback evidence | critical | `gpt-5.6-sol` |
-| E0001-05 | Quiescent integration and owner release gate | E0001-01..04,06..18 | edition release records and root integration files listed in the task packet | Quiescent verification passes and the product owner records a dated Gate C accept, defer, or reject decision | high | `gpt-5.6-sol` |
+| E0001-04 | Live dogfood and independent verification | E0001-02,03,06..19 plus paid-use Gate B | `docs/dogfood/release-manager-live.md`<br>`editions/AXP-E0001/handoffs/E0001-04.md` | Final-source host suite (currently 88/88) and immutable 10/10 replay; one exact approved live run; signed approval chronology; same-run live resume; independent 17/17; cost and rollback evidence | critical | `gpt-5.6-sol` |
+| E0001-05 | Quiescent integration and owner release gate | E0001-01..04,06..19 | edition release records and root integration files listed in the task packet | Quiescent verification passes and the product owner records a dated Gate C accept, defer, or reject decision | high | `gpt-5.6-sol` |
 
 **Historical seed decomposition (not dispatch authority):**
 

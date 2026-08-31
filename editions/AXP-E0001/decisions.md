@@ -455,3 +455,42 @@ or Gate C state changes. E0001-18 adds W13, moves live dogfood to W14 and
 integration to W15, and repeats the source-sensitive host/readiness barrier.
 The host CLI passes 81/81 and the exact retained 10/10 packet, `next_argv`, and
 binding digest replay with both provider variables unset.
+
+## D-E0001-016 — Live-v2 diagnostics and approval actionability are separate evidence thresholds
+
+Status: implemented protective correction · Date: 2026-08-31 · Decision owner: orchestrator
+
+Final credential-free operator review found that the live runtime persists
+`agent_runtime_v2`, but the approval UI selected only v1 and therefore could
+not render the exact pending live consequence. The first repair also exposed a
+critical distinction: durable live checkpoints intentionally precede their
+causal events at dispatch and committed-response barriers. Requiring those
+events in `agent watch` would hide valid crash state, while omitting them from
+approval actionability would permit a Human decision over evidence that cannot
+resume safely.
+
+E0001-19 establishes two thresholds. `RuntimeStateView` accepts only a complete
+contiguous sequence-zero history with one supported version, exact envelope
+shape and digest, and fully typed validated state; it intentionally requires no
+event and is diagnostic only. `RuntimeApprovalContext` adds the exact
+ModelRequested/ModelResponded ledger, committed-decision/call/arguments match,
+sealed signed request, reconstructed exact waiting step, and policy-bound
+Human. The UI exact-compares those sealed records with SQLite, offers only the
+enrolled required Human, rechecks the identity on POST, and never recommends
+generic `agent resume` for v2 because the sealed policy path is required.
+
+Real-SQLite and adversarial tests prove the exact five arguments are actionable
+only under the complete binding. Omitted prefixes, unknown recomputed envelope
+fields, call/argument/request-signature/step-time substitutions, wrong Human,
+and generic resume all fail closed before provider or governed effect. Valid
+Dispatching and Committed pre-event crash barriers remain visible. Runtime
+passes 116/116, the complete host CLI passes 88/88, two independent audits pass,
+format/diff checks pass, and the credential-free readiness replay returns the
+unchanged 10/10 packet and binding digest.
+
+This correction changes no live policy, provider/model, spend, synthetic
+payload, registry, schema, migration, authority, or Gate C state. The retained
+workspace was replayed read-only with both provider variables removed. The
+credential remains absent, so provider attempts, live runs, approval decisions,
+publication effects, artifacts, failures, and charges remain zero. E0001-19 is
+W14; live dogfood moves to W15 and integration/Gate C to W16.

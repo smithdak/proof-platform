@@ -4,11 +4,12 @@ use std::sync::Arc;
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use proof_agent_runtime::{
-    AgentRuntime, AgentRuntimeOutcome, ApprovalEvidence, DeterministicTraceEvaluator,
-    OpenAiResponsesGateway, TraceEvaluationPolicy, DEFAULT_OPENAI_BASE_URL,
+    runtime_state_view, AgentRuntime, AgentRuntimeOutcome, ApprovalEvidence,
+    DeterministicTraceEvaluator, OpenAiResponsesGateway, TraceEvaluationPolicy,
+    DEFAULT_OPENAI_BASE_URL,
 };
 use proof_kernel::{
-    AgentDefinition, AgentEvaluationOutcome, AgentLimits, AgentRun, AgentRunEvent,
+    AgentCheckpoint, AgentDefinition, AgentEvaluationOutcome, AgentLimits, AgentRun, AgentRunEvent,
     AgentRunEventKind, AgentRunStatus, AgentTool, ExecutionEngine, Registry,
 };
 use proof_storage::SqliteStore;
@@ -115,6 +116,25 @@ pub(crate) fn cmd_agent_resume(cli: &Cli, run_id: &str) -> Result<()> {
     print_outcome(runtime.resume(run_id)?)
 }
 
+fn latest_runtime_state(
+    run_id: Uuid,
+    checkpoints: &[AgentCheckpoint],
+) -> Result<(Option<String>, Option<serde_json::Value>)> {
+    let has_runtime_checkpoint = checkpoints.iter().any(|checkpoint| {
+        checkpoint
+            .state
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|kind| kind.starts_with("agent_runtime_"))
+    });
+    if !has_runtime_checkpoint {
+        return Ok((None, None));
+    }
+    let view = runtime_state_view(run_id, checkpoints)
+        .context("runtime checkpoint history is unsupported or invalid")?;
+    Ok((Some(view.checkpoint_kind), Some(view.state)))
+}
+
 pub(crate) fn cmd_agent_watch(cli: &Cli, run_id: &str) -> Result<()> {
     let workspace = Workspace::open(&cli.workspace)?;
     let store = open_store(&workspace.root)?;
@@ -131,15 +151,8 @@ pub(crate) fn cmd_agent_watch(cli: &Cli, run_id: &str) -> Result<()> {
     }
     let steps = store.list_agent_run_steps(&run_id)?;
     let checkpoints = store.list_agent_checkpoints(&run_id)?;
-    let latest_runtime_state = checkpoints.iter().rev().find_map(|checkpoint| {
-        (checkpoint
-            .state
-            .get("kind")
-            .and_then(serde_json::Value::as_str)
-            == Some("agent_runtime_v1"))
-        .then(|| checkpoint.state.get("runtime").cloned())
-        .flatten()
-    });
+    let events = store.list_agent_run_events(&run_id)?;
+    let (latest_runtime_kind, latest_runtime_state) = latest_runtime_state(run_id, &checkpoints)?;
     let mut approvals = Vec::new();
     for request_id in steps.iter().filter_map(|step| step.approval_request_id) {
         approvals.push(serde_json::json!({
@@ -156,9 +169,10 @@ pub(crate) fn cmd_agent_watch(cli: &Cli, run_id: &str) -> Result<()> {
     print_json(serde_json::json!({
         "run": run,
         "agent": agent,
+        "state_kind": latest_runtime_kind,
         "state": latest_runtime_state,
         "steps": steps,
-        "events": store.list_agent_run_events(&run_id)?,
+        "events": events,
         "approvals": approvals,
         "evaluations": store.list_agent_run_evaluations(&run_id)?,
     }))
@@ -400,6 +414,7 @@ mod tests {
     use std::thread;
 
     use clap::Parser;
+    use proof_agent_runtime::{AgentRuntimeState, ModelInput};
     use proof_kernel::{AgentRun, AgentRunMode, AgentRunStatus};
 
     use super::*;
@@ -447,6 +462,76 @@ mod tests {
             .unwrap()
             .pop()
             .unwrap()
+    }
+
+    #[test]
+    fn watch_reports_validated_supported_runtime_state_and_rejects_unknown_versions() {
+        let run_id = Uuid::now_v7();
+        let now = Utc::now();
+        let runtime = AgentRuntimeState {
+            agent_id: Uuid::now_v7(),
+            started_at: now,
+            previous_response_id: None,
+            next_input: ModelInput::Goal {
+                text: "inspect".to_string(),
+            },
+            pending_tool: None,
+            model_calls: 0,
+            tool_attempts: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+            cost_microusd: None,
+            final_output: None,
+            terminal_error: None,
+        };
+        let v1 = AgentCheckpoint::create(
+            run_id,
+            0,
+            serde_json::json!({
+                "kind": "agent_runtime_v1",
+                "runtime": runtime
+            }),
+            now,
+        )
+        .unwrap();
+        let unknown = AgentCheckpoint::create(
+            run_id,
+            1,
+            serde_json::json!({
+                "kind": "agent_runtime_v3",
+                "runtime": {"marker": "unknown"}
+            }),
+            now,
+        )
+        .unwrap();
+
+        let (kind, state) = latest_runtime_state(run_id, std::slice::from_ref(&v1)).unwrap();
+
+        assert_eq!(kind.as_deref(), Some("agent_runtime_v1"));
+        assert_eq!(state.unwrap()["agent_id"], runtime.agent_id.to_string());
+        assert!(latest_runtime_state(run_id, &[v1, unknown]).is_err());
+    }
+
+    #[test]
+    fn watch_reports_live_v2_dispatching_and_committed_crash_window_checkpoints_without_events() {
+        let fixture = crate::commands::live::tests::approval_live_fixture();
+        let checkpoints = fixture
+            .store
+            .list_agent_checkpoints(&fixture.run_id)
+            .unwrap();
+
+        for expected_state in ["dispatching", "committed"] {
+            let end = checkpoints
+                .iter()
+                .position(|checkpoint| {
+                    checkpoint.state["runtime"]["attempts"][0]["state"] == expected_state
+                })
+                .unwrap();
+            let (kind, state) = latest_runtime_state(fixture.run_id, &checkpoints[..=end]).unwrap();
+            assert_eq!(kind.as_deref(), Some("agent_runtime_v2"));
+            assert_eq!(state.unwrap()["attempts"][0]["state"], expected_state);
+        }
     }
 
     #[test]
