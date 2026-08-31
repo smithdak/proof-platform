@@ -203,18 +203,14 @@ proof approval approve '<REQUEST_ID>' --approver '<APPROVER_ID>'
 proof agent resume '<RUN_ID>'
 ```
 
-For a browser-based review, start the local operator console instead:
-
-```bash
-proof approval ui
-```
-
-Open the private URL printed by the command. The console binds only to
-`127.0.0.1` (on a random port unless `--port` is supplied), shows the exact
-arguments covered by the signed request, and signs an approval or denial with
-the selected locally enrolled human identity. Keep the URL private: its
-fragment contains the session credential. The console records the decision but
-does not execute the tool; run `proof agent resume '<RUN_ID>'` afterward.
+The standalone browser console is not currently an approved security path. Do
+not run `proof approval ui`, copy its printed URL, or capture it in terminal,
+agent, CI, supervisor, clipboard, or browser records: the fragment is a
+reusable Human signing-session credential for every actionable request exposed
+by that server. Use the terminal approval commands above until AXP-E0006 ships
+a clean-URL, bounded, one-use bootstrap and memory-only session. The approval
+command records a decision but does not execute the tool; resume the exact same
+run through its permitted runtime-specific command afterward.
 
 For a terminal run, execute a reproducible task-correctness policy and persist
 its evaluation of the signed trace:

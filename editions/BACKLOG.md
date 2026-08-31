@@ -21,9 +21,9 @@ AXP-E0001 is activated at its W16 live credential boundary after the W15
 one-shot-start and operator-recovery repair. Its tracked
 `editions/AXP-E0001/assignments.tsv` is the dispatch source of truth;
 `workgraph.md` and the exact task packets are required supporting dispatch
-context. The E0000 rows preserve the earlier plan, while E0002-E0005 remain
-ranked candidates that require an owner-approved charter, assignments, and
-exact task packets before any writer starts.
+context. The E0000 rows preserve the earlier plan, while E0006 and E0002-E0005
+remain ranked candidates that require an owner-approved charter, assignments,
+and exact task packets before any writer starts.
 
 ## Ranked editions
 
@@ -91,10 +91,43 @@ work.
 | E0001-02 | Provider-backed model/tool continuation and failure recovery | E0001-01 | `crates/proof-agent-runtime/**` | Live run pauses, resumes same step, never blindly replays mutation | high | `gpt-5.6-terra` |
 | E0001-03 | Preview release adapter with safe side-effect boundary | E0001-01 | `crates/proof-content/**` release paths | Preview artifact and signed proof match requested version | high | `gpt-5.6-terra` |
 
+### AXP-E0006 — Secure Standalone Approval Console
+
+**Outcome:** A local Human can open the standalone approval console without a
+reusable signing credential appearing in a URL, ordinary process output,
+process arguments, browser history, Web Storage, cookies, referrers, logs, or
+test artifacts.
+
+**Status:** P0-next critical security candidate, ranked ahead of AXP-E0002. It
+depends on E0001-05 and the recorded E0001 Gate C decision. Until then, only
+this backlog candidate may be refined: do not create `editions/AXP-E0006/**`,
+dispatch a writer, or modify the frozen E0001 CLI source. The current
+standalone UI is not an approved operator path because its printed fragment is
+a reusable workspace-wide Human signing capability for the server lifetime.
+
+**Gate B security contract:** the public loopback URL is clean; a secure
+non-URL bootstrap is one-use, short-lived, replay-resistant, and unavailable
+without a verified local handoff; the resulting session credential is
+distinct, memory-only, server-instance/workspace scoped, and bounded by
+absolute and idle expiry. Exact Host/Origin/content-type checks remain, secret
+comparison is constant-time, and malformed, duplicate, expired, replayed,
+cross-instance, and cross-workspace credentials fail before signing. No
+automatic browser launcher may place either credential in child argv.
+
+| ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
+|---|---|---|---|---|---|---|
+| E0006-01 | Freeze the standalone-console threat model, bootstrap/session contract, and Gate A/B decision | E0001-05 + E0001 Gate C | new E0006 records plus one narrowly scoped approval-session contract (orchestrator only) | Contract covers clean URL/output, secure handoff, one-use exchange, lifetime/scope/revocation, constant-time comparison, Host/Origin, and fail-closed recovery | critical | `gpt-5.6-sol` |
+| E0006-02 | Replace the reusable fragment bearer with the approved bootstrap/session flow | E0006-01 | `crates/proof-transport-cli/**` (one security owner) | Process tests prove secret-free output/argv; Tower tests prove one successful exchange, concurrent/replay/expiry/cross-instance rejection, no unauthorized signature, and unchanged v1/v2 actionability | critical | `gpt-5.6-sol` |
+| E0006-03 | Independently verify browser secrecy, signing boundaries, public guidance, and Gate C | E0006-02 | non-author browser/security verifier; orchestrator owns `README.md` and release records | Clean loopback URL; no query/fragment/secret storage/cookie/referrer; no-store/CSP/no-referrer/frame/nosniff headers; full CLI and scoped-impact gates; secret-sentinel scan; dated non-author PASS and owner decision | critical | `gpt-5.6-sol` |
+
 ### AXP-E0002 — One Human Oversees Many Runs
 
 **Outcome:** An operator can inspect, approve, deny, revoke, resume, and audit
 multiple governed runs from one authenticated control plane.
+
+**Dependency:** AXP-E0006 Gate C. E0002 may reuse only the released approval
+session contract; the current standalone fragment bearer is not a bootstrap or
+authentication primitive for the operator control plane.
 
 | ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
 |---|---|---|---|---|---|---|
