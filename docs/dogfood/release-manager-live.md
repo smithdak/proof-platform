@@ -77,8 +77,10 @@ owner gate explicitly changes them:
 - The independent verifier must be a non-author: not the live-run author and
   not the Human who signed the decision. The verifier never approves, denies,
   starts, or advances an unsealed run.
-- One writer controls the private workspace at a time. The verifier begins
-  only after the operator has stopped and the run is durably terminal.
+- One writer controls the private workspace at a time. Runtime enforces this
+  with a crash-released workspace execution lease held from before a resume's
+  first durable read through its complete outcome. The verifier begins only
+  after the operator has stopped and the run is durably terminal.
 
 ## Frozen live limits
 
@@ -155,6 +157,28 @@ recovery, not authority for a second start:
   dispatch ledger; and
 - after the run reaches the approval boundary, never invoke `live-start`
   again. Use only policy-bearing `live-resume` for that same run.
+
+If a live command reports that the run is already executing in the workspace,
+stop that contender. A contending `live-resume` is read-only: it has not
+written evidence, constructed a gateway, sent a provider request, or performed
+the publication. A first execution of the persisted `live-start` performs its
+atomic start claim before lease acquisition. If that command acquired the
+claim, it may retain exactly the claim plus its Running run, checkpoint zero,
+and Started event zero before reporting contention. It still has not appended
+a Prepared or later checkpoint, constructed a gateway, sent a provider
+request, or performed the publication.
+
+Do not loop, force-unlock, delete a lock artifact, start another process, or
+create a replacement run. Establish whether the original operator process is
+still active and let it finish or terminate normally. The operating system
+releases the lease when the owning process exits, including after abrupt
+process death. After start-time contention, replay only the exact persisted
+`next_argv`; do not construct a command. Require `already_started` for the same
+retained run ID and an unchanged zero-dispatch ledger, then use only the
+emitted workspace-bound watch and state-specific recovery argv. After resume
+contention, inspect the same run with its already emitted watch argv and use
+only its permitted policy-bearing same-run resume. Never use generic resume or
+the approval UI for either branch.
 
 Stop if start replay creates or selects another run, changes the start identity
 or goal, adds a dispatch, or returns evidence inconsistent with the first run.

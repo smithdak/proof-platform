@@ -2,12 +2,14 @@
 
 use chrono::{Duration, TimeZone, Utc};
 use proof_kernel::{
-    canonicalize, digest, generate_keypair, AgentCheckpoint, AgentEvaluationOutcome, AgentRun,
-    AgentRunEvaluation, AgentRunEvent, AgentRunEventKind, AgentRunMode, AgentRunStatus,
-    AgentRunStep, AgentRunStepStatus, ApprovalOutcome, ArtifactKind, LiveRunStartClaim,
-    LiveRunStartClaimResult, SignedApprovalDecision, SignedApprovalRequest,
+    canonicalize, digest, generate_keypair, AgentCheckpoint, AgentCheckpointAppendResult,
+    AgentCheckpointTail, AgentEvaluationOutcome, AgentRun, AgentRunEvaluation, AgentRunEvent,
+    AgentRunEventKind, AgentRunMode, AgentRunStatus, AgentRunStep, AgentRunStepStatus,
+    AgentRunStore, ApprovalOutcome, ArtifactKind, LiveRunStartClaim, LiveRunStartClaimResult,
+    SignedApprovalDecision, SignedApprovalRequest,
 };
 use serde_json::json;
+use std::sync::{Arc, Barrier};
 
 use super::store::SqliteStore;
 use crate::StorageError;
@@ -460,6 +462,352 @@ fn approval_lookup_rejects_json_column_mismatch() {
         store.find_agent_run_step_by_approval(&request.body.id),
         Err(StorageError::Conflict(message)) if message.contains("does not match indexed request")
     ));
+}
+
+#[test]
+fn expected_tail_checkpoint_append_round_trips_through_sqlite_trait() {
+    let store = SqliteStore::in_memory().unwrap();
+    let run = AgentRun::new(
+        proof_kernel::PrincipalId::now(),
+        AgentRunMode::Session,
+        "Append checkpoints",
+        now(),
+    )
+    .unwrap();
+    store.save_agent_run(&run).unwrap();
+    let first = AgentCheckpoint::create(run.id, 0, json!({"cursor": 0}), now()).unwrap();
+    let second = AgentCheckpoint::create(
+        run.id,
+        1,
+        json!({"cursor": 1}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+
+    assert_eq!(
+        AgentRunStore::append_agent_checkpoint(&store, None, &first).unwrap(),
+        AgentCheckpointAppendResult::Appended
+    );
+    assert_eq!(
+        AgentRunStore::append_agent_checkpoint(
+            &store,
+            Some(&AgentCheckpointTail::from(&first)),
+            &second,
+        )
+        .unwrap(),
+        AgentCheckpointAppendResult::Appended
+    );
+    assert_eq!(
+        store.list_agent_checkpoints(&run.id).unwrap(),
+        vec![first, second]
+    );
+}
+
+#[test]
+fn expected_tail_checkpoint_append_rejects_stale_writer_without_poisoning_history() {
+    let store = SqliteStore::in_memory().unwrap();
+    let run = AgentRun::new(
+        proof_kernel::PrincipalId::now(),
+        AgentRunMode::Session,
+        "Reject a stale writer",
+        now(),
+    )
+    .unwrap();
+    store.save_agent_run(&run).unwrap();
+    let first = AgentCheckpoint::create(run.id, 0, json!({"cursor": 0}), now()).unwrap();
+    store.append_agent_checkpoint(None, &first).unwrap();
+    let expected = AgentCheckpointTail::from(&first);
+    let winner = AgentCheckpoint::create(
+        run.id,
+        1,
+        json!({"writer": "winner"}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+    let stale = AgentCheckpoint::create(
+        run.id,
+        1,
+        json!({"writer": "stale"}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+
+    assert_eq!(
+        store
+            .append_agent_checkpoint(Some(&expected), &winner)
+            .unwrap(),
+        AgentCheckpointAppendResult::Appended
+    );
+    assert_eq!(
+        store
+            .append_agent_checkpoint(Some(&expected), &stale)
+            .unwrap(),
+        AgentCheckpointAppendResult::Stale
+    );
+    let third = AgentCheckpoint::create(
+        run.id,
+        2,
+        json!({"cursor": 2}),
+        now() + Duration::seconds(2),
+    )
+    .unwrap();
+    assert_eq!(
+        store
+            .append_agent_checkpoint(Some(&AgentCheckpointTail::from(&winner)), &third)
+            .unwrap(),
+        AgentCheckpointAppendResult::Appended
+    );
+    assert_eq!(
+        store.list_agent_checkpoints(&run.id).unwrap(),
+        vec![first, winner, third]
+    );
+}
+
+#[test]
+fn expected_tail_checkpoint_append_exact_retry_requires_current_candidate_and_predecessor() {
+    let store = SqliteStore::in_memory().unwrap();
+    let run = AgentRun::new(
+        proof_kernel::PrincipalId::now(),
+        AgentRunMode::Session,
+        "Retry checkpoint append",
+        now(),
+    )
+    .unwrap();
+    store.save_agent_run(&run).unwrap();
+    let first = AgentCheckpoint::create(run.id, 0, json!({"cursor": 0}), now()).unwrap();
+    let first_tail = AgentCheckpointTail::from(&first);
+    let second = AgentCheckpoint::create(
+        run.id,
+        1,
+        json!({"cursor": 1}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+    store.append_agent_checkpoint(None, &first).unwrap();
+    store
+        .append_agent_checkpoint(Some(&first_tail), &second)
+        .unwrap();
+
+    assert_eq!(
+        store
+            .append_agent_checkpoint(Some(&first_tail), &second)
+            .unwrap(),
+        AgentCheckpointAppendResult::Appended
+    );
+    let wrong_predecessor = AgentCheckpointTail {
+        checkpoint_id: uuid::Uuid::now_v7(),
+        ..first_tail
+    };
+    assert_eq!(
+        store
+            .append_agent_checkpoint(Some(&wrong_predecessor), &second)
+            .unwrap(),
+        AgentCheckpointAppendResult::Stale
+    );
+
+    let third = AgentCheckpoint::create(
+        run.id,
+        2,
+        json!({"cursor": 2}),
+        now() + Duration::seconds(2),
+    )
+    .unwrap();
+    store
+        .append_agent_checkpoint(Some(&AgentCheckpointTail::from(&second)), &third)
+        .unwrap();
+    assert_eq!(
+        store
+            .append_agent_checkpoint(Some(&first_tail), &second)
+            .unwrap(),
+        AgentCheckpointAppendResult::Stale
+    );
+    assert_eq!(store.list_agent_checkpoints(&run.id).unwrap().len(), 3);
+}
+
+#[test]
+fn expected_tail_checkpoint_append_serializes_two_sqlite_connections() {
+    let directory = tempfile::TempDir::new().unwrap();
+    let database = directory.path().join("proof.db");
+    let seed = SqliteStore::open(&database).unwrap();
+    let run = AgentRun::new(
+        proof_kernel::PrincipalId::now(),
+        AgentRunMode::Session,
+        "Serialize checkpoint writers",
+        now(),
+    )
+    .unwrap();
+    seed.save_agent_run(&run).unwrap();
+    let first = AgentCheckpoint::create(run.id, 0, json!({"cursor": 0}), now()).unwrap();
+    seed.append_agent_checkpoint(None, &first).unwrap();
+    drop(seed);
+
+    let expected = AgentCheckpointTail::from(&first);
+    let left = AgentCheckpoint::create(
+        run.id,
+        1,
+        json!({"writer": "left"}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+    let right = AgentCheckpoint::create(
+        run.id,
+        1,
+        json!({"writer": "right"}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+    let barrier = Arc::new(Barrier::new(3));
+    let left_store = SqliteStore::open(&database).unwrap();
+    let left_barrier = Arc::clone(&barrier);
+    let left_handle = std::thread::spawn(move || {
+        left_barrier.wait();
+        let result = left_store
+            .append_agent_checkpoint(Some(&expected), &left)
+            .unwrap();
+        (left.id, result)
+    });
+    let right_store = SqliteStore::open(&database).unwrap();
+    let right_barrier = Arc::clone(&barrier);
+    let right_handle = std::thread::spawn(move || {
+        right_barrier.wait();
+        let result = right_store
+            .append_agent_checkpoint(Some(&expected), &right)
+            .unwrap();
+        (right.id, result)
+    });
+    barrier.wait();
+    let results = [left_handle.join().unwrap(), right_handle.join().unwrap()];
+    assert_eq!(
+        results
+            .iter()
+            .filter(|(_, result)| *result == AgentCheckpointAppendResult::Appended)
+            .count(),
+        1
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|(_, result)| *result == AgentCheckpointAppendResult::Stale)
+            .count(),
+        1
+    );
+
+    let store = SqliteStore::open(&database).unwrap();
+    let history = store.list_agent_checkpoints(&run.id).unwrap();
+    assert_eq!(history.len(), 2);
+    let winner_id = results
+        .iter()
+        .find_map(|(id, result)| (*result == AgentCheckpointAppendResult::Appended).then_some(*id))
+        .unwrap();
+    assert_eq!(history[1].id, winner_id);
+}
+
+#[test]
+fn expected_tail_checkpoint_append_rejects_malformed_evidence_without_inserting() {
+    let store = SqliteStore::in_memory().unwrap();
+    let run = AgentRun::new(
+        proof_kernel::PrincipalId::now(),
+        AgentRunMode::Session,
+        "Reject malformed checkpoints",
+        now(),
+    )
+    .unwrap();
+    store.save_agent_run(&run).unwrap();
+    let first = AgentCheckpoint::create(run.id, 0, json!({"cursor": 0}), now()).unwrap();
+    store.append_agent_checkpoint(None, &first).unwrap();
+    let valid = AgentCheckpoint::create(
+        run.id,
+        1,
+        json!({"cursor": 1}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+    let mut malformed = valid.clone();
+    malformed.state = json!({"cursor": "tampered-after-digest"});
+    let wrong_sequence =
+        AgentCheckpoint::create(run.id, 0, json!({"cursor": "wrong-sequence"}), now()).unwrap();
+    let mut reused_id = valid.clone();
+    reused_id.id = first.id;
+
+    assert!(matches!(
+        store.append_agent_checkpoint(Some(&AgentCheckpointTail::from(&first)), &malformed),
+        Err(StorageError::Conflict(message)) if message.contains("state digest")
+    ));
+    assert!(matches!(
+        store.append_agent_checkpoint(Some(&AgentCheckpointTail::from(&first)), &wrong_sequence),
+        Err(StorageError::Conflict(message)) if message.contains("does not follow")
+    ));
+    assert!(matches!(
+        store.append_agent_checkpoint(Some(&AgentCheckpointTail::from(&first)), &reused_id),
+        Err(StorageError::Conflict(message)) if message.contains("existing immutable checkpoint")
+    ));
+
+    let other_run = AgentRun::new(
+        proof_kernel::PrincipalId::now(),
+        AgentRunMode::Session,
+        "Reject another run's tail",
+        now(),
+    )
+    .unwrap();
+    store.save_agent_run(&other_run).unwrap();
+    let cross_run_candidate = AgentCheckpoint::create(
+        other_run.id,
+        1,
+        json!({"cursor": "cross-run"}),
+        now() + Duration::seconds(1),
+    )
+    .unwrap();
+    assert!(matches!(
+        store.append_agent_checkpoint(
+            Some(&AgentCheckpointTail::from(&first)),
+            &cross_run_candidate,
+        ),
+        Err(StorageError::Conflict(message)) if message.contains("belongs to run")
+    ));
+    assert_eq!(
+        store.list_agent_checkpoints(&run.id).unwrap(),
+        vec![first.clone()]
+    );
+    assert!(store
+        .list_agent_checkpoints(&other_run.id)
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .append_agent_checkpoint(Some(&AgentCheckpointTail::from(&first)), &valid)
+            .unwrap(),
+        AgentCheckpointAppendResult::Appended
+    );
+
+    {
+        let connection = store.connection();
+        connection
+            .execute(
+                "UPDATE agent_checkpoints SET state_digest = ?1 WHERE id = ?2",
+                rusqlite::params!["0".repeat(64), valid.id.to_string()],
+            )
+            .unwrap();
+    }
+    let third = AgentCheckpoint::create(
+        run.id,
+        2,
+        json!({"cursor": 2}),
+        now() + Duration::seconds(2),
+    )
+    .unwrap();
+    assert!(matches!(
+        store.append_agent_checkpoint(Some(&AgentCheckpointTail::from(&valid)), &third),
+        Err(StorageError::Conflict(message)) if message.contains("indexed columns")
+    ));
+    let row_count: i64 = store
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM agent_checkpoints WHERE run_id = ?1",
+            [run.id.to_string()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(row_count, 2);
 }
 
 #[test]

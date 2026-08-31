@@ -113,6 +113,32 @@ pub struct AgentCheckpoint {
     pub created_at: DateTime<Utc>,
 }
 
+/// Compact identity of one run's durable checkpoint tail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentCheckpointTail {
+    pub checkpoint_id: Uuid,
+    pub sequence: u32,
+    pub state_digest: ContentDigest,
+}
+
+impl From<&AgentCheckpoint> for AgentCheckpointTail {
+    fn from(checkpoint: &AgentCheckpoint) -> Self {
+        Self {
+            checkpoint_id: checkpoint.id,
+            sequence: checkpoint.sequence,
+            state_digest: checkpoint.state_digest,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentCheckpointAppendResult {
+    Appended,
+    Stale,
+    Unsupported,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentEvaluationOutcome {
@@ -671,6 +697,17 @@ pub trait AgentRunStore: Send + Sync {
         &self,
         approval_request_id: &Uuid,
     ) -> Result<Option<AgentRunStep>, String>;
+    /// Atomically appends a checkpoint only when the current run tail matches
+    /// `expected_tail`. Exact retries are idempotently reported as appended;
+    /// stale observations do not write, and malformed or conflicting
+    /// checkpoint candidates return an error.
+    fn append_agent_checkpoint(
+        &self,
+        _expected_tail: Option<&AgentCheckpointTail>,
+        _checkpoint: &AgentCheckpoint,
+    ) -> Result<AgentCheckpointAppendResult, String> {
+        Ok(AgentCheckpointAppendResult::Unsupported)
+    }
     fn save_agent_checkpoint(&self, checkpoint: &AgentCheckpoint) -> Result<(), String>;
     fn list_agent_checkpoints(&self, run_id: &Uuid) -> Result<Vec<AgentCheckpoint>, String>;
     fn save_agent_run_evaluation(&self, evaluation: &AgentRunEvaluation) -> Result<(), String>;
@@ -874,6 +911,108 @@ impl AgentRunStore for RecordingAgentRunStore {
         Ok(matched)
     }
 
+    fn append_agent_checkpoint(
+        &self,
+        expected_tail: Option<&AgentCheckpointTail>,
+        checkpoint: &AgentCheckpoint,
+    ) -> Result<AgentCheckpointAppendResult, String> {
+        validate_agent_checkpoint_integrity(checkpoint, "new agent checkpoint")?;
+        let expected_sequence = expected_tail
+            .map(|tail| {
+                tail.sequence.checked_add(1).ok_or_else(|| {
+                    "new agent checkpoint sequence cannot follow the maximum expected tail sequence"
+                        .to_string()
+                })
+            })
+            .transpose()?
+            .unwrap_or(0);
+        if checkpoint.sequence != expected_sequence {
+            return Err(format!(
+                "new agent checkpoint sequence {} does not follow expected sequence {}",
+                checkpoint.sequence, expected_sequence
+            ));
+        }
+
+        let mut checkpoints = self
+            .checkpoints
+            .lock()
+            .map_err(|_| "agent checkpoint lock poisoned".to_string())?;
+
+        if let Some(existing) = checkpoints.get(&checkpoint.id) {
+            if existing != checkpoint {
+                return Err(format!(
+                    "agent checkpoint {} conflicts with an existing immutable checkpoint",
+                    checkpoint.id
+                ));
+            }
+        }
+        if let Some(expected_tail) = expected_tail {
+            if let Some(predecessor) = checkpoints.get(&expected_tail.checkpoint_id) {
+                if predecessor.run_id != checkpoint.run_id {
+                    return Err(format!(
+                        "expected agent checkpoint tail {} belongs to run {}, not {}",
+                        expected_tail.checkpoint_id, predecessor.run_id, checkpoint.run_id
+                    ));
+                }
+            }
+        }
+
+        let current = checkpoints
+            .values()
+            .filter(|existing| existing.run_id == checkpoint.run_id)
+            .max_by_key(|existing| existing.sequence)
+            .cloned();
+        if let Some(current) = current.as_ref() {
+            validate_agent_checkpoint_integrity(current, "stored current agent checkpoint")?;
+        }
+        let current_tail = current.as_ref().map(AgentCheckpointTail::from);
+        let candidate_tail = AgentCheckpointTail::from(checkpoint);
+
+        if current_tail == Some(candidate_tail) {
+            let predecessor = checkpoint.sequence.checked_sub(1).and_then(|sequence| {
+                checkpoints
+                    .values()
+                    .find(|existing| {
+                        existing.run_id == checkpoint.run_id && existing.sequence == sequence
+                    })
+                    .cloned()
+            });
+            if let Some(predecessor) = predecessor.as_ref() {
+                validate_agent_checkpoint_integrity(
+                    predecessor,
+                    "stored predecessor agent checkpoint",
+                )?;
+            }
+            let predecessor_tail = predecessor.as_ref().map(AgentCheckpointTail::from);
+            if current.as_ref() != Some(checkpoint) {
+                return Err(format!(
+                    "agent checkpoint {} has a conflicting immutable envelope",
+                    checkpoint.id
+                ));
+            }
+            return Ok(if predecessor_tail.as_ref() == expected_tail {
+                AgentCheckpointAppendResult::Appended
+            } else {
+                AgentCheckpointAppendResult::Stale
+            });
+        }
+
+        if current_tail.as_ref() != expected_tail {
+            return Ok(AgentCheckpointAppendResult::Stale);
+        }
+        if checkpoints.values().any(|existing| {
+            existing.run_id == checkpoint.run_id && existing.sequence == checkpoint.sequence
+        }) {
+            return Err(format!(
+                "agent checkpoint sequence {} conflicts within run {}",
+                checkpoint.sequence, checkpoint.run_id
+            ));
+        }
+
+        checkpoints.insert(checkpoint.id, checkpoint.clone());
+        Ok(AgentCheckpointAppendResult::Appended)
+    }
+
     fn save_agent_checkpoint(&self, checkpoint: &AgentCheckpoint) -> Result<(), String> {
         let mut checkpoints = self
             .checkpoints
@@ -998,6 +1137,20 @@ impl AgentStore for RecordingAgentRunStore {
         events.sort_by_key(|event| event.sequence);
         Ok(events)
     }
+}
+
+fn validate_agent_checkpoint_integrity(
+    checkpoint: &AgentCheckpoint,
+    description: &str,
+) -> Result<(), String> {
+    let canonical = canonicalize(&checkpoint.state)
+        .map_err(|error| format!("{description} state is not canonicalizable: {error}"))?;
+    if checkpoint.state_digest != digest(ArtifactKind::AgentCheckpoint, &canonical) {
+        return Err(format!(
+            "{description} state digest does not match its state"
+        ));
+    }
+    Ok(())
 }
 
 fn validate_progressed_claim_run(initial: &AgentRun, current: &AgentRun) -> Result<(), String> {

@@ -20,7 +20,7 @@
 | canonical kernel/domain/live contracts | W13 | E0001-18 orchestrator | contract/source verifier | orchestrator |
 | Runtime/CLI live-v2 approval review and watch surfaces | W14 | E0001-19 orchestrator | independent runtime-recovery and CLI-security reviewers | orchestrator |
 | Kernel/Storage/Runtime/CLI live-start claim and recovery; live runbooks | W15 | E0001-20 orchestrator | independent runtime-recovery, CLI-security, and runbook reviewers | orchestrator |
-| live dogfood record and final operator evidence | W16 | E0001-04 live verifier | product owner | orchestrator |
+| live dogfood record and final operator evidence | W16 | E0001-04 `e0001-live-operator` | distinct non-author `e0001-live-verifier`; product owner retains consequence approval | orchestrator |
 | root manifests/lockfile and edition release records | W17 | E0001-05 orchestrator | product owner | orchestrator |
 
 No task may write an unowned surface. Cross-crate requirements go to the named

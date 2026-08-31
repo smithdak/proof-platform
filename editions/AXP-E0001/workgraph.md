@@ -21,8 +21,8 @@ Edition: `AXP-E0001`
 | E0001-17 | W12 | orchestrator / `gpt-5.6-sol` | CLI workspace identity lifecycle, README, and unique handoff | E0001-16 | Exact config-actor/key binding; no linked config, destructive reinit, pre-validation rotation mutation, or archive collision | done; lifecycle 4/4, compile/format, host 81/81, and exact readiness replay clean |
 | E0001-18 | W13 | orchestrator / `gpt-5.6-sol` | canonical kernel/domain/live contracts and unique handoff | E0001-17 | Canonical docs reflect active handler hooks, SQLite v12, active release.publish::v2, and activated-but-unexecuted B5 | done; exact cross-check, host 81/81, and readiness replay clean |
 | E0001-19 | W14 | orchestrator / `gpt-5.6-sol` | Runtime/CLI live-v2 approval visibility and unique handoff | E0001-02, E0001-08, E0001-18 | Event-independent typed watch; event-bound actionable review; exact request/step/call/Human; no generic v2 resume | done; Runtime 116/116, host CLI 88/88, real-SQLite/adversarial regressions, independent PASS, formatting/diff, and readiness replay clean |
-| E0001-20 | W15 | orchestrator / `gpt-5.6-sol` | Kernel/Storage/Runtime/CLI start claim and emitted recovery; secure runbook | E0001-02, E0001-07..09, E0001-18, E0001-19 | Atomic four-record claim; exact replay no-dispatch; pristine same-run recovery; workspace/policy/Human argv; secure operator procedure | done; Kernel 98/98, Storage 128/128, Runtime 119/119, host CLI 93/93, reverse impact 597/597, independent PASS, and readiness replay clean |
-| E0001-04 | W16 | unassigned / `gpt-5.6-sol` | live dogfood record and unique handoff | E0001-02, E0001-03, E0001-06..20 + paid-use Gate B | Final-source host CLI, immutable readiness replay, fresh live run, signed approval, independent 17/17 verification, cost/rollback evidence | owner-deferred until credential availability; zero provider attempts |
+| E0001-20 | W15 | orchestrator / `gpt-5.6-sol` | Kernel/Storage/Runtime/CLI start claim, live one-writer/CAS recovery, emitted recovery; secure runbook | E0001-02, E0001-07..09, E0001-18, E0001-19 | Atomic four-record claim; exact replay no-dispatch; pristine same-run recovery; resume/stale-CAS contention zero-write; start contention bounded to initial claim; one send; workspace/policy/Human argv; secure operator procedure | done; Kernel 106/106, Storage 133/133, Runtime 122/122, host CLI 93/93, reverse impact 613/613, independent final PASS, and readiness replay clean |
+| E0001-04 | W16 | e0001-live-operator / `gpt-5.6-sol` | live dogfood record and unique handoff | E0001-02, E0001-03, E0001-06..20 + paid-use Gate B | Final-source host CLI, immutable readiness replay, fresh live run, signed approval, independent non-author 17/17 verification, cost/rollback evidence | owner-deferred until credential availability; zero provider attempts |
 | E0001-05 | W17 | orchestrator / `gpt-5.6-sol` | integration and edition release records | E0001-01..04, E0001-06..20 | Quiescent workspace gate and dated Gate C decision | blocked |
 
 ## Dependency flow
@@ -126,9 +126,15 @@ E0001-01 contract + recovery/evaluation design
   Started records atomically; Runtime returns exact replay without dispatch and
   recovers only an exact pristine same run; CLI emits workspace/policy/Human-
   bound follow-ups; the secure runbook prohibits reconstructed argv, generic
-  resume, and approval UI. Final reverse impact passes 597/597 across 49
-  suites, all independent audits pass after one runbook correction, and exact
-  retained readiness replay remains 10/10.
+  resume, and approval UI. Initial reverse impact passed 597/597 across 49
+  suites. A post-commit concurrency audit then
+  reopened W15: the final repair adds a crash-released one-writer lease,
+  expected-tail checkpoint CAS, exact resume-state/epoch fencing, and
+  prospective-history validation. Final reverse impact passes 613/613 across
+  50 suites; resume and stale-CAS contention are zero-write, start contention
+  is bounded to its atomic initial claim, shared Prepared recovery performs one
+  send, all independent audits pass, and exact retained readiness replay
+  remains 10/10.
 - W16 starts only after deterministic preflight is independently 10/10, the
   frozen 17-check live policy is validated, and the owner has explicitly
   approved credential, provider/model, spend, synthetic data, evidence

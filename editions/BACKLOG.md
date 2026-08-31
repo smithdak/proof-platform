@@ -66,8 +66,12 @@ signed human approval, resumes durably, and publishes a verified preview.
 
 **Status:** Activated. The authoritative twenty-task W1-W17 graph has
 completed E0001-01..03 and E0001-06..20. W16 E0001-04 is stopped only at the
-approved credential boundary; W17 E0001-05 and Gate C remain blocked on the
-live journey and independent 17/17 verification.
+approved credential boundary and is preassigned to `e0001-live-operator` with
+a distinct non-author verifier; W17 E0001-05 and Gate C remain blocked on the
+live journey and independent 17/17 verification. E0001-20's final recovery
+barrier includes a crash-released active-writer lease and atomic expected-tail
+checkpoint append, so stale/concurrent resumers cannot poison history or
+orphan an authorized provider response.
 
 **Dispatch source of truth:** `editions/AXP-E0001/assignments.tsv`.
 `workgraph.md` and `tasks/E0001-*.md` are required supporting dispatch context.
@@ -76,7 +80,7 @@ work.
 
 | ID | Current work item | Depends on | Exclusive path | Acceptance evidence | Risk | Tier |
 |---|---|---|---|---|---|---|
-| E0001-04 | Live dogfood and independent verification | E0001-02,03,06..20 plus paid-use Gate B | `docs/dogfood/release-manager-live.md`<br>`editions/AXP-E0001/handoffs/E0001-04.md` | Final-source host suite (currently 93/93) and immutable 10/10 replay; one exact approved live run; signed approval chronology; same-run live resume; independent 17/17; cost and rollback evidence | critical | `gpt-5.6-sol` |
+| E0001-04 | Live dogfood and independent verification (`e0001-live-operator`; distinct `e0001-live-verifier`) | E0001-02,03,06..20 plus paid-use Gate B | `docs/dogfood/release-manager-live.md`<br>`editions/AXP-E0001/handoffs/E0001-04.md` | Final-source host suite (93/93), Runtime 122/122, Kernel 106/106, Storage 133/133, immutable 10/10 replay; one exact approved live run; signed approval chronology; same-run live resume; independent 17/17; cost and rollback evidence | critical | `gpt-5.6-sol` |
 | E0001-05 | Quiescent integration and owner release gate | E0001-01..04,06..20 | edition release records and root integration files listed in the task packet | Quiescent verification passes and the product owner records a dated Gate C accept, defer, or reject decision | high | `gpt-5.6-sol` |
 
 **Historical seed decomposition (not dispatch authority):**

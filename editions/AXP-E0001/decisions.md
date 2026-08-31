@@ -539,3 +539,46 @@ and private modes.
 This correction authorizes no credential read, provider call, approval,
 publication, live effect, charge, or Gate C decision. E0001-20 is W15; live
 dogfood moves to W16 and integration/Gate C to W17.
+
+## D-E0001-018 — Live execution requires both active-writer exclusion and expected-tail append
+
+Status: implemented protective correction · Date: 2026-08-31 · Decision owner: orchestrator
+
+A post-commit concurrency audit of E0001-20 proved that provider-send
+cardinality was safe but immutable recovery was not. Two resumers could load
+the same pristine tail, persist different epochs, and append incompatible
+Prepared attempts through list-next-insert. The later checkpoint was itself
+durable but made the complete history invalid. Expected-tail CAS alone closes
+that stale append, but it cannot protect a process paused after the exact
+Dispatching/event barrier: another resumer could terminalize the run before
+the first process performs its already-authorized send, orphaning a paid
+response.
+
+E0001 therefore requires both controls. The frozen live runtime holds one
+crash-released advisory workspace execution lease from before resume's first
+durable read through return; an acquired start holds it from immediately after
+the atomic claim through return, while exact Existing replay stays read-only.
+Resume contention is `LiveRunBusy` and performs zero store writes, gateway
+creation, provider sends, or governed effects. Start contention may retain only
+the atomic four-record initial claim bundle; it performs no post-claim write,
+gateway creation, provider send, or governed effect and must recover that same
+run through exact persisted-start replay after lease release. Every post-claim
+live checkpoint also prevalidates the full prospective history and atomically
+compares the exact tail ID, sequence, and state digest. Resume epoch append
+binds the exact prior state, and ordinary append rejects a tail owned by
+another epoch.
+
+The new `AgentRunStore` method is default-compatible (`Unsupported`). Recording
+storage implements it under the checkpoint mutex and SQLite under
+`BEGIN IMMEDIATE`; both reject malformed candidates and corrupt current or
+retry-predecessor evidence, return `Stale` without insertion for a displaced
+writer, and accept only an exact current retry with its exact predecessor.
+Legacy checkpoint save remains unchanged for existing callers.
+
+Final direct gates pass Kernel 106/106, Storage 133/133, Runtime 122/122, and
+host CLI 93/93. Reverse impact passes Runtime/CLI 215 tests, Storage/transports
+293 tests, and Kernel plus all 12 dependents 613 tests across 50 suites.
+Independent final audit found no remaining material live concurrency race.
+This correction changes no credential, provider/model, budget, synthetic
+payload, authority, registry, schema migration, live-run evidence, or Gate C
+state, and it authorizes no provider attempt.

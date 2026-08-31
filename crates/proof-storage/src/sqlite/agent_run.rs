@@ -1,8 +1,9 @@
 //! Durable agent run control-plane storage.
 
 use proof_kernel::{
-    AgentCheckpoint, AgentEvaluationOutcome, AgentRun, AgentRunEvaluation, AgentRunEvent,
-    AgentRunMode, AgentRunStatus, AgentRunStep, AgentRunStepStatus, AgentRunStore,
+    canonicalize, digest, AgentCheckpoint, AgentCheckpointAppendResult, AgentCheckpointTail,
+    AgentEvaluationOutcome, AgentRun, AgentRunEvaluation, AgentRunEvent, AgentRunMode,
+    AgentRunStatus, AgentRunStep, AgentRunStepStatus, AgentRunStore, ArtifactKind,
     LiveRunStartClaim, LiveRunStartClaimResult,
 };
 use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
@@ -399,6 +400,89 @@ impl SqliteStore {
         Ok(Some(step))
     }
 
+    /// Atomically appends a checkpoint when the caller still owns the exact
+    /// observed tail. Exact retries are idempotent; stale observations never
+    /// insert a row.
+    pub fn append_agent_checkpoint(
+        &self,
+        expected_tail: Option<&AgentCheckpointTail>,
+        checkpoint: &AgentCheckpoint,
+    ) -> Result<AgentCheckpointAppendResult, StorageError> {
+        let serialized = serialize_validated_checkpoint(checkpoint, "new agent checkpoint")?;
+        let expected_sequence = match expected_tail {
+            Some(tail) => tail.sequence.checked_add(1).ok_or_else(|| {
+                StorageError::Conflict(
+                    "new agent checkpoint cannot follow the maximum expected tail sequence"
+                        .to_string(),
+                )
+            })?,
+            None => 0,
+        };
+        if checkpoint.sequence != expected_sequence {
+            return Err(StorageError::Conflict(format!(
+                "new agent checkpoint sequence {} does not follow expected sequence {expected_sequence}",
+                checkpoint.sequence
+            )));
+        }
+
+        let connection = self.conn.lock().unwrap();
+        let transaction = Transaction::new_unchecked(&connection, TransactionBehavior::Immediate)?;
+        let current = load_current_checkpoint(&transaction, &checkpoint.run_id)?;
+        if load_checkpoint_by_id(&transaction, &checkpoint.id)?
+            .as_ref()
+            .is_some_and(|existing| existing != checkpoint)
+        {
+            return Err(StorageError::Conflict(format!(
+                "new agent checkpoint {} conflicts with an existing immutable checkpoint",
+                checkpoint.id
+            )));
+        }
+        reject_expected_tail_from_another_run(&transaction, expected_tail, &checkpoint.run_id)?;
+        let current_tail = current.as_ref().map(AgentCheckpointTail::from);
+        let candidate_tail = AgentCheckpointTail::from(checkpoint);
+
+        if current_tail == Some(candidate_tail) {
+            let predecessor = match checkpoint.sequence.checked_sub(1) {
+                Some(sequence) => {
+                    load_checkpoint_at_sequence(&transaction, &checkpoint.run_id, sequence)?
+                }
+                None => None,
+            };
+            let predecessor_tail = predecessor.as_ref().map(AgentCheckpointTail::from);
+            let exact_retry =
+                current.as_ref() == Some(checkpoint) && predecessor_tail.as_ref() == expected_tail;
+            transaction.commit()?;
+            return Ok(if exact_retry {
+                AgentCheckpointAppendResult::Appended
+            } else {
+                AgentCheckpointAppendResult::Stale
+            });
+        }
+
+        if current_tail.as_ref() != expected_tail {
+            transaction.commit()?;
+            return Ok(AgentCheckpointAppendResult::Stale);
+        }
+        reject_checkpoint_identity_conflicts(&transaction, checkpoint)?;
+
+        reject_if_agent_trace_sealed(&transaction, &checkpoint.run_id, "append a checkpoint")?;
+        transaction.execute(
+            "INSERT INTO agent_checkpoints (
+                id, run_id, sequence, state_digest, created_at, checkpoint_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                checkpoint.id.to_string(),
+                checkpoint.run_id.to_string(),
+                i64::from(checkpoint.sequence),
+                checkpoint.state_digest.hex(),
+                checkpoint.created_at.to_rfc3339(),
+                serialized,
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(AgentCheckpointAppendResult::Appended)
+    }
+
     /// Appends an immutable checkpoint to an agent run.
     pub fn save_agent_checkpoint(&self, checkpoint: &AgentCheckpoint) -> Result<(), StorageError> {
         let serialized = serde_json::to_string(checkpoint)?;
@@ -724,6 +808,15 @@ impl AgentRunStore for SqliteStore {
             .map_err(|error| error.to_string())
     }
 
+    fn append_agent_checkpoint(
+        &self,
+        expected_tail: Option<&AgentCheckpointTail>,
+        checkpoint: &AgentCheckpoint,
+    ) -> Result<AgentCheckpointAppendResult, String> {
+        SqliteStore::append_agent_checkpoint(self, expected_tail, checkpoint)
+            .map_err(|error| error.to_string())
+    }
+
     fn save_agent_checkpoint(&self, checkpoint: &AgentCheckpoint) -> Result<(), String> {
         SqliteStore::save_agent_checkpoint(self, checkpoint).map_err(|error| error.to_string())
     }
@@ -767,6 +860,198 @@ fn step_status(status: AgentRunStepStatus) -> &'static str {
         AgentRunStepStatus::Failed => "failed",
         AgentRunStepStatus::Cancelled => "cancelled",
     }
+}
+
+struct StoredAgentCheckpoint {
+    id: String,
+    run_id: String,
+    sequence: i64,
+    state_digest: String,
+    created_at: String,
+    checkpoint_json: String,
+}
+
+fn load_current_checkpoint(
+    transaction: &Transaction<'_>,
+    run_id: &Uuid,
+) -> Result<Option<AgentCheckpoint>, StorageError> {
+    load_stored_checkpoint(
+        transaction,
+        "SELECT id, run_id, sequence, state_digest, created_at, checkpoint_json
+         FROM agent_checkpoints
+        WHERE run_id = ?1
+         ORDER BY sequence DESC
+         LIMIT 1",
+        params![run_id.to_string()],
+        Some(run_id),
+    )
+}
+
+fn load_checkpoint_at_sequence(
+    transaction: &Transaction<'_>,
+    run_id: &Uuid,
+    sequence: u32,
+) -> Result<Option<AgentCheckpoint>, StorageError> {
+    load_stored_checkpoint(
+        transaction,
+        "SELECT id, run_id, sequence, state_digest, created_at, checkpoint_json
+         FROM agent_checkpoints
+         WHERE run_id = ?1 AND sequence = ?2",
+        params![run_id.to_string(), i64::from(sequence)],
+        Some(run_id),
+    )
+}
+
+fn load_checkpoint_by_id(
+    transaction: &Transaction<'_>,
+    checkpoint_id: &Uuid,
+) -> Result<Option<AgentCheckpoint>, StorageError> {
+    load_stored_checkpoint(
+        transaction,
+        "SELECT id, run_id, sequence, state_digest, created_at, checkpoint_json
+         FROM agent_checkpoints
+         WHERE id = ?1",
+        params![checkpoint_id.to_string()],
+        None,
+    )
+}
+
+fn load_stored_checkpoint<P: rusqlite::Params>(
+    transaction: &Transaction<'_>,
+    query: &str,
+    parameters: P,
+    expected_run_id: Option<&Uuid>,
+) -> Result<Option<AgentCheckpoint>, StorageError> {
+    transaction
+        .query_row(query, parameters, |row| {
+            Ok(StoredAgentCheckpoint {
+                id: row.get(0)?,
+                run_id: row.get(1)?,
+                sequence: row.get(2)?,
+                state_digest: row.get(3)?,
+                created_at: row.get(4)?,
+                checkpoint_json: row.get(5)?,
+            })
+        })
+        .optional()?
+        .map(|stored| validate_stored_checkpoint(stored, expected_run_id))
+        .transpose()
+}
+
+fn validate_stored_checkpoint(
+    stored: StoredAgentCheckpoint,
+    expected_run_id: Option<&Uuid>,
+) -> Result<AgentCheckpoint, StorageError> {
+    let checkpoint: AgentCheckpoint =
+        serde_json::from_str(&stored.checkpoint_json).map_err(|error| {
+            StorageError::Conflict(format!("stored agent checkpoint is malformed: {error}"))
+        })?;
+    let stored_id = Uuid::parse_str(&stored.id).map_err(|error| {
+        StorageError::Conflict(format!("stored agent checkpoint ID is malformed: {error}"))
+    })?;
+    let stored_run_id = Uuid::parse_str(&stored.run_id).map_err(|error| {
+        StorageError::Conflict(format!(
+            "stored agent checkpoint run ID is malformed: {error}"
+        ))
+    })?;
+    let stored_sequence: u32 = stored.sequence.try_into().map_err(|_| {
+        StorageError::Conflict("stored agent checkpoint sequence is out of range".to_string())
+    })?;
+    let serialized = serialize_validated_checkpoint(&checkpoint, "stored agent checkpoint")?;
+    if stored_id != checkpoint.id
+        || stored_run_id != checkpoint.run_id
+        || expected_run_id.is_some_and(|expected| stored_run_id != *expected)
+        || stored_sequence != checkpoint.sequence
+        || stored.state_digest != checkpoint.state_digest.hex()
+        || stored.created_at != checkpoint.created_at.to_rfc3339()
+        || stored.checkpoint_json != serialized
+    {
+        return Err(StorageError::Conflict(
+            "stored agent checkpoint indexed columns or immutable JSON drifted".to_string(),
+        ));
+    }
+    Ok(checkpoint)
+}
+
+fn serialize_validated_checkpoint(
+    checkpoint: &AgentCheckpoint,
+    description: &str,
+) -> Result<String, StorageError> {
+    let canonical = canonicalize(&checkpoint.state).map_err(|error| {
+        StorageError::Conflict(format!(
+            "{description} state is not canonicalizable: {error}"
+        ))
+    })?;
+    if checkpoint.state_digest != digest(ArtifactKind::AgentCheckpoint, &canonical) {
+        return Err(StorageError::Conflict(format!(
+            "{description} state digest does not match its state"
+        )));
+    }
+    serde_json::to_string(checkpoint).map_err(StorageError::from)
+}
+
+fn reject_expected_tail_from_another_run(
+    transaction: &Transaction<'_>,
+    expected_tail: Option<&AgentCheckpointTail>,
+    candidate_run_id: &Uuid,
+) -> Result<(), StorageError> {
+    let Some(expected_tail) = expected_tail else {
+        return Ok(());
+    };
+    let stored_run_id = transaction
+        .query_row(
+            "SELECT run_id FROM agent_checkpoints WHERE id = ?1",
+            [expected_tail.checkpoint_id.to_string()],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let Some(stored_run_id) = stored_run_id else {
+        return Ok(());
+    };
+    let stored_run_id = Uuid::parse_str(&stored_run_id).map_err(|error| {
+        StorageError::Conflict(format!(
+            "expected agent checkpoint tail run ID is malformed: {error}"
+        ))
+    })?;
+    if stored_run_id != *candidate_run_id {
+        return Err(StorageError::Conflict(format!(
+            "expected agent checkpoint tail {} belongs to run {stored_run_id}, not {candidate_run_id}",
+            expected_tail.checkpoint_id
+        )));
+    }
+    Ok(())
+}
+
+fn reject_checkpoint_identity_conflicts(
+    transaction: &Transaction<'_>,
+    checkpoint: &AgentCheckpoint,
+) -> Result<(), StorageError> {
+    let conflict = transaction
+        .query_row(
+            "SELECT id, run_id, sequence FROM agent_checkpoints
+             WHERE id = ?1 OR (run_id = ?2 AND sequence = ?3)
+             LIMIT 1",
+            params![
+                checkpoint.id.to_string(),
+                checkpoint.run_id.to_string(),
+                i64::from(checkpoint.sequence),
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    if let Some((id, run_id, sequence)) = conflict {
+        return Err(StorageError::Conflict(format!(
+            "new agent checkpoint {} conflicts with stored checkpoint {id} at run {run_id} sequence {sequence}",
+            checkpoint.id
+        )));
+    }
+    Ok(())
 }
 
 fn load_json<T: serde::de::DeserializeOwned>(

@@ -1,19 +1,20 @@
 //! Durable planner/tool loop backed by Proof run and approval stores.
 
 use std::collections::BTreeSet;
+use std::fs::{File, TryLockError};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use proof_kernel::{
-    canonicalize, digest, principal_from_keypair, AgentCheckpoint, AgentDefinition,
-    AgentEvaluationOutcome, AgentRun, AgentRunError, AgentRunEvaluation, AgentRunEvent,
-    AgentRunEventKind, AgentRunMode, AgentRunStatus, AgentRunStep, AgentRunStepStatus,
-    AgentRunStore, AgentStore, ApprovalError, ApprovalExecution, ApprovalGrant, ApprovalOutcome,
-    ApprovalRequest, ApprovalStore, ArtifactKind, ContentDigest, Delegation, DelegationChain,
-    ExecutionContext, ExecutionEngine, ExecutionOutcome, Governance, Keypair, LiveRunStartClaim,
-    LiveRunStartClaimResult, PrincipalId, PrincipalKind, Proof, Registry, RegistryEntry,
-    SignedApprovalRequest,
+    canonicalize, digest, principal_from_keypair, AgentCheckpoint, AgentCheckpointAppendResult,
+    AgentCheckpointTail, AgentDefinition, AgentEvaluationOutcome, AgentRun, AgentRunError,
+    AgentRunEvaluation, AgentRunEvent, AgentRunEventKind, AgentRunMode, AgentRunStatus,
+    AgentRunStep, AgentRunStepStatus, AgentRunStore, AgentStore, ApprovalError, ApprovalExecution,
+    ApprovalGrant, ApprovalOutcome, ApprovalRequest, ApprovalStore, ArtifactKind, ContentDigest,
+    Delegation, DelegationChain, ExecutionContext, ExecutionEngine, ExecutionOutcome, Governance,
+    Keypair, LiveRunStartClaim, LiveRunStartClaimResult, PrincipalId, PrincipalKind, Proof,
+    Registry, RegistryEntry, SignedApprovalRequest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -235,6 +236,8 @@ pub enum AgentRuntimeError {
     Schema(String),
     #[error("live run setup rejected: {0}")]
     LiveSetup(String),
+    #[error("live run {run_id} is already executing in this workspace")]
+    LiveRunBusy { run_id: Uuid },
     #[error("live provider gateway factory failed: {0}")]
     GatewayFactory(String),
 }
@@ -2016,6 +2019,38 @@ impl AgentRuntime {
         }
     }
 
+    /// Serializes the frozen E0001 live journey within its private workspace.
+    /// The kernel releases this advisory lock when the file descriptor closes,
+    /// including after abrupt process termination, so a later resume can take
+    /// ownership without a persistent lease record to repair.
+    fn acquire_live_execution_lease(&self, run_id: Uuid) -> Result<File, AgentRuntimeError> {
+        let lease = File::open(&self.workspace_path).map_err(|error| {
+            AgentRuntimeError::LiveSetup(format!(
+                "cannot open live workspace execution lease: {error}"
+            ))
+        })?;
+        if !lease
+            .metadata()
+            .map_err(|error| {
+                AgentRuntimeError::LiveSetup(format!(
+                    "cannot inspect live workspace execution lease: {error}"
+                ))
+            })?
+            .is_dir()
+        {
+            return Err(AgentRuntimeError::LiveSetup(
+                "live workspace execution lease target is not a directory".to_string(),
+            ));
+        }
+        lease.try_lock().map_err(|error| match error {
+            TryLockError::WouldBlock => AgentRuntimeError::LiveRunBusy { run_id },
+            TryLockError::Error(error) => AgentRuntimeError::LiveSetup(format!(
+                "cannot acquire live workspace execution lease: {error}"
+            )),
+        })?;
+        Ok(lease)
+    }
+
     /// Validates a prospective sealed live start without creating a run or
     /// invoking the configured gateway factory.
     ///
@@ -2122,6 +2157,7 @@ impl AgentRuntime {
                 ));
             }
         }
+        let _execution_lease = self.acquire_live_execution_lease(run.id)?;
         self.reread_exact_run(&run)?;
         let checkpoints = self
             .run_store
@@ -2204,6 +2240,10 @@ impl AgentRuntime {
         setup: LiveRunSetup,
         run_id: Uuid,
     ) -> Result<AgentRuntimeOutcome, AgentRuntimeError> {
+        // Acquire before the first durable read and hold through the returned
+        // outcome. A contending process must perform no store write, provider
+        // construction, or external effect.
+        let _execution_lease = self.acquire_live_execution_lease(run_id)?;
         let run = self
             .run_store
             .load_agent_run(&run_id)
@@ -2237,8 +2277,9 @@ impl AgentRuntime {
         if self.sealed_live_terminal_trace(&run, &state)? {
             return self.live_terminal_outcome(run, state, true);
         }
+        let previous_state = state.clone();
         state.process_epoch_id = setup.process_epoch_id;
-        self.save_live_state(run_id, &state)?;
+        self.save_live_resume_epoch(run_id, &previous_state, &state)?;
         self.reread_live_state(run_id, &state)?;
         if state.terminal_error.is_some() || run.status.is_terminal() {
             return self.live_terminal_outcome(run, state, false);
@@ -2392,7 +2433,6 @@ impl AgentRuntime {
                         && matches!(state.next_input, LiveModelInput::ToolOutput { .. }) =>
                 {
                     state.final_output = Some(output.clone());
-                    self.save_live_state(run_id, &state)?;
                     return self.live_terminal_outcome(run, state, false);
                 }
                 _ => {}
@@ -4449,7 +4489,6 @@ impl AgentRuntime {
                     return self.fail_live_run(run, state.clone(), AgentRunEventKind::Failed);
                 }
                 state.final_output = Some(output);
-                self.save_live_state(run.id, state)?;
                 self.live_terminal_outcome(run, state.clone(), false)
             }
             ModelDecision::ToolCall {
@@ -5088,6 +5127,7 @@ impl AgentRuntime {
         if run.status == AgentRunStatus::Running
             && Utc::now() >= run_deadline(state.started_at, 300)
         {
+            state.final_output = None;
             state.terminal_error =
                 Some("live wall-clock deadline exceeded before terminal seal".to_string());
             self.save_live_state(run.id, &state)?;
@@ -5102,6 +5142,7 @@ impl AgentRuntime {
                     "sealed live terminal evidence is incomplete".to_string(),
                 ));
             }
+            state.final_output = None;
             state.terminal_error =
                 Some("terminal report or governed publication evidence is incomplete".to_string());
             self.save_live_state(run.id, &state)?;
@@ -5114,11 +5155,16 @@ impl AgentRuntime {
         if run.status == AgentRunStatus::Running
             && Utc::now() >= run_deadline(state.started_at, 300)
         {
+            state.final_output = None;
             state.terminal_error =
                 Some("live wall-clock deadline exceeded after terminal verification".to_string());
             self.save_live_state(run.id, &state)?;
             return self.fail_live_run(run, state, AgentRunEventKind::BudgetExceeded);
         }
+        if self.live_state(run.id)? != state {
+            self.save_live_state(run.id, &state)?;
+        }
+        self.reread_live_state(run.id, &state)?;
         // Evaluate an in-memory terminal candidate before persisting the
         // irreversible Succeeded transition. The final evaluation is rebuilt
         // after Completed is appended so its trace digest binds that terminal
@@ -5144,6 +5190,7 @@ impl AgentRuntime {
                     "sealed live terminal evidence does not pass all 17 checks".to_string(),
                 ));
             }
+            state.final_output = None;
             state.terminal_error =
                 Some("live terminal candidate did not pass all 17 evidence checks".to_string());
             self.save_live_state(run.id, &state)?;
@@ -8949,7 +8996,16 @@ impl AgentRuntime {
         run_id: Uuid,
         state: &LiveRuntimeState,
     ) -> Result<(), AgentRuntimeError> {
-        self.save_live_state_checkpoint(run_id, state)
+        self.save_live_state_checkpoint(run_id, None, state)
+    }
+
+    fn save_live_resume_epoch(
+        &self,
+        run_id: Uuid,
+        previous_state: &LiveRuntimeState,
+        state: &LiveRuntimeState,
+    ) -> Result<(), AgentRuntimeError> {
+        self.save_live_state_checkpoint(run_id, Some(previous_state), state)
     }
 
     fn request_from_live_state(
@@ -9040,24 +9096,54 @@ impl AgentRuntime {
     fn save_live_state_checkpoint(
         &self,
         run_id: Uuid,
+        expected_state: Option<&LiveRuntimeState>,
         state: &LiveRuntimeState,
     ) -> Result<(), AgentRuntimeError> {
-        let sequence = next_sequence(
-            self.run_store
-                .list_agent_checkpoints(&run_id)
-                .map_err(AgentRuntimeError::Store)?
-                .last()
-                .map(|checkpoint| checkpoint.sequence),
-        )?;
+        let mut checkpoints = self
+            .run_store
+            .list_agent_checkpoints(&run_id)
+            .map_err(AgentRuntimeError::Store)?;
+        let persisted = validated_live_state_history(run_id, &checkpoints)?;
+        if expected_state.is_some_and(|expected| expected != &persisted) {
+            return Err(AgentRuntimeError::InconsistentState(format!(
+                "live run {run_id} checkpoint tail changed before its resume epoch transition"
+            )));
+        }
+        if expected_state.is_none() && persisted.process_epoch_id != state.process_epoch_id {
+            return Err(AgentRuntimeError::InconsistentState(format!(
+                "live run {run_id} checkpoint tail belongs to a different process epoch"
+            )));
+        }
+        let tail = checkpoints
+            .last()
+            .ok_or(AgentRuntimeError::MissingCheckpoint(run_id))?;
+        let expected_tail = AgentCheckpointTail::from(tail);
+        let sequence = next_sequence(Some(tail.sequence))?;
         let checkpoint = AgentCheckpoint::create(
             run_id,
             sequence,
             json!({"kind": LIVE_RUNTIME_CHECKPOINT_KIND, "runtime": state}),
             Utc::now(),
         )?;
-        self.run_store
-            .save_agent_checkpoint(&checkpoint)
-            .map_err(AgentRuntimeError::Store)
+        // Reject an invalid transition before immutable storage. CAS then
+        // closes the race between this validation and the append itself.
+        checkpoints.push(checkpoint.clone());
+        if validated_live_state_history(run_id, &checkpoints)? != *state {
+            return Err(AgentRuntimeError::InvalidCheckpoint(run_id));
+        }
+        match self
+            .run_store
+            .append_agent_checkpoint(Some(&expected_tail), &checkpoint)
+            .map_err(AgentRuntimeError::Store)?
+        {
+            AgentCheckpointAppendResult::Appended => Ok(()),
+            AgentCheckpointAppendResult::Stale => Err(AgentRuntimeError::InconsistentState(
+                format!("live run {run_id} checkpoint tail changed during append"),
+            )),
+            AgentCheckpointAppendResult::Unsupported => Err(AgentRuntimeError::LiveSetup(
+                "live run store does not support expected-tail checkpoint append".to_string(),
+            )),
+        }
     }
     fn live_state(&self, run_id: Uuid) -> Result<LiveRuntimeState, AgentRuntimeError> {
         let checkpoints = self
@@ -9379,6 +9465,11 @@ mod tests {
         Error(ModelGatewayError),
         Turn(ModelTurn),
         Tool(ReleasePublishArguments),
+        BlockingTool {
+            entered: Arc<Barrier>,
+            release: Arc<Barrier>,
+            arguments: ReleasePublishArguments,
+        },
         FinishFromToolOutput,
         FinishWithOutput(String),
         PanicAfterBarrier,
@@ -9490,6 +9581,22 @@ mod tests {
                         arguments: arguments.as_value().unwrap(),
                     },
                 )),
+                LiveGatewayAction::BlockingTool {
+                    entered,
+                    release,
+                    arguments,
+                } => {
+                    entered.wait();
+                    release.wait();
+                    Ok(Self::successful_turn(
+                        "resp_tool",
+                        ModelDecision::ToolCall {
+                            call_id: "call_publish".to_string(),
+                            name: LIVE_TOOL_NAME.to_string(),
+                            arguments: arguments.as_value().unwrap(),
+                        },
+                    ))
+                }
                 LiveGatewayAction::FinishFromToolOutput => {
                     let ModelInput::ToolOutput { output, .. } = &request.input else {
                         panic!("finish action requires committed tool output")
@@ -9578,6 +9685,64 @@ mod tests {
                 terminal_saved: AtomicBool::new(false),
             }
         }
+
+        fn reject_checkpoint(&self, checkpoint: &AgentCheckpoint) -> bool {
+            let runtime = &checkpoint.state["runtime"];
+            let last = runtime["attempts"]
+                .as_array()
+                .and_then(|items| items.last());
+            let reject = match self.fault {
+                LiveRunFault::DispatchSave => {
+                    last.is_some_and(|attempt| attempt["state"] == "dispatching")
+                }
+                LiveRunFault::PendingCheckpoint => !runtime["pending_tool"].is_null(),
+                LiveRunFault::FinalOutputCheckpoint => !runtime["final_output"].is_null(),
+                LiveRunFault::RetryPrepared => {
+                    runtime["attempts"].as_array().is_some_and(|items| {
+                        items.len() == 2
+                            && items
+                                .last()
+                                .is_some_and(|attempt| attempt["state"] == "prepared")
+                    })
+                }
+                LiveRunFault::ContinuationCheckpoint => {
+                    runtime["pending_tool"].is_null()
+                        && runtime["counters"]["successful_publication_mutations"] == 1
+                        && runtime["final_output"].is_null()
+                }
+                LiveRunFault::ResumeEpochSave => {
+                    !runtime["pending_tool"].is_null()
+                        && self
+                            .inner
+                            .list_agent_checkpoints(&checkpoint.run_id)
+                            .ok()
+                            .and_then(|checkpoints| checkpoints.last().cloned())
+                            .is_some_and(|previous| {
+                                previous.state["runtime"]["process_epoch_id"]
+                                    != runtime["process_epoch_id"]
+                            })
+                }
+                _ => false,
+            };
+            reject && self.armed.swap(false, Ordering::SeqCst)
+        }
+
+        fn checkpoint_saved(&self, checkpoint: &AgentCheckpoint) {
+            let runtime = &checkpoint.state["runtime"];
+            let last = runtime["attempts"]
+                .as_array()
+                .and_then(|items| items.last());
+            if matches!(self.fault, LiveRunFault::DispatchRead)
+                && last.is_some_and(|attempt| attempt["state"] == "dispatching")
+            {
+                self.dispatch_saved.store(true, Ordering::SeqCst);
+            }
+            if matches!(self.fault, LiveRunFault::TerminalVerificationRead)
+                && !runtime["final_output"].is_null()
+            {
+                self.terminal_saved.store(true, Ordering::SeqCst);
+            }
+        }
     }
 
     impl AgentRunStore for FaultingLiveRunStore {
@@ -9642,56 +9807,28 @@ mod tests {
             self.inner.find_agent_run_step_by_approval(request_id)
         }
         fn save_agent_checkpoint(&self, checkpoint: &AgentCheckpoint) -> Result<(), String> {
-            let runtime = &checkpoint.state["runtime"];
-            let last = runtime["attempts"]
-                .as_array()
-                .and_then(|items| items.last());
-            let reject = match self.fault {
-                LiveRunFault::DispatchSave => {
-                    last.is_some_and(|attempt| attempt["state"] == "dispatching")
-                }
-                LiveRunFault::PendingCheckpoint => !runtime["pending_tool"].is_null(),
-                LiveRunFault::FinalOutputCheckpoint => !runtime["final_output"].is_null(),
-                LiveRunFault::RetryPrepared => {
-                    runtime["attempts"].as_array().is_some_and(|items| {
-                        items.len() == 2
-                            && items
-                                .last()
-                                .is_some_and(|attempt| attempt["state"] == "prepared")
-                    })
-                }
-                LiveRunFault::ContinuationCheckpoint => {
-                    runtime["pending_tool"].is_null()
-                        && runtime["counters"]["successful_publication_mutations"] == 1
-                        && runtime["final_output"].is_null()
-                }
-                LiveRunFault::ResumeEpochSave => {
-                    !runtime["pending_tool"].is_null()
-                        && self
-                            .inner
-                            .list_agent_checkpoints(&checkpoint.run_id)
-                            .ok()
-                            .and_then(|checkpoints| checkpoints.last().cloned())
-                            .is_some_and(|previous| {
-                                previous.state["runtime"]["process_epoch_id"]
-                                    != runtime["process_epoch_id"]
-                            })
-                }
-                _ => false,
-            };
-            if reject && self.armed.swap(false, Ordering::SeqCst) {
+            if self.reject_checkpoint(checkpoint) {
                 return Err("injected live checkpoint save fault".to_string());
             }
             let result = self.inner.save_agent_checkpoint(checkpoint);
-            if matches!(self.fault, LiveRunFault::DispatchRead)
-                && last.is_some_and(|attempt| attempt["state"] == "dispatching")
-            {
-                self.dispatch_saved.store(true, Ordering::SeqCst);
+            if result.is_ok() {
+                self.checkpoint_saved(checkpoint);
             }
-            if matches!(self.fault, LiveRunFault::TerminalVerificationRead)
-                && !runtime["final_output"].is_null()
-            {
-                self.terminal_saved.store(true, Ordering::SeqCst);
+            result
+        }
+        fn append_agent_checkpoint(
+            &self,
+            expected_tail: Option<&AgentCheckpointTail>,
+            checkpoint: &AgentCheckpoint,
+        ) -> Result<AgentCheckpointAppendResult, String> {
+            if self.reject_checkpoint(checkpoint) {
+                return Err("injected live checkpoint save fault".to_string());
+            }
+            let result = self
+                .inner
+                .append_agent_checkpoint(expected_tail, checkpoint);
+            if matches!(result, Ok(AgentCheckpointAppendResult::Appended)) {
+                self.checkpoint_saved(checkpoint);
             }
             result
         }
@@ -10155,6 +10292,22 @@ mod tests {
                 return Err("simulated crash before committed checkpoint save".to_string());
             }
             self.inner.save_agent_checkpoint(checkpoint)
+        }
+        fn append_agent_checkpoint(
+            &self,
+            expected_tail: Option<&AgentCheckpointTail>,
+            checkpoint: &AgentCheckpoint,
+        ) -> Result<AgentCheckpointAppendResult, String> {
+            if checkpoint.state["kind"] == LIVE_RUNTIME_CHECKPOINT_KIND
+                && checkpoint.state["runtime"]["attempts"]
+                    .as_array()
+                    .and_then(|attempts| attempts.last())
+                    .is_some_and(|attempt| attempt["state"] == "committed")
+            {
+                return Err("simulated crash before committed checkpoint save".to_string());
+            }
+            self.inner
+                .append_agent_checkpoint(expected_tail, checkpoint)
         }
         fn list_agent_checkpoints(&self, run_id: &Uuid) -> Result<Vec<AgentCheckpoint>, String> {
             self.inner.list_agent_checkpoints(run_id)
@@ -10993,6 +11146,21 @@ mod tests {
                 return Err("simulated terminal checkpoint seal".to_string());
             }
             self.inner.save_agent_checkpoint(checkpoint)
+        }
+        fn append_agent_checkpoint(
+            &self,
+            expected_tail: Option<&AgentCheckpointTail>,
+            checkpoint: &AgentCheckpoint,
+        ) -> Result<AgentCheckpointAppendResult, String> {
+            if self
+                .reject_checkpoints
+                .as_ref()
+                .is_some_and(|reject| reject.load(Ordering::SeqCst))
+            {
+                return Err("simulated terminal checkpoint seal".to_string());
+            }
+            self.inner
+                .append_agent_checkpoint(expected_tail, checkpoint)
         }
 
         fn list_agent_checkpoints(&self, run_id: &Uuid) -> Result<Vec<AgentCheckpoint>, String> {
@@ -13458,6 +13626,93 @@ mod tests {
     }
 
     #[test]
+    fn acquired_live_start_lease_contention_keeps_only_claim_then_recovers_same_run() {
+        let fixture = LiveFixture::new();
+        let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
+        let lease_owner = fixture.runtime(factory.clone());
+        let execution_lease = lease_owner
+            .acquire_live_execution_lease(Uuid::now_v7())
+            .expect("test owner must acquire the workspace execution lease");
+        let workspace_before = workspace_snapshot(fixture.workspace.path());
+
+        let error = fixture
+            .runtime(factory.clone())
+            .run_live(fixture.setup.clone())
+            .expect_err("an acquired start must stop when the execution lease is busy");
+        let run_id = match error {
+            AgentRuntimeError::LiveRunBusy { run_id } => run_id,
+            other => panic!("expected LiveRunBusy, got {other}"),
+        };
+
+        let runs = fixture
+            .run_store
+            .list_agent_runs()
+            .unwrap()
+            .into_iter()
+            .filter(|run| run.agent_id == Some(fixture.agent.id))
+            .collect::<Vec<_>>();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].id, run_id);
+        let checkpoints = fixture.run_store.list_agent_checkpoints(&run_id).unwrap();
+        assert_eq!(checkpoints.len(), 1);
+        assert_eq!(checkpoints[0].sequence, 0);
+        let events = fixture.agent_store.list_agent_run_events(&run_id).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].sequence, 0);
+        assert_eq!(events[0].kind, AgentRunEventKind::Started);
+        assert!(fixture
+            .run_store
+            .list_agent_run_steps(&run_id)
+            .unwrap()
+            .is_empty());
+        assert!(fixture
+            .run_store
+            .list_agent_run_evaluations(&run_id)
+            .unwrap()
+            .is_empty());
+        assert!(fixture
+            .approval_store
+            .list_approval_requests()
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            workspace_snapshot(fixture.workspace.path()),
+            workspace_before
+        );
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 0);
+        assert!(factory.contexts.lock().unwrap().is_empty());
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 0);
+        validated_live_state_history(run_id, &checkpoints).unwrap();
+
+        drop(execution_lease);
+
+        let mut replay = fixture.setup.clone();
+        replay.process_epoch_id = Uuid::now_v7();
+        let AgentRuntimeOutcome::AlreadyStarted { run: replayed } =
+            lease_owner.run_live(replay).unwrap()
+        else {
+            panic!("exact start replay must return the retained claim")
+        };
+        assert_eq!(replayed.id, run_id);
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 0);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 0);
+
+        let AgentRuntimeOutcome::WaitingForApproval { run: resumed, .. } =
+            lease_owner.run_live(fixture.resume_setup(run_id)).unwrap()
+        else {
+            panic!("the retained same run must recover after lease release")
+        };
+        assert_eq!(resumed.id, run_id);
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 1);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 1);
+        validated_live_state_history(
+            run_id,
+            &fixture.run_store.list_agent_checkpoints(&run_id).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn concurrent_exact_live_starts_acquire_one_run_and_one_dispatch() {
         let fixture = LiveFixture::new();
         let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
@@ -13508,6 +13763,150 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn live_resume_lease_contention_is_read_only_then_releases_for_one_dispatch() {
+        let fixture = LiveFixture::new();
+        let claim_factory = fixture.factory(vec![]);
+        let faulting_store = Arc::new(FaultingLiveRunStore::new(
+            fixture.run_store.clone(),
+            LiveRunFault::AfterStartClaim,
+        ));
+        let crashed = fixture.runtime_with_stores(
+            claim_factory.clone(),
+            faulting_store,
+            fixture.agent_store.clone(),
+        );
+        assert!(matches!(
+            crashed.run_live(fixture.setup.clone()),
+            Err(AgentRuntimeError::Store(_))
+        ));
+        assert_eq!(claim_factory.creates.load(Ordering::SeqCst), 0);
+        assert_eq!(claim_factory.gateway.sends.load(Ordering::SeqCst), 0);
+
+        let run = fixture
+            .run_store
+            .list_agent_runs()
+            .unwrap()
+            .into_iter()
+            .find(|run| run.agent_id == Some(fixture.agent.id))
+            .expect("atomic claim must leave one pristine live run");
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let factory = fixture.factory(vec![LiveGatewayAction::BlockingTool {
+            entered: entered.clone(),
+            release: release.clone(),
+            arguments: fixture.arguments.clone(),
+        }]);
+        let winner_runtime = fixture.runtime(factory.clone());
+        let winner_setup = fixture.resume_setup(run.id);
+        let contender_runtime = fixture.runtime(factory.clone());
+        let contender_setup = fixture.resume_setup(run.id);
+        let winner = std::thread::spawn(move || winner_runtime.run_live(winner_setup));
+
+        entered.wait();
+        let before_contender = live_store_snapshot(&fixture);
+        let contender = contender_runtime.run_live(contender_setup);
+        let after_contender = live_store_snapshot(&fixture);
+        release.wait();
+        let winner = winner.join().unwrap().unwrap();
+
+        assert!(matches!(
+            contender,
+            Err(AgentRuntimeError::LiveRunBusy { run_id }) if run_id == run.id
+        ));
+        assert_eq!(after_contender, before_contender);
+        assert!(matches!(
+            winner,
+            AgentRuntimeOutcome::WaitingForApproval { .. }
+        ));
+        assert_eq!(factory.creates.load(Ordering::SeqCst), 1);
+        assert_eq!(factory.gateway.sends.load(Ordering::SeqCst), 1);
+        let checkpoints = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        validated_live_state_history(run.id, &checkpoints).unwrap();
+
+        let released = fixture
+            .runtime(factory)
+            .acquire_live_execution_lease(run.id)
+            .expect("completed winner must release its crash-safe lease");
+        drop(released);
+    }
+
+    #[test]
+    fn stale_live_resume_epoch_cannot_append_or_poison_history() {
+        let fixture = LiveFixture::new();
+        let claim_factory = fixture.factory(vec![]);
+        let faulting_store = Arc::new(FaultingLiveRunStore::new(
+            fixture.run_store.clone(),
+            LiveRunFault::AfterStartClaim,
+        ));
+        let crashed =
+            fixture.runtime_with_stores(claim_factory, faulting_store, fixture.agent_store.clone());
+        assert!(matches!(
+            crashed.run_live(fixture.setup.clone()),
+            Err(AgentRuntimeError::Store(_))
+        ));
+        let run = fixture
+            .run_store
+            .list_agent_runs()
+            .unwrap()
+            .into_iter()
+            .find(|run| run.agent_id == Some(fixture.agent.id))
+            .expect("atomic claim must leave one pristine live run");
+        let runtime = fixture.runtime(fixture.factory(vec![]));
+        let pristine = runtime.live_state(run.id).unwrap();
+        let mut epoch_a = pristine.clone();
+        epoch_a.process_epoch_id = Uuid::now_v7();
+        let mut epoch_b = pristine.clone();
+        epoch_b.process_epoch_id = Uuid::now_v7();
+
+        runtime
+            .save_live_resume_epoch(run.id, &pristine, &epoch_a)
+            .unwrap();
+        let after_winner = fixture.run_store.list_agent_checkpoints(&run.id).unwrap();
+        let stale = runtime.save_live_resume_epoch(run.id, &pristine, &epoch_b);
+        assert!(matches!(
+            stale,
+            Err(AgentRuntimeError::InconsistentState(_))
+        ));
+        assert_eq!(
+            fixture.run_store.list_agent_checkpoints(&run.id).unwrap(),
+            after_winner
+        );
+        assert_eq!(
+            validated_live_state_history(run.id, &after_winner).unwrap(),
+            epoch_a
+        );
+
+        let mut stale_normal = epoch_a.clone();
+        stale_normal.process_epoch_id = pristine.process_epoch_id;
+        assert!(matches!(
+            runtime.save_live_state(run.id, &stale_normal),
+            Err(AgentRuntimeError::InconsistentState(_))
+        ));
+        assert_eq!(
+            fixture.run_store.list_agent_checkpoints(&run.id).unwrap(),
+            after_winner
+        );
+
+        let recovery_factory =
+            fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
+        let recovered = fixture
+            .runtime(recovery_factory.clone())
+            .run_live(fixture.resume_setup(run.id))
+            .unwrap();
+        assert!(matches!(
+            recovered,
+            AgentRuntimeOutcome::WaitingForApproval { .. }
+        ));
+        assert_eq!(recovery_factory.creates.load(Ordering::SeqCst), 1);
+        assert_eq!(recovery_factory.gateway.sends.load(Ordering::SeqCst), 1);
+        validated_live_state_history(
+            run.id,
+            &fixture.run_store.list_agent_checkpoints(&run.id).unwrap(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -14338,11 +14737,29 @@ mod tests {
         assert_eq!(prepared.attempts.len(), 1);
         assert_eq!(prepared.attempts[0].state, ProviderAttemptState::Prepared);
         let prepared_id = prepared.attempts[0].attempt_id;
-        let factory = fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]);
-        let outcome = fixture
-            .runtime(factory.clone())
-            .run_live(fixture.resume_setup(run.id))
-            .unwrap();
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let factory = fixture.factory(vec![LiveGatewayAction::BlockingTool {
+            entered: entered.clone(),
+            release: release.clone(),
+            arguments: fixture.arguments.clone(),
+        }]);
+        let winner_runtime = fixture.runtime(factory.clone());
+        let winner_setup = fixture.resume_setup(run.id);
+        let contender_runtime = fixture.runtime(factory.clone());
+        let contender_setup = fixture.resume_setup(run.id);
+        let winner = std::thread::spawn(move || winner_runtime.run_live(winner_setup));
+        entered.wait();
+        let before_contender = live_store_snapshot(&fixture);
+        let contender = contender_runtime.run_live(contender_setup);
+        let after_contender = live_store_snapshot(&fixture);
+        release.wait();
+        let outcome = winner.join().unwrap().unwrap();
+        assert!(matches!(
+            contender,
+            Err(AgentRuntimeError::LiveRunBusy { run_id }) if run_id == run.id
+        ));
+        assert_eq!(after_contender, before_contender);
         assert!(matches!(
             outcome,
             AgentRuntimeOutcome::WaitingForApproval { .. }
