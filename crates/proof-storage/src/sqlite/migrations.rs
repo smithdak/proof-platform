@@ -550,6 +550,17 @@ pub const MIGRATIONS: &[Migration] = &[
             DROP TABLE IF EXISTS execution_replays;
             ",
     },
+    Migration {
+        version: 12,
+        description: "persist structured delegation scope",
+        up: "
+            ALTER TABLE delegations
+                ADD COLUMN scope_json TEXT NOT NULL DEFAULT '{}';
+            ",
+        down: "
+            ALTER TABLE delegations DROP COLUMN scope_json;
+            ",
+    },
 ];
 
 /// A SQLite-backed store for Proof data.

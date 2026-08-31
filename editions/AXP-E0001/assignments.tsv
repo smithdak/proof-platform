@@ -1,0 +1,14 @@
+task	wave	status	model	effort	owner	writable_paths	dependencies
+E0001-01	W1	done	gpt-5.6-sol	high	e0001-contract-steward	contracts/**;evals/release-manager-live-v1.json;editions/AXP-E0001/handoffs/E0001-01.md	none
+E0001-06	W2	done	gpt-5.6-sol	high	e0001-kernel-owner	crates/proof-kernel/**;editions/AXP-E0001/handoffs/E0001-06.md	E0001-01
+E0001-07	W2	done	gpt-5.6-sol	high	e0001-storage-owner	crates/proof-storage/**;editions/AXP-E0001/handoffs/E0001-07.md	E0001-01
+E0001-02	W3	done	gpt-5.6-sol	high	e0001-runtime-finish	crates/proof-agent-runtime/**;editions/AXP-E0001/handoffs/E0001-02.md	E0001-01;E0001-06;E0001-07
+E0001-03	W3	done	gpt-5.6-terra	high	e0001-content-owner	crates/proof-content/**;registry/content/**;editions/AXP-E0001/handoffs/E0001-03.md	E0001-01;E0001-06;E0001-07
+E0001-08	W4	done	gpt-5.6-sol	high	e0001-cli-owner	crates/proof-transport-cli/**;editions/AXP-E0001/handoffs/E0001-08.md	E0001-01;E0001-02;E0001-03;E0001-06;E0001-07
+E0001-10	W5	done	gpt-5.6-sol	high	e0001-runtime-check	crates/proof-agent-runtime/**;editions/AXP-E0001/handoffs/E0001-10.md	E0001-02;E0001-08
+E0001-11	W6	done	gpt-5.6-sol	high	e0001-runtime-recovery	crates/proof-agent-runtime/**;editions/AXP-E0001/handoffs/E0001-11.md	E0001-02;E0001-10
+E0001-12	W6	done	gpt-5.6-sol	high	e0001-storage-secure	crates/proof-storage/**;editions/AXP-E0001/handoffs/E0001-12.md	E0001-07;E0001-10
+E0001-13	W7	done	gpt-5.6-sol	high	e0001-storage-secure	crates/proof-storage/**;editions/AXP-E0001/handoffs/E0001-13.md	E0001-07;E0001-10;E0001-12
+E0001-09	W8	done	gpt-5.6-sol	high	e0001-cli-owner	crates/proof-transport-cli/**;editions/AXP-E0001/handoffs/E0001-09.md	E0001-08;E0001-10;E0001-11;E0001-13
+E0001-04	W9	pending	gpt-5.6-sol	high	unassigned	docs/dogfood/release-manager-live.md;editions/AXP-E0001/handoffs/E0001-04.md	E0001-02;E0001-03;E0001-06;E0001-07;E0001-08;E0001-09;E0001-10;E0001-11;E0001-12;E0001-13
+E0001-05	W10	pending	gpt-5.6-sol	high	unassigned	editions/AXP-E0001/status.md;editions/AXP-E0001/decisions.md;editions/AXP-E0001/evidence.md;editions/AXP-E0001/retro.md;editions/AXP-E0001/handoffs/E0001-05.md;Cargo.toml;Cargo.lock	E0001-01;E0001-02;E0001-03;E0001-04;E0001-06;E0001-07;E0001-08;E0001-09;E0001-10;E0001-11;E0001-12;E0001-13

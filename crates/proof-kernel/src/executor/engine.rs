@@ -248,7 +248,7 @@ impl ExecutionEngine {
             .get(operation)
             .ok_or_else(|| ExecutionError::NoHandler(operation.to_string()))?;
 
-        let replay_claim = match handler.idempotency_policy() {
+        let replay_claim = match handler.idempotency_policy_for(version) {
             IdempotencyPolicy::None => None,
             IdempotencyPolicy::RequiredUuidV7ExactReplay => {
                 let claim = self.execution_replay_claim(operation, version, input, context)?;
@@ -318,7 +318,7 @@ impl ExecutionEngine {
             }
         }
 
-        let output = match handler.execute(input, context) {
+        let output = match handler.execute_versioned(version, input, context) {
             Ok(output) => output,
             Err(error) => {
                 return Err(self.fail_acquired_claim(
@@ -492,10 +492,24 @@ impl ExecutionEngine {
         chain.validate(context.actor, context.timestamp)?;
 
         let delegation = if let Some(storage) = &self.storage {
-            storage
+            let delegation = storage
                 .load_delegation(&delegation_id)
                 .map_err(ExecutionError::StorageFailed)?
-                .ok_or(ExecutionError::Delegation(DelegationError::EmptyChain))?
+                .ok_or(ExecutionError::Delegation(DelegationError::EmptyChain))?;
+            let chain_index = chain
+                .grants
+                .iter()
+                .position(|grant| grant.id == delegation_id)
+                .ok_or(ExecutionError::Delegation(DelegationError::EmptyChain))?;
+            if chain.grants[chain_index] != delegation {
+                return Err(ExecutionError::Delegation(DelegationError::EmptyChain));
+            }
+            if delegation.recipient != context.actor {
+                return Err(ExecutionError::Delegation(
+                    DelegationError::InvalidTerminalAgent { index: chain_index },
+                ));
+            }
+            delegation
         } else {
             chain
                 .grants

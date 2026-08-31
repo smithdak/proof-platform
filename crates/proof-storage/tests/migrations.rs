@@ -11,7 +11,7 @@ fn fresh_database_applies_all_migrations() {
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 11);
+    assert_eq!(schema_version(&connection).unwrap(), 12);
     let history_count: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM schema_migrations WHERE version = 1",
@@ -63,7 +63,7 @@ fn migrations_are_idempotent() {
     run_migrations(&connection).unwrap();
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 11);
+    assert_eq!(schema_version(&connection).unwrap(), 12);
 }
 
 #[test]
@@ -73,8 +73,8 @@ fn open_and_in_memory_run_migrations_automatically() {
     let file_store = SqliteStore::open(&path).unwrap();
     let memory_store = SqliteStore::in_memory().unwrap();
 
-    assert_eq!(schema_version(&file_store.connection()).unwrap(), 11);
-    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 11);
+    assert_eq!(schema_version(&file_store.connection()).unwrap(), 12);
+    assert_eq!(schema_version(&memory_store.connection()).unwrap(), 12);
 }
 
 #[test]
@@ -103,9 +103,9 @@ fn rollback_to_current_version_is_a_no_op() {
     let connection = Connection::open_in_memory().unwrap();
     run_migrations(&connection).unwrap();
 
-    rollback_to(&connection, 11).unwrap();
+    rollback_to(&connection, 12).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 11);
+    assert_eq!(schema_version(&connection).unwrap(), 12);
 }
 
 #[test]
@@ -127,7 +127,126 @@ fn rolled_back_database_can_be_migrated_again() {
     rollback_to(&connection, 0).unwrap();
     run_migrations(&connection).unwrap();
 
+    assert_eq!(schema_version(&connection).unwrap(), 12);
+}
+
+#[test]
+fn migration_12_upgrades_v11_with_empty_scope_and_rolls_back_losslessly() {
+    let connection = Connection::open_in_memory().unwrap();
+    connection
+        .pragma_update(None, "foreign_keys", "ON")
+        .unwrap();
+    run_migrations(&connection).unwrap();
+    rollback_to(&connection, 11).unwrap();
+    let issuer = uuid::Uuid::now_v7().to_string();
+    let recipient = uuid::Uuid::now_v7().to_string();
+    let delegation_id = uuid::Uuid::now_v7().to_string();
+    for (id, kind) in [(&issuer, "\"human\""), (&recipient, "\"agent\"")] {
+        connection
+            .execute(
+                "INSERT INTO principals (id, kind, display_name, public_key)
+                 VALUES (?1, ?2, ?2, ?3)",
+                params![id, kind, vec![0_u8; 32]],
+            )
+            .unwrap();
+    }
+    connection
+        .execute(
+            "INSERT INTO delegations (
+                 id, issuer, recipient, allowed_actions, resource_scope,
+                 valid_from, valid_until, revoked
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)",
+            params![
+                delegation_id,
+                issuer,
+                recipient,
+                r#"["content:release_publish"]"#,
+                r#"["workspace:preview/*"]"#,
+                "2026-08-30T12:00:00+00:00",
+                "2026-08-30T12:05:00+00:00",
+            ],
+        )
+        .unwrap();
+
+    run_migrations(&connection).unwrap();
+
+    assert_eq!(schema_version(&connection).unwrap(), 12);
+    let scope_json: String = connection
+        .query_row(
+            "SELECT scope_json FROM delegations WHERE id = ?1",
+            [&delegation_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(scope_json, "{}");
+
+    rollback_to(&connection, 11).unwrap();
+
     assert_eq!(schema_version(&connection).unwrap(), 11);
+    let columns = connection
+        .prepare("PRAGMA table_info(delegations)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        columns,
+        vec![
+            "id",
+            "issuer",
+            "recipient",
+            "allowed_actions",
+            "resource_scope",
+            "valid_from",
+            "valid_until",
+            "revoked",
+        ]
+    );
+    let legacy_row: (String, String, String, String, String, String, String, i64) = connection
+        .query_row(
+            "SELECT id, issuer, recipient, allowed_actions, resource_scope,
+                    valid_from, valid_until, revoked
+             FROM delegations WHERE id = ?1",
+            [&delegation_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        legacy_row,
+        (
+            delegation_id.clone(),
+            issuer,
+            recipient,
+            r#"["content:release_publish"]"#.to_string(),
+            r#"["workspace:preview/*"]"#.to_string(),
+            "2026-08-30T12:00:00+00:00".to_string(),
+            "2026-08-30T12:05:00+00:00".to_string(),
+            1,
+        )
+    );
+
+    run_migrations(&connection).unwrap();
+    assert_eq!(schema_version(&connection).unwrap(), 12);
+    let restored_scope: String = connection
+        .query_row(
+            "SELECT scope_json FROM delegations WHERE id = ?1",
+            [&delegation_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(restored_scope, "{}");
 }
 
 #[test]
@@ -145,7 +264,7 @@ fn migration_11_upgrades_v10_with_an_empty_ledger_and_preserves_existing_data() 
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 11);
+    assert_eq!(schema_version(&connection).unwrap(), 12);
     let schema_name: String = connection
         .query_row(
             "SELECT name FROM schemas WHERE id = 'schema-1'",
@@ -207,7 +326,7 @@ fn migration_11_is_reversible_and_can_be_reapplied_without_touching_v10_data() {
 
     run_migrations(&connection).unwrap();
 
-    assert_eq!(schema_version(&connection).unwrap(), 11);
+    assert_eq!(schema_version(&connection).unwrap(), 12);
     connection
         .prepare("SELECT 1 FROM execution_replays")
         .unwrap();
@@ -376,7 +495,7 @@ fn concurrent_openers_apply_pending_migration_once() {
     let directory = TempDir::new().unwrap();
     let path = directory.path().join("proof.db");
     let store = SqliteStore::open(&path).unwrap();
-    rollback_to(&store.connection(), 10).unwrap();
+    rollback_to(&store.connection(), 11).unwrap();
     drop(store);
 
     let worker_count = 4;
@@ -395,13 +514,13 @@ fn concurrent_openers_apply_pending_migration_once() {
         .collect::<Vec<_>>();
 
     for handle in handles {
-        assert_eq!(handle.join().unwrap().unwrap(), 11);
+        assert_eq!(handle.join().unwrap().unwrap(), 12);
     }
 
     let connection = Connection::open(&path).unwrap();
     let history_count: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version = 11",
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 12",
             [],
             |row| row.get(0),
         )

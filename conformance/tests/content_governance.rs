@@ -303,6 +303,12 @@ fn frozen_operations() -> BTreeSet<(String, String)> {
     .collect()
 }
 
+fn frozen_registry_operations() -> BTreeSet<(String, String)> {
+    let mut operations = frozen_operations();
+    operations.insert(("release.publish".to_string(), "v2".to_string()));
+    operations
+}
+
 fn resolve(value: &Value, bindings: &BTreeMap<String, Value>) -> Value {
     match value {
         Value::String(value) if value.starts_with('$') => bindings
@@ -547,11 +553,11 @@ fn content_v1_json_vectors_execute_governed_engine_and_exact_replay() {
     assert_eq!(file.cases.len(), 8);
 
     let registry = Registry::load_from_directory(project_root().join("registry/content")).unwrap();
-    assert_eq!(registry.operations().len(), 8);
+    assert_eq!(registry.operations().len(), 9);
     assert!(registry
         .operations()
         .iter()
-        .all(|entry| entry.status == VersionStatus::Active && entry.version == "v1"));
+        .all(|entry| entry.status == VersionStatus::Active));
     let registry_operations = registry
         .operations()
         .iter()
@@ -562,7 +568,7 @@ fn content_v1_json_vectors_execute_governed_engine_and_exact_replay() {
         .iter()
         .map(|case| (case.operation.clone(), case.version.clone()))
         .collect::<BTreeSet<_>>();
-    assert_eq!(registry_operations, frozen_operations());
+    assert_eq!(registry_operations, frozen_registry_operations());
     assert_eq!(vector_operations, frozen_operations());
     assert!(registry.find("changeset.create", "v1").is_none());
     assert!(!file

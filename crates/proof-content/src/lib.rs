@@ -4,6 +4,7 @@ pub mod edition;
 pub mod error;
 pub mod handlers;
 pub mod object;
+pub mod preview;
 pub mod principal;
 pub mod release;
 pub mod schema;
@@ -17,6 +18,9 @@ pub use changeset::{
 pub use edition::Edition;
 pub use error::ContentError;
 pub use object::{Object, ObjectStatus};
+pub use preview::{
+    verify_preview_approval_execution, verify_preview_publication, PreviewArtifactError,
+};
 pub use principal::PrincipalId;
 pub use release::{
     verify_release, ContentChange, ContentChangeKind, Release, ReleaseManifest,

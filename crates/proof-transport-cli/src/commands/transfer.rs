@@ -1,4 +1,4 @@
-use super::delegation::{delegation_from_row, save_delegation};
+use super::delegation::save_delegation;
 use crate::{load_registry, open_content_store, open_store, Cli, Workspace};
 use anyhow::{bail, Context, Result};
 use base64::Engine;
@@ -77,51 +77,28 @@ fn store_exported_principal(store: &SqliteStore, principal: &ExportedPrincipal) 
 }
 
 fn load_exported_delegations(store: &SqliteStore) -> Result<Vec<Delegation>> {
-    let connection = store.connection();
-    let mut statement = connection.prepare(
-        "
-        SELECT id, issuer, recipient, allowed_actions, resource_scope,
-               valid_from, valid_until, revoked
-        FROM delegations
-        ORDER BY id
-        ",
-    )?;
-    let rows = statement.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, String>(5)?,
-            row.get::<_, String>(6)?,
-            row.get::<_, i64>(7)?,
-        ))
-    })?;
-    rows.map(|row| {
-        let (
-            id,
-            issuer,
-            recipient,
-            allowed_actions,
-            resource_scope,
-            valid_from,
-            valid_until,
-            revoked,
-        ) = row?;
-        delegation_from_row(
-            id,
-            issuer,
-            recipient,
-            allowed_actions,
-            resource_scope,
-            valid_from,
-            valid_until,
-            revoked,
-        )
-        .map(|(delegation, _)| delegation)
-    })
-    .collect()
+    let ids = {
+        let connection = store.connection();
+        let mut statement = connection.prepare(
+            "
+            SELECT id
+            FROM delegations
+            ORDER BY id
+            ",
+        )?;
+        let ids = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        ids
+    };
+    ids.into_iter()
+        .map(|id| {
+            let id = uuid::Uuid::parse_str(&id).context("invalid stored delegation ID")?;
+            store
+                .load_delegation(&id)?
+                .with_context(|| format!("delegation disappeared while exporting: {id}"))
+        })
+        .collect()
 }
 
 fn load_exported_blobs(store: &proof_storage::ContentAddressedStore) -> Result<Vec<ExportedBlob>> {

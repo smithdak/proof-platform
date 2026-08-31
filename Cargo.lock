@@ -1460,6 +1460,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "jsonschema",
+ "proof-content",
  "proof-kernel",
  "reqwest",
  "serde",

@@ -15,6 +15,9 @@ pub mod approval_tests;
 pub mod commerce;
 #[cfg(test)]
 pub mod commerce_tests;
+mod delegation;
+#[cfg(test)]
+mod delegation_tests;
 mod methods;
 mod migrations;
 mod replay;
@@ -23,6 +26,9 @@ mod replay_tests;
 mod store;
 #[cfg(test)]
 pub mod tests;
+mod trusted_open;
+#[cfg(test)]
+mod trusted_open_tests;
 pub mod workflow;
 #[cfg(test)]
 pub mod workflow_tests;

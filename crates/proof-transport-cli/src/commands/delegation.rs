@@ -1,75 +1,42 @@
 use crate::{open_store, Cli, Workspace};
 use anyhow::{bail, Context, Result};
-use proof_kernel::{Delegation, DelegationChain, PrincipalId};
+use proof_kernel::{delegation::DelegationScope, Delegation, DelegationChain, PrincipalId};
 use proof_storage::SqliteStore;
 
-pub(crate) fn delegation_from_row(
-    id: String,
-    issuer: String,
-    recipient: String,
-    allowed_actions: String,
-    resource_scope: String,
-    valid_from: String,
-    valid_until: String,
-    revoked: i64,
-) -> Result<(Delegation, serde_json::Value)> {
-    let parse_json = |label: &str, value: &str| {
-        serde_json::from_str::<Vec<String>>(value)
-            .with_context(|| format!("invalid delegation {label}: {value}"))
-    };
-    let delegation = Delegation {
-        id: uuid::Uuid::parse_str(&id)?,
-        issuer: PrincipalId::new(uuid::Uuid::parse_str(&issuer)?),
-        recipient: PrincipalId::new(uuid::Uuid::parse_str(&recipient)?),
-        allowed_actions: parse_json("allowed_actions", &allowed_actions)?,
-        resource_scope: parse_json("resource_scope", &resource_scope)?,
-        scope: Default::default(),
-        valid_from: chrono::DateTime::parse_from_rfc3339(&valid_from)?.with_timezone(&chrono::Utc),
-        valid_until: chrono::DateTime::parse_from_rfc3339(&valid_until)?
-            .with_timezone(&chrono::Utc),
-        revoked: revoked != 0,
-    };
-    let summary = serde_json::json!({
-        "delegation_id": delegation.id.to_string(),
-        "issuer": delegation.issuer.to_string(),
-        "recipient": delegation.recipient.to_string(),
-        "allowed_actions": delegation.allowed_actions,
-        "resource_scope": delegation.resource_scope,
-        "valid_from": delegation.valid_from.to_rfc3339(),
-        "valid_until": delegation.valid_until.to_rfc3339(),
-        "revoked": delegation.revoked,
-    });
-    Ok((delegation, summary))
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DelegationGrantScope {
+    actions: Vec<String>,
+    resources: Vec<String>,
+    #[serde(default)]
+    operation_scope: StrictOperationScope,
+}
+
+#[derive(Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StrictOperationScope {
+    #[serde(default)]
+    allowed_operations: Option<Vec<String>>,
+    #[serde(default)]
+    allowed_domains: Option<Vec<String>>,
+    #[serde(default)]
+    resource_scope: Option<String>,
+}
+
+impl From<StrictOperationScope> for DelegationScope {
+    fn from(value: StrictOperationScope) -> Self {
+        Self {
+            allowed_operations: value.allowed_operations,
+            allowed_domains: value.allowed_domains,
+            resource_scope: value.resource_scope,
+        }
+    }
 }
 
 pub(crate) fn save_delegation(store: &SqliteStore, delegation: &Delegation) -> Result<()> {
-    store.connection().execute(
-        "
-        INSERT INTO delegations (
-            id, issuer, recipient, allowed_actions, resource_scope,
-            valid_from, valid_until, revoked
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-        ON CONFLICT(id) DO UPDATE SET
-            issuer = excluded.issuer,
-            recipient = excluded.recipient,
-            allowed_actions = excluded.allowed_actions,
-            resource_scope = excluded.resource_scope,
-            valid_from = excluded.valid_from,
-            valid_until = excluded.valid_until,
-            revoked = excluded.revoked
-        ",
-        rusqlite::params![
-            delegation.id.to_string(),
-            delegation.issuer.to_string(),
-            delegation.recipient.to_string(),
-            serde_json::to_string(&delegation.allowed_actions)?,
-            serde_json::to_string(&delegation.resource_scope)?,
-            delegation.valid_from.to_rfc3339(),
-            delegation.valid_until.to_rfc3339(),
-            delegation.revoked,
-        ],
-    )?;
-    Ok(())
+    store
+        .save_delegation(delegation)
+        .map_err(anyhow::Error::from)
 }
 
 fn save_delegation_principal(
@@ -102,95 +69,35 @@ fn save_delegation_principal(
 }
 
 fn load_delegations(store: &SqliteStore) -> Result<Vec<Delegation>> {
-    let connection = store.connection();
-    let mut statement = connection.prepare(
-        "
-        SELECT id, issuer, recipient, allowed_actions, resource_scope,
-               valid_from, valid_until, revoked
-        FROM delegations
-        ORDER BY valid_from, id
-        ",
-    )?;
-    let rows = statement.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, String>(4)?,
-            row.get::<_, String>(5)?,
-            row.get::<_, String>(6)?,
-            row.get::<_, i64>(7)?,
-        ))
-    })?;
-    rows.map(|row| {
-        let (
-            id,
-            issuer,
-            recipient,
-            allowed_actions,
-            resource_scope,
-            valid_from,
-            valid_until,
-            revoked,
-        ) = row?;
-        delegation_from_row(
-            id,
-            issuer,
-            recipient,
-            allowed_actions,
-            resource_scope,
-            valid_from,
-            valid_until,
-            revoked,
-        )
-        .map(|(delegation, _)| delegation)
-    })
-    .collect()
+    let ids = {
+        let connection = store.connection();
+        let mut statement = connection.prepare(
+            "
+            SELECT id
+            FROM delegations
+            ORDER BY valid_from, id
+            ",
+        )?;
+        let ids = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        ids
+    };
+    ids.into_iter()
+        .map(|id| {
+            let id = uuid::Uuid::parse_str(&id).context("invalid stored delegation ID")?;
+            store
+                .load_delegation(&id)?
+                .with_context(|| format!("delegation disappeared while listing: {id}"))
+        })
+        .collect()
 }
 
 fn load_delegation(store: &SqliteStore, delegation_id: &str) -> Result<Delegation> {
     let id = uuid::Uuid::parse_str(delegation_id).context("invalid delegation ID")?;
-    let delegation = store
-        .connection()
-        .query_row(
-            "
-            SELECT id, issuer, recipient, allowed_actions, resource_scope,
-                   valid_from, valid_until, revoked
-            FROM delegations
-            WHERE id = ?1
-            ",
-            [id.to_string()],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, i64>(7)?,
-                ))
-            },
-        )
-        .map_err(|error| match error {
-            rusqlite::Error::QueryReturnedNoRows => anyhow::anyhow!("delegation not found: {id}"),
-            error => error.into(),
-        })?;
-    let (id, issuer, recipient, allowed_actions, resource_scope, valid_from, valid_until, revoked) =
-        delegation;
-    Ok(delegation_from_row(
-        id,
-        issuer,
-        recipient,
-        allowed_actions,
-        resource_scope,
-        valid_from,
-        valid_until,
-        revoked,
-    )?
-    .0)
+    store
+        .load_delegation(&id)?
+        .with_context(|| format!("delegation not found: {id}"))
 }
 
 fn revoke_delegation(
@@ -208,38 +115,16 @@ fn revoke_delegation(
 
 pub fn cmd_delegation_grant(cli: &Cli, agent_id: &str, scope_json: &str) -> Result<()> {
     let ws = Workspace::open(&cli.workspace)?;
-    let scope: serde_json::Value =
+    let scope: DelegationGrantScope =
         serde_json::from_str(scope_json).context("invalid scope JSON")?;
-    let allowed_actions = scope["actions"]
-        .as_array()
-        .context("scope missing actions array")?
-        .iter()
-        .map(|action| {
-            action
-                .as_str()
-                .context("scope action must be a string")
-                .map(ToString::to_string)
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let resource_scope = scope["resources"]
-        .as_array()
-        .context("scope missing resources array")?
-        .iter()
-        .map(|resource| {
-            resource
-                .as_str()
-                .context("scope resource must be a string")
-                .map(ToString::to_string)
-        })
-        .collect::<Result<Vec<_>>>()?;
     let agent_uuid = uuid::Uuid::parse_str(agent_id).context("invalid agent ID")?;
     let delegation = Delegation {
         id: uuid::Uuid::now_v7(),
         issuer: ws.actor,
         recipient: PrincipalId::new(agent_uuid),
-        allowed_actions,
-        resource_scope,
-        scope: Default::default(),
+        allowed_actions: scope.actions,
+        resource_scope: scope.resources,
+        scope: scope.operation_scope.into(),
         valid_from: chrono::Utc::now(),
         valid_until: chrono::Utc::now() + chrono::Duration::hours(24),
         revoked: false,
@@ -284,7 +169,8 @@ pub fn cmd_delegation_list(cli: &Cli) -> Result<()> {
                 "issuer": delegation.issuer.to_string(),
                 "recipient": delegation.recipient.to_string(),
                 "allowed_actions": delegation.allowed_actions,
-                "resource_scope": delegation.resource_scope,
+            "resource_scope": delegation.resource_scope,
+            "operation_scope": delegation.scope,
                 "valid_from": delegation.valid_from.to_rfc3339(),
                 "valid_until": delegation.valid_until.to_rfc3339(),
                 "revoked": delegation.revoked,
@@ -332,10 +218,119 @@ pub fn cmd_delegation_validate(cli: &Cli, delegation_id: &str) -> Result<()> {
             "delegation_id": delegation.id.to_string(),
             "issuer": delegation.issuer.to_string(),
             "recipient": delegation.recipient.to_string(),
+            "allowed_actions": delegation.allowed_actions,
+            "resource_scope": delegation.resource_scope,
+            "operation_scope": delegation.scope,
             "valid": valid,
             "checked_at": now.to_rfc3339(),
             "reason": reason,
         })
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    fn initialized_cli(directory: &assert_fs::TempDir) -> Cli {
+        let cli = Cli::parse_from(["proof", "-w", directory.path().to_str().unwrap(), "init"]);
+        crate::commands::content::cmd_init(&cli).unwrap();
+        cli
+    }
+
+    #[test]
+    fn grant_save_load_list_and_validate_round_trip_complete_scope() {
+        let directory = assert_fs::TempDir::new().unwrap();
+        let cli = initialized_cli(&directory);
+        let workspace = Workspace::open(&cli.workspace).unwrap();
+        cmd_delegation_grant(
+            &cli,
+            &workspace.actor.to_string(),
+            r#"{
+                "actions":["content:release_publish"],
+                "resources":["preview"],
+                "operation_scope":{
+                    "allowed_operations":["release.publish"],
+                    "allowed_domains":["content"]
+                }
+            }"#,
+        )
+        .unwrap();
+        let store = open_store(&workspace.root).unwrap();
+        let id: String = store
+            .connection()
+            .query_row("SELECT id FROM delegations", [], |row| row.get(0))
+            .unwrap();
+        let id = uuid::Uuid::parse_str(&id).unwrap();
+        let loaded = store.load_delegation(&id).unwrap().unwrap();
+        assert_eq!(loaded.allowed_actions, ["content:release_publish"]);
+        assert_eq!(loaded.resource_scope, ["preview"]);
+        assert_eq!(
+            loaded.scope.allowed_operations.as_deref(),
+            Some(&["release.publish".to_string()][..])
+        );
+        assert_eq!(
+            loaded.scope.allowed_domains.as_deref(),
+            Some(&["content".to_string()][..])
+        );
+        assert!(loaded.scope.resource_scope.is_none());
+        cmd_delegation_list(&cli).unwrap();
+        cmd_delegation_validate(&cli, &id.to_string()).unwrap();
+    }
+
+    #[test]
+    fn legacy_scope_remains_readable_without_silently_bounding_it() {
+        let directory = assert_fs::TempDir::new().unwrap();
+        let cli = initialized_cli(&directory);
+        let workspace = Workspace::open(&cli.workspace).unwrap();
+        cmd_delegation_grant(
+            &cli,
+            &workspace.actor.to_string(),
+            r#"{"actions":["read"],"resources":["legacy"]}"#,
+        )
+        .unwrap();
+        let store = open_store(&workspace.root).unwrap();
+        let id: String = store
+            .connection()
+            .query_row("SELECT id FROM delegations", [], |row| row.get(0))
+            .unwrap();
+        let loaded = store
+            .load_delegation(&uuid::Uuid::parse_str(&id).unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.allowed_actions, ["read"]);
+        assert_eq!(loaded.resource_scope, ["legacy"]);
+        assert_eq!(loaded.scope, DelegationScope::default());
+    }
+
+    #[test]
+    fn grant_rejects_unknown_scope_fields_without_persisting() {
+        let directory = assert_fs::TempDir::new().unwrap();
+        let cli = initialized_cli(&directory);
+        let workspace = Workspace::open(&cli.workspace).unwrap();
+        let error = cmd_delegation_grant(
+            &cli,
+            &workspace.actor.to_string(),
+            r#"{
+                "actions":[],
+                "resources":[],
+                "operation_scope":{
+                    "allowed_operations":["release.publish"],
+                    "allowed_domains":["content"],
+                    "ignored":true
+                }
+            }"#,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("invalid scope JSON"));
+        let store = open_store(&workspace.root).unwrap();
+        let count: i64 = store
+            .connection()
+            .query_row("SELECT COUNT(*) FROM delegations", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }

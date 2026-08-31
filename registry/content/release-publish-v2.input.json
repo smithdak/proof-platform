@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["idempotency_key", "edition_id", "environment", "version_label", "manifest_digest"],
+  "properties": {
+    "idempotency_key": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "edition_id": {"type": "string", "format": "uuid"},
+    "environment": {"type": "string", "const": "preview"},
+    "version_label": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$"},
+    "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operation", "data"],
+  "properties": {
+    "operation": {"type": "string", "const": "release.publish"},
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publication_id", "edition_id", "environment", "version_label", "manifest_digest", "artifact", "published_at", "published_by"],
+      "properties": {
+        "publication_id": {"type": "string", "format": "uuid"},
+        "edition_id": {"type": "string", "format": "uuid"},
+        "environment": {"type": "string", "const": "preview"},
+        "version_label": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$"},
+        "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema", "relative_path", "digest"],
+          "properties": {
+            "schema": {"type": "string", "const": "proof-content-preview-artifact/v1"},
+            "relative_path": {"type": "string", "pattern": "^\\.proof/data/previews/[0-9a-f-]+/[0-9a-f-]+\\.json$"},
+            "digest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+          }
+        },
+        "published_at": {"type": "string", "format": "date-time"},
+        "published_by": {"type": "string", "format": "uuid"}
+      }
+    }
+  }
+}

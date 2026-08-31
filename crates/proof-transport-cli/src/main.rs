@@ -194,6 +194,27 @@ enum AgentCommand {
     Resume {
         run_id: String,
     },
+    /// Start the frozen Release Manager live journey after deterministic preflight.
+    LiveStart {
+        agent_id: String,
+        #[arg(long)]
+        goal: String,
+        #[arg(long)]
+        policy_file: PathBuf,
+        #[arg(long)]
+        preflight_evaluation_id: String,
+        #[arg(long)]
+        delegation_id: String,
+    },
+    /// Resume the exact sealed Release Manager live run and authority binding.
+    LiveResume {
+        run_id: String,
+        #[arg(long)]
+        policy_file: PathBuf,
+    },
+    /// Build fresh deterministic evidence without touching a provider boundary.
+    #[command(subcommand)]
+    LivePrepare(LivePrepareCommand),
     Watch {
         run_id: String,
     },
@@ -202,6 +223,22 @@ enum AgentCommand {
         run_id: String,
         #[arg(long)]
         evaluator: String,
+        #[arg(long)]
+        policy_file: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum LivePrepareCommand {
+    /// Start the deterministic v1 rehearsal and stop at signed approval.
+    Start { preparation_id: String },
+    /// Resume the approved rehearsal and produce a checked readiness packet.
+    Finish {
+        preparation_id: String,
+        #[arg(long)]
+        agent_id: String,
+        #[arg(long)]
+        delegation_id: String,
         #[arg(long)]
         policy_file: PathBuf,
     },
@@ -447,6 +484,41 @@ fn main() -> Result<()> {
                 commands::agent::cmd_agent_start(&cli, agent_id, goal)?
             }
             AgentCommand::Resume { run_id } => commands::agent::cmd_agent_resume(&cli, run_id)?,
+            AgentCommand::LiveStart {
+                agent_id,
+                goal,
+                policy_file,
+                preflight_evaluation_id,
+                delegation_id,
+            } => commands::live::cmd_agent_live_start(
+                &cli,
+                agent_id,
+                goal,
+                policy_file,
+                preflight_evaluation_id,
+                delegation_id,
+            )?,
+            AgentCommand::LiveResume {
+                run_id,
+                policy_file,
+            } => commands::live::cmd_agent_live_resume(&cli, run_id, policy_file)?,
+            AgentCommand::LivePrepare(command) => match command {
+                LivePrepareCommand::Start { preparation_id } => {
+                    commands::live_prepare::cmd_live_prepare_start(&cli, preparation_id)?
+                }
+                LivePrepareCommand::Finish {
+                    preparation_id,
+                    agent_id,
+                    delegation_id,
+                    policy_file,
+                } => commands::live_prepare::cmd_live_prepare_finish(
+                    &cli,
+                    preparation_id,
+                    agent_id,
+                    delegation_id,
+                    policy_file,
+                )?,
+            },
             AgentCommand::Watch { run_id } => commands::agent::cmd_agent_watch(&cli, run_id)?,
             AgentCommand::Evaluate {
                 run_id,
@@ -498,6 +570,100 @@ mod tests {
     use proof_kernel::Proof;
 
     #[test]
+    fn parses_frozen_live_start_and_resume_commands() {
+        let start = Cli::try_parse_from([
+            "proof",
+            "agent",
+            "live-start",
+            "018f0000-0000-7000-8000-000000000001",
+            "--goal",
+            "Publish edition AXP-E0001",
+            "--policy-file",
+            "policy.json",
+            "--preflight-evaluation-id",
+            "018f0000-0000-7000-8000-000000000002",
+            "--delegation-id",
+            "018f0000-0000-7000-8000-000000000003",
+        ])
+        .unwrap();
+        assert!(matches!(
+            start.command,
+            Command::Agent(AgentCommand::LiveStart {
+                agent_id,
+                goal,
+                policy_file,
+                preflight_evaluation_id,
+                delegation_id,
+            }) if agent_id == "018f0000-0000-7000-8000-000000000001"
+                && goal == "Publish edition AXP-E0001"
+                && policy_file == PathBuf::from("policy.json")
+                && preflight_evaluation_id == "018f0000-0000-7000-8000-000000000002"
+                && delegation_id == "018f0000-0000-7000-8000-000000000003"
+        ));
+
+        let resume = Cli::try_parse_from([
+            "proof",
+            "agent",
+            "live-resume",
+            "018f0000-0000-7000-8000-000000000004",
+            "--policy-file",
+            "policy.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            resume.command,
+            Command::Agent(AgentCommand::LiveResume { run_id, policy_file })
+                if run_id == "018f0000-0000-7000-8000-000000000004"
+                    && policy_file == PathBuf::from("policy.json")
+        ));
+    }
+
+    #[test]
+    fn parses_credential_free_live_prepare_phases() {
+        let start = Cli::try_parse_from([
+            "proof",
+            "agent",
+            "live-prepare",
+            "start",
+            "018f0000-0000-7000-8000-000000000005",
+        ])
+        .unwrap();
+        assert!(matches!(
+            start.command,
+            Command::Agent(AgentCommand::LivePrepare(LivePrepareCommand::Start {
+                preparation_id
+            })) if preparation_id == "018f0000-0000-7000-8000-000000000005"
+        ));
+
+        let finish = Cli::try_parse_from([
+            "proof",
+            "agent",
+            "live-prepare",
+            "finish",
+            "018f0000-0000-7000-8000-000000000005",
+            "--agent-id",
+            "018f0000-0000-7000-8000-000000000006",
+            "--delegation-id",
+            "018f0000-0000-7000-8000-000000000007",
+            "--policy-file",
+            "policy.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            finish.command,
+            Command::Agent(AgentCommand::LivePrepare(LivePrepareCommand::Finish {
+                preparation_id,
+                agent_id,
+                delegation_id,
+                policy_file,
+            })) if preparation_id == "018f0000-0000-7000-8000-000000000005"
+                && agent_id == "018f0000-0000-7000-8000-000000000006"
+                && delegation_id == "018f0000-0000-7000-8000-000000000007"
+                && policy_file == PathBuf::from("policy.json")
+        ));
+    }
+
+    #[test]
     fn legacy_release_publish_fails_closed_without_mutation() {
         let workspace = assert_fs::TempDir::new().unwrap();
         let cli = Cli::parse_from(["proof", "-w", workspace.path().to_str().unwrap(), "init"]);
@@ -544,6 +710,22 @@ mod tests {
             .unwrap();
         let source_store = open_store(&source.path().to_path_buf()).unwrap();
         source_store.save_proof(&proof).unwrap();
+        let delegation = proof_kernel::Delegation {
+            id: uuid::Uuid::now_v7(),
+            issuer: source_workspace.actor,
+            recipient: source_workspace.actor,
+            allowed_actions: vec!["content:release_publish".to_string()],
+            resource_scope: vec!["preview".to_string()],
+            scope: proof_kernel::delegation::DelegationScope {
+                allowed_operations: Some(vec!["release.publish".to_string()]),
+                allowed_domains: Some(vec!["content".to_string()]),
+                resource_scope: None,
+            },
+            valid_from: chrono::Utc::now(),
+            valid_until: chrono::Utc::now() + chrono::Duration::hours(1),
+            revoked: false,
+        };
+        source_store.save_delegation(&delegation).unwrap();
 
         let export_args = Cli::parse_from([
             "proof",
@@ -586,6 +768,11 @@ mod tests {
             .unwrap();
         let principal = store.load_principal(&proof.body.actor).unwrap();
         proof.verify(&principal.public_key).unwrap();
+        assert_eq!(
+            store.load_delegation(&delegation.id).unwrap().unwrap(),
+            delegation,
+            "workspace transfer must preserve complete structured delegation scope"
+        );
     }
 
     #[test]

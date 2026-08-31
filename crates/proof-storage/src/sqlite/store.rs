@@ -4,16 +4,25 @@ use super::migrations::run_migrations;
 use crate::StorageError;
 use chrono::{DateTime, Utc};
 use proof_kernel::{
-    AuditFilter, ExecutionContext, ExecutionOutcome, ExecutionReplayClaim,
+    AuditFilter, Delegation, ExecutionContext, ExecutionOutcome, ExecutionReplayClaim,
     ExecutionReplayClaimResult, ExecutionStore, Proof,
 };
 use rusqlite::Connection;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 
 pub struct SqliteStore {
+    // Field order is intentional: Rust drops the connection before the path
+    // guards, so SQLite has finished all close-time filesystem work first.
     pub(super) conn: Mutex<Connection>,
+    _trusted_path_guards: Option<TrustedSqlitePathGuards>,
+}
+
+pub(super) struct TrustedSqlitePathGuards {
+    _directory: File,
+    _database: File,
 }
 
 /// Filters used by proof listing and counting queries.
@@ -25,6 +34,10 @@ pub struct ProofFilter {
 }
 
 impl ExecutionStore for SqliteStore {
+    fn load_delegation(&self, delegation_id: &Uuid) -> Result<Option<Delegation>, String> {
+        SqliteStore::load_delegation(self, delegation_id).map_err(|error| error.to_string())
+    }
+
     fn save_proof(&self, proof: &Proof) -> Result<(), String> {
         SqliteStore::save_proof(self, proof).map_err(|error| error.to_string())
     }
@@ -163,6 +176,7 @@ impl SqliteStore {
         run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            _trusted_path_guards: None,
         })
     }
 
@@ -173,7 +187,22 @@ impl SqliteStore {
         run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            _trusted_path_guards: None,
         })
+    }
+
+    pub(super) fn from_trusted_existing_connection(
+        conn: Connection,
+        directory: File,
+        database: File,
+    ) -> Self {
+        Self {
+            conn: Mutex::new(conn),
+            _trusted_path_guards: Some(TrustedSqlitePathGuards {
+                _directory: directory,
+                _database: database,
+            }),
+        }
     }
 
     /// Returns the underlying connection for queries not covered by higher-level APIs.

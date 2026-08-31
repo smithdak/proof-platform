@@ -7,6 +7,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::commands::secure_fs::SecureDirectory;
+
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
@@ -36,7 +38,7 @@ impl Workspace {
         let proof_dir = root.join(".proof");
         ensure_private_directory(&proof_dir)?;
         std::fs::create_dir_all(proof_dir.join("registry"))?;
-        std::fs::create_dir_all(proof_dir.join("storage"))?;
+        ensure_private_directory(&proof_dir.join("storage"))?;
         for subdir in [
             "schemas",
             "objects",
@@ -53,9 +55,9 @@ impl Workspace {
             "actor_id": actor.to_string(),
             "version": "0.1.0",
         });
-        std::fs::write(
-            proof_dir.join("config.json"),
-            serde_json::to_string_pretty(&config)?,
+        write_private_file(
+            &proof_dir.join("config.json"),
+            serde_json::to_string_pretty(&config)?.as_bytes(),
         )?;
         let keypair_json = serde_json::json!({
             "principal_id": keypair.principal_id.as_uuid(),
@@ -95,6 +97,31 @@ impl Workspace {
         let keypair = Self::load_keypair(root)?;
         Ok(Self {
             root: root.clone(),
+            keypair,
+            actor,
+        })
+    }
+
+    pub(crate) fn open_from_secure_directory(
+        root: PathBuf,
+        proof_directory: &SecureDirectory,
+    ) -> Result<Self> {
+        let config: Value = serde_json::from_slice(
+            &proof_directory
+                .read_private_file("config.json")
+                .context("workspace not initialized — run `proof init` first")?,
+        )?;
+        let actor_text = config["actor_id"]
+            .as_str()
+            .context("workspace config missing actor_id")?;
+        let actor =
+            PrincipalId::new(uuid::Uuid::parse_str(actor_text).context("invalid actor_id")?);
+        let keypair = decode_stored_keypair(&proof_directory.read_private_file("keypair.json")?)?;
+        if keypair.principal_id != actor {
+            bail!("workspace config actor differs from the securely loaded keypair");
+        }
+        Ok(Self {
+            root,
             keypair,
             actor,
         })
@@ -165,24 +192,7 @@ impl Workspace {
         harden_private_file(&path)?;
         let raw = std::fs::read_to_string(&path)
             .context("workspace keypair missing — run `proof init` first")?;
-        let stored: StoredKeypair = serde_json::from_str(&raw)?;
-        let signing_key_bytes: Vec<u8> = base64::engine::general_purpose::STANDARD
-            .decode(stored.signing_key)
-            .context("invalid stored signing key")?;
-        let signing_bytes: [u8; 32] = signing_key_bytes
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("stored signing key must be 32 bytes"))?;
-        let signing_key = ed25519_dalek::SigningKey::from_bytes(&signing_bytes);
-        if signing_key.verifying_key().to_bytes() != stored.public_key {
-            bail!("stored keypair public key mismatch");
-        }
-        let actor = PrincipalId::new(stored.principal_id);
-        Ok(proof_kernel::Keypair {
-            principal_id: actor,
-            kind: stored.kind,
-            created_at: stored.created_at,
-            signing_key,
-        })
+        decode_stored_keypair(raw.as_bytes())
     }
 
     pub fn rotate(root: &PathBuf) -> Result<proof_kernel::Keypair> {
@@ -235,6 +245,27 @@ impl Workspace {
 
         Ok(new_keypair)
     }
+}
+
+fn decode_stored_keypair(raw: &[u8]) -> Result<proof_kernel::Keypair> {
+    let stored: StoredKeypair = serde_json::from_slice(raw)?;
+    let signing_key_bytes: Vec<u8> = base64::engine::general_purpose::STANDARD
+        .decode(stored.signing_key)
+        .context("invalid stored signing key")?;
+    let signing_bytes: [u8; 32] = signing_key_bytes
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("stored signing key must be 32 bytes"))?;
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&signing_bytes);
+    if signing_key.verifying_key().to_bytes() != stored.public_key {
+        bail!("stored keypair public key mismatch");
+    }
+    let actor = PrincipalId::new(stored.principal_id);
+    Ok(proof_kernel::Keypair {
+        principal_id: actor,
+        kind: stored.kind,
+        created_at: stored.created_at,
+        signing_key,
+    })
 }
 
 fn ensure_private_directory(path: &Path) -> Result<()> {

@@ -1050,7 +1050,11 @@ fn workspace_registry_loader_accepts_the_full_platform_registry() {
     copy_directory(&repository_registry, &workspace_registry);
 
     let registry = load_workspace_registry(workspace.path()).unwrap();
-    assert_eq!(registry.operations().len(), 21);
+    assert_eq!(registry.operations().len(), 22);
+    assert!(registry.find("release.publish", "v1").is_some());
+    let publish_v2 = registry.find("release.publish", "v2").unwrap();
+    assert_eq!(publish_v2.domain, "content");
+    assert_eq!(publish_v2.action, "content:release_publish");
     for entry in registry.operations() {
         assert!(serde_json::from_str::<Value>(&entry.input_schema).is_ok());
         assert!(serde_json::from_str::<Value>(&entry.output_schema).is_ok());

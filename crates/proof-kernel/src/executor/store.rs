@@ -336,8 +336,29 @@ pub trait OperationHandler: Send + Sync {
     fn idempotency_policy(&self) -> IdempotencyPolicy {
         IdempotencyPolicy::None
     }
+    /// Declares the exact-replay policy for a requested operation version.
+    ///
+    /// Existing handlers retain their operation-wide policy through this
+    /// default. Handlers that serve multiple versions can override it without
+    /// changing their legacy `idempotency_policy` implementation.
+    fn idempotency_policy_for(&self, _version: &str) -> IdempotencyPolicy {
+        self.idempotency_policy()
+    }
     /// Executes the operation with the given input and context.
     fn execute(&self, input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError>;
+    /// Executes the requested operation version.
+    ///
+    /// Existing handlers retain their current execution behavior through this
+    /// default. Multi-version handlers can override it to select an exact
+    /// version-specific implementation.
+    fn execute_versioned(
+        &self,
+        _version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+    ) -> Result<Value, ExecutionError> {
+        self.execute(input, context)
+    }
 }
 
 #[cfg(test)]
@@ -435,6 +456,16 @@ mod tests {
             .unwrap_err()
             .contains("not supported"));
         assert_eq!(LegacyHandler.idempotency_policy(), IdempotencyPolicy::None);
+        assert_eq!(
+            LegacyHandler.idempotency_policy_for("v2"),
+            IdempotencyPolicy::None
+        );
+        assert_eq!(
+            LegacyHandler
+                .execute_versioned("v2", &json!({"legacy": true}), &context)
+                .unwrap(),
+            json!({"legacy": true})
+        );
         assert_eq!(IdempotencyPolicy::default(), IdempotencyPolicy::None);
     }
 

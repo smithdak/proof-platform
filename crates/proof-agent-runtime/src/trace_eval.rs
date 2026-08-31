@@ -417,7 +417,7 @@ impl DeterministicTraceEvaluator {
         let check_count = checks.len();
         let mut trusted_approver_bindings = trusted_approvers
             .iter()
-            .map(principal_binding)
+            .map(durable_principal_binding)
             .collect::<Vec<_>>();
         trusted_approver_bindings
             .sort_by(|left, right| left["id"].as_str().cmp(&right["id"].as_str()));
@@ -432,7 +432,7 @@ impl DeterministicTraceEvaluator {
             &json!({
                 "run": run,
                 "agent": agent,
-                "run_actor": principal_binding(run_actor),
+                "run_actor": durable_principal_binding(run_actor),
                 "trusted_approvers": trusted_approver_bindings,
                 "steps": observed_steps,
                 "events": events,
@@ -487,7 +487,7 @@ fn binding_digest(schema: &str, value: &Value) -> Result<ContentDigest, TraceEva
 // SQLite's legacy principal table does not persist `created_at`, so loaded
 // principals receive a read timestamp. Bind only the durable identity fields;
 // otherwise identical sealed traces produce a different digest on every read.
-fn principal_binding(principal: &Principal) -> Value {
+pub(crate) fn durable_principal_binding(principal: &Principal) -> Value {
     json!({
         "id": principal.id,
         "kind": principal.kind,
@@ -499,7 +499,7 @@ fn approval_binding(approval: &ApprovalEvidence) -> Value {
     json!({
         "request": &approval.request,
         "decision": &approval.decision,
-        "approver": principal_binding(&approval.approver),
+        "approver": durable_principal_binding(&approval.approver),
         "execution": &approval.execution,
     })
 }

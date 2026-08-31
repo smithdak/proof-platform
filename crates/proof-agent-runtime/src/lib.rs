@@ -11,7 +11,9 @@ pub use model::{
 };
 pub use openai::{OpenAiResponsesGateway, DEFAULT_OPENAI_BASE_URL};
 pub use runtime::{
-    AgentRuntime, AgentRuntimeError, AgentRuntimeOutcome, AgentRuntimeState, PendingToolCall,
+    AgentRuntime, AgentRuntimeError, AgentRuntimeOutcome, AgentRuntimeState, LiveAuthoritySetup,
+    LiveBindingInputs, LivePolicyMaterial, LiveRunIntent, LiveRunSetup, ModelGatewayFactory,
+    ModelGatewayFactoryContext, ModelGatewayFactoryError, PendingToolCall,
 };
 pub use trace_eval::{
     ApprovalEvidence, DeterministicTraceEvaluator, ExpectedToolCall, FinalOutputReference,

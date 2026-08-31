@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
+use crate::preview::publish_preview;
 use crate::{
     digest::canonical_digest, object::Object, object::ObjectStatus, schema::SchemaDefinition,
 };
@@ -120,6 +121,75 @@ struct GenericContentHandler {
     schema_file: &'static str,
     idempotency_policy: IdempotencyPolicy,
     execute_fn: fn(&Value, &ExecutionContext) -> Result<serde_json::Value, ExecutionError>,
+}
+
+struct ReleasePublishHandler;
+
+impl ReleasePublishHandler {
+    fn execute_v1(
+        &self,
+        input: &Value,
+        context: &ExecutionContext,
+    ) -> Result<Value, ExecutionError> {
+        let raw_schema = registry_schema(
+            context,
+            RELEASE_PUBLISH,
+            "content/release-publish.input.json",
+        )?;
+        JsonSchema::parse(raw_schema)?.validate(input)?;
+        execute_release_publish(input, context).result(RELEASE_PUBLISH)
+    }
+
+    fn execute_v2(
+        &self,
+        input: &Value,
+        context: &ExecutionContext,
+    ) -> Result<Value, ExecutionError> {
+        let raw_schema = registry_schema(
+            context,
+            RELEASE_PUBLISH,
+            "content/release-publish-v2.input.json",
+        )?;
+        JsonSchema::parse(raw_schema)?.validate(input)?;
+        publish_preview(input, context).map_err(ExecutionError::from)
+    }
+}
+
+impl OperationHandler for ReleasePublishHandler {
+    fn operation(&self) -> &str {
+        RELEASE_PUBLISH
+    }
+
+    fn idempotency_policy(&self) -> IdempotencyPolicy {
+        IdempotencyPolicy::None
+    }
+
+    fn idempotency_policy_for(&self, version: &str) -> IdempotencyPolicy {
+        if version == "v2" {
+            IdempotencyPolicy::RequiredUuidV7ExactReplay
+        } else {
+            IdempotencyPolicy::None
+        }
+    }
+
+    fn execute(&self, input: &Value, context: &ExecutionContext) -> Result<Value, ExecutionError> {
+        self.execute_v1(input, context)
+    }
+
+    fn execute_versioned(
+        &self,
+        version: &str,
+        input: &Value,
+        context: &ExecutionContext,
+    ) -> Result<Value, ExecutionError> {
+        match version {
+            "v1" => self.execute_v1(input, context),
+            "v2" => self.execute_v2(input, context),
+            _ => Err(input_error(format!(
+                "unsupported release.publish version: {version}"
+            ))),
+        }
+    }
 }
 
 impl OperationHandler for GenericContentHandler {
@@ -558,12 +628,7 @@ pub fn content_handlers() -> Vec<Arc<dyn OperationHandler>> {
             idempotency_policy: IdempotencyPolicy::None,
             execute_fn: execute_release,
         }),
-        Arc::new(GenericContentHandler {
-            operation: RELEASE_PUBLISH,
-            schema_file: "content/release-publish.input.json",
-            idempotency_policy: IdempotencyPolicy::None,
-            execute_fn: execute_release_publish,
-        }),
+        Arc::new(ReleasePublishHandler),
         Arc::new(GenericContentHandler {
             operation: CHANGESET_COMMIT,
             schema_file: "content/changeset-commit.input.json",

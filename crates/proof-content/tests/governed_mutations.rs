@@ -133,6 +133,7 @@ fn root_content_registry_exposes_the_frozen_eight_v1_operations() {
             ("content.release", "v1"),
             ("changeset.commit", "v1"),
             ("release.publish", "v1"),
+            ("release.publish", "v2"),
             ("edition.create", "v1"),
         ])
     );

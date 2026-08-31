@@ -1,0 +1,46 @@
+# E0001 Evaluation Evidence
+
+- Edition: `AXP-E0001`
+- Base revision: `2f22a0c6ce28e70dcc9be89f2961f7e4f7acb9b6`
+- Evaluation/policy version or digest: `proof-release-manager-live-policy/v1`; template digest `c85a604eed34f9b1085299c2d9397a85d3d18490a5da72db8e1db139afd16856`; live resolved digest remains intentionally uncreated
+- Provider/model configuration: direct OpenAI Responses / exact `gpt-5.6-sol` approved under B5; host credential unavailable and no live request sent
+- Environment: fresh temporary workspace; synthetic data; no historical key
+- Evaluator: independent E0001-09 readiness verifier; independent E0001-04 live verifier pending
+- Result: credential-free readiness passed; live journey pending at the credential boundary
+
+## Acceptance checks
+
+| Check | Command/input | Expected | Actual | Result |
+|---|---|---|---|---|
+| Edition structure | `rtk scripts/swarm.sh validate AXP-E0001` | valid | revised thirteen-task W1-W10 graph passed after D-E0001-009; edition diff check clean on 2026-08-30 | passed |
+| Contract/policy | E0001-01 handoff plus independent audits | versioned, strict, audit-clean owner-ready Gate B packet | second repair passed final re-audit: exact literals; 17 unique checks; 20 ordered unique tamper vectors; acyclic ownership/API seam; B1-B4/B6 and conditional B5 approved 2026-08-30 | passed |
+| W2 integration audit | independent read-only kernel/storage contract and security review | no compatibility, authority, migration, parsing, ownership, or test blocker | passed 2026-08-30; general structured `resource_scope` remains storage-compatible and E0001 rejection is explicitly owned by E0001-02/E0001-08 | passed |
+| W3 Content audit | independent release.publish::v2 artifact/replay/proof/path review | strict v2 contract, one immutable safe artifact, exact replay/proof, no v1 regression | passed 2026-08-30 after two bounded repairs; 42 crate tests, exact one-final inventory, descriptor-relative no-follow reads, and producer-shaped temp evidence | passed |
+| W3 Runtime audit | independent contract/recovery reviews after adversarial and real-SQLite repair cycles | exact live setup, attempt/event recovery, approval/replay/terminal sealing, 17/17 evaluator, no legacy regression | passed 2026-08-30; request-before-step, Succeeded-before-Completed, durable principal binding, and read-only sealed replay were independently re-audited; 96 crate tests pass | passed |
+| Runtime impact | `rtk scripts/test-scoped.sh proof-agent-runtime` | runtime plus reverse dependents pass | final quiescent rerun passed 178 tests across Runtime and CLI on 2026-08-30 | passed |
+| Kernel impact | `rtk scripts/test-scoped.sh proof-kernel` | kernel plus reverse dependents pass | 419 passed across 46 suites on 2026-08-30; initial sandbox-only loopback denial was isolated, then the target and full scope passed with loopback permission | passed |
+| Storage impact | `rtk scripts/test-scoped.sh proof-storage` | storage plus reverse dependents pass | final quiescent rerun passed 259 tests across Storage, CLI, HTTP, MCP, and WebSocket on 2026-08-30 | passed |
+| Preview impact | `rtk scripts/test-scoped.sh proof-content` | Content plus reverse dependents pass | 341 passed across 35 suites on 2026-08-30 after additive v2 conformance/MCP registry integration updates | passed |
+| W4 CLI/security audit | E0001-08 handoff plus independent credential/authority review | exact scoped delegation, strict live bindings, frozen policy checks, deferred credential boundary, real-SQLite replay | passed 2026-08-30 with no blocker; 10 live, 3 delegation, and 1 transfer focused tests plus full 39-test suite pass | passed |
+| CLI impact | `rtk scripts/test-scoped.sh proof-transport-cli` | CLI passes with preflight-before-secret tests | final host-context rerun passed all 68 CLI tests on 2026-08-30; the separate 11-test child-process suite also passed | passed |
+| W4 formatting/diff | `rtk cargo fmt --check -p proof-agent-runtime`; `rtk cargo fmt --check -p proof-transport-cli`; scoped `rtk git diff --check` | all clean | all passed 2026-08-30 | passed |
+| Runtime check-only seam | E0001-10 implementation, root rerun, and independent contract/API audit | readiness uses the authoritative runtime validator without a live run or gateway | passed 2026-08-30; 99 runtime tests, fmt/diff clean, exact validator reuse, zero mutation/factory/send, final audit PASS | passed |
+| Runtime bootstrap recovery | E0001-09 child kill/retry plus E0001-11 fault-injection suite | saved pre-checkpoint/event run is publicly resumable without replacement or duplicate effect | owner/root suites pass 110/110; focused generic recovery 11/11; exact approval/tool-result reconstruction and substitution matrix; final independent audit PASS | passed |
+| Strong SQLite pinning feasibility | E0001-12 probe, handoff, and independent design review | never accept a false pathname guard as descriptor-pinned WAL/sidecar safety | stock SQLite rejects the proc-fd magic link under NOFOLLOW and otherwise canonicalizes it; custom VFS/mount namespace required, so D-E0001-008 is superseded | passed: negative result |
+| Trusted fresh-workspace open | D-E0001-009 plus E0001-13 storage and E0001-09 CLI tests | no static symlink/hard-link or different-UID substitution before key/DB use; native nofollow and identity barriers; residual same-euid/root risk explicit | storage owner/root 124/124, focused 4/4, integration 6/6, independent PASS; CLI owner/root 68/68, child 11/11 including real sticky `/tmp`, independent PASS | passed |
+| Deterministic preflight | public credential-free runtime rehearsal plus independent recomputation | fresh immutable stable digest, 10/10, no failures, exact safe edition/readiness bindings | preparation `01a053eb-a460-7f21-8b2b-5cebcd872dd0`; run `01a053eb-cc9b-7e13-9015-657a54997a41`; evaluation `01a053ec-51a1-7b13-af4e-2535a8ea551f`; evaluation digest `95f484f30bfdb5f9531a6702d78df247685bd38ebd19e1e4b45113987d1776d6`; readiness binding digest `7efebe8d98ad23f9a122ae64f76887d371804f719bae7fb4a69b434e511b6b71`; independent stable replay and exact ordered 10/10; zero provider/live-v2/artifact/failure evidence | passed |
+| Live journey | one fresh bounded provider run | exact call, signed pause, same-run restart/resume, one artifact/proof | B5 activation evidence passes, but both sandbox and host-context presence checks reported `OPENAI_API_KEY` absent without exposing a value; zero provider attempts; product owner deferred execution until the morning of 2026-08-31 | owner-deferred |
+| Independent live verification | sealed policy/trace/artifact/proof bundle | exact 17/17; tamper vectors fail; usage/cost/rollback recorded | pending | blocked on the live journey |
+| Final gate | `rtk scripts/swarm.sh verify AXP-E0001 --quiescent` | format and workspace suite pass | pending | blocked |
+| Owner release | Gate C decision | dated accept/defer/reject | pending | blocked |
+
+## Evidence handling
+
+Never store provider credentials, private key contents, approver private
+material, complete `.proof` workspaces, or copied runtime databases here. The
+live record may contain approved redacted IDs, exact synthetic arguments,
+digests, public keys, proof/evaluation results, token/cost totals, and commands.
+
+Known pre-implementation limitations and the discovery basis are recorded in
+[`discovery.md`](discovery.md). Task evidence will be linked from unique files
+under [`handoffs/`](handoffs/).
