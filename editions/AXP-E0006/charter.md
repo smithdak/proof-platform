@@ -4,7 +4,7 @@
 - Owner: product owner
 - Orchestrator: Codex primary agent
 - Base revision: `d76f44f960d905398a266fa8858562ad15fb2366`
-- Status: `blocked — D-E0006-013 current tab failed closed; final run authority consumed`
+- Status: `blocked — D-E0006-015 ceremony attachment failed; authority consumed`
 - Dependency: E0001 Gate C defer recorded in D-E0001-020; E0001 is blocked,
   quiescent, and writer-free
 - Discovery: three read-only `gpt-5.6-luna` audits completed 2026-08-31
@@ -73,6 +73,9 @@ In scope:
   actionability/signing behavior.
 - Add deterministic router, concurrency, clock/expiry, process-output/argv,
   and browser secrecy verification.
+- Reproduce and correct the D-E0006-014 current-document delivery ambiguity
+  under the unchanged public state machines, generic error boundary, and
+  credential-leak prohibitions.
 - Use only the already-locked `rustix` 1.1.4 `termios` surface for non-echoing
   Linux TTY input; E0006-02 owns its exact crate-manifest/lockfile delta.
 - Update public guidance only after the secure path passes independent review.
@@ -96,7 +99,8 @@ Non-goals:
 - Routing: read-only discovery uses `gpt-5.6-luna`; contract, security
   implementation, independent security/browser verification, and integration
   use `gpt-5.6-sol` under `editions/MODEL_POLICY.md`.
-- Scope: four tasks across W1-W4. Any kernel, runtime, storage, migration,
+- Scope: six tasks across W1-W6, including the owner-authorized W4 remediation
+  and W5 non-author verification. Any kernel, runtime, storage, migration,
   remote-access, or persistent-secret need stops for a new Gate B decision.
 - External/live spend: zero. No provider credential, network service, or paid
   model call is part of the product evaluation.
@@ -121,7 +125,13 @@ Non-goals:
 - Gate A approver/date: product owner / 2026-08-31 / D-E0006-004
 - Gate B decision/date: product owner / 2026-08-31 / D-E0006-004, binding
   D-E0006-003 and the frozen contract/evaluation digests
-- Gate C decision/date: pending independently verified candidate
+- Gate B remediation decision/date: product owner / 2026-08-31 /
+  D-E0006-015, preserving the frozen contract and authorizing one independent
+  post-repair 14/14 ceremony
+- Gate C decision/date: blocked; exact 14/14 evidence was not established
 
-The combined Gate A/B packet is approved. E0006-02 may implement only the
-frozen contract within its exclusive assignment; Gate C remains pending.
+The combined Gate A/B packet and bounded remediation were approved. E0006-05
+removed the observed delivery ambiguity under the frozen contract and passed
+independent source/test review. The single authorized E0006-06 ceremony then
+stopped at its same-visible-tab attachment boundary, so E0006-04 and Gate C
+remain unopened and the standalone UI remains unreleased.

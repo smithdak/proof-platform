@@ -76,6 +76,24 @@ pub(super) struct ApprovalAuthority {
     inner: Mutex<AuthorityState>,
     changed: Notify,
     clock: Arc<dyn MonotonicClock>,
+    #[cfg(test)]
+    exchange_pause: Mutex<Option<Arc<ExchangeTestPause>>>,
+}
+
+#[cfg(test)]
+struct ExchangeTestPause {
+    claimed: tokio::sync::Barrier,
+    release: tokio::sync::Barrier,
+}
+
+#[cfg(test)]
+impl ExchangeTestPause {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            claimed: tokio::sync::Barrier::new(2),
+            release: tokio::sync::Barrier::new(2),
+        })
+    }
 }
 
 pub(super) struct SessionLease<'a> {
@@ -125,6 +143,8 @@ impl ApprovalAuthority {
             }),
             changed: Notify::new(),
             clock,
+            #[cfg(test)]
+            exchange_pause: Mutex::new(None),
         })
     }
 
@@ -193,7 +213,17 @@ impl ApprovalAuthority {
                         deadline,
                         exchange_claimed,
                     };
-                    TerminalVerification::Verified
+                    if exchange_claimed {
+                        if activate_session(&mut state, &code, now).is_some() {
+                            state.bootstrap = BootstrapState::Exchanged;
+                            TerminalVerification::Verified
+                        } else {
+                            revoke_authority(&mut state);
+                            TerminalVerification::Rejected
+                        }
+                    } else {
+                        TerminalVerification::Verified
+                    }
                 } else {
                     state.bootstrap = BootstrapState::Revoked;
                     TerminalVerification::Rejected
@@ -219,23 +249,45 @@ impl ApprovalAuthority {
             let Some(mut state) = self.lock_state() else {
                 return None;
             };
-            expire_bootstrap(&mut state, self.clock.now());
-            match &mut state.bootstrap {
+            let now = self.clock.now();
+            expire_bootstrap(&mut state, now);
+            match state.bootstrap {
                 BootstrapState::Pending {
                     code: expected,
-                    exchange_claimed,
-                    ..
+                    deadline,
+                    exchange_claimed: false,
+                } if fixed_eq(&expected, &code) => {
+                    state.bootstrap = BootstrapState::Pending {
+                        code: expected,
+                        deadline,
+                        exchange_claimed: true,
+                    };
                 }
-                | BootstrapState::Verified {
+                BootstrapState::Verified {
                     code: expected,
-                    exchange_claimed,
-                    ..
-                } if fixed_eq(expected, &code) && !*exchange_claimed => {
-                    *exchange_claimed = true;
+                    deadline,
+                    exchange_claimed: false,
+                } if fixed_eq(&expected, &code) && now < deadline => {
+                    state.bootstrap = BootstrapState::Verified {
+                        code: expected,
+                        deadline,
+                        exchange_claimed: true,
+                    };
+                    if activate_session(&mut state, &code, now).is_some() {
+                        state.bootstrap = BootstrapState::Exchanged;
+                    } else {
+                        revoke_authority(&mut state);
+                        drop(state);
+                        self.changed.notify_waiters();
+                        return None;
+                    }
                 }
                 _ => return None,
             }
         }
+
+        #[cfg(test)]
+        self.pause_claimed_exchange_for_test().await;
 
         loop {
             let notified = self.changed.notified();
@@ -245,28 +297,9 @@ impl ApprovalAuthority {
                 };
                 let now = self.clock.now();
                 expire_bootstrap(&mut state, now);
+                expire_session(&mut state, now);
                 match state.bootstrap {
-                    BootstrapState::Verified {
-                        code: verified_code,
-                        deadline,
-                        exchange_claimed: true,
-                    } if fixed_eq(&verified_code, &code) && now < deadline => {
-                        let Some(secret) = new_session_secret(&state.instance_id, &code) else {
-                            revoke_authority(&mut state);
-                            drop(state);
-                            self.changed.notify_waiters();
-                            return None;
-                        };
-                        state.bootstrap = BootstrapState::Exchanged;
-                        state.session = SessionState::Active {
-                            secret,
-                            instance_id: state.instance_id,
-                            workspace_binding: state.workspace_binding.clone(),
-                            absolute_deadline: now + SESSION_ABSOLUTE_TTL,
-                            idle_deadline: now + SESSION_IDLE_TTL,
-                        };
-                        return Some(secret);
-                    }
+                    BootstrapState::Exchanged => return active_session_secret(&state),
                     BootstrapState::Pending { deadline, .. } => deadline.saturating_sub(now),
                     _ => return None,
                 }
@@ -398,6 +431,39 @@ impl ApprovalAuthority {
             *absolute_deadline = self.clock.now();
         }
         expire_session(&mut state, self.clock.now());
+    }
+
+    #[cfg(test)]
+    fn set_exchange_pause_for_test(&self, pause: Arc<ExchangeTestPause>) {
+        *self.exchange_pause.lock().unwrap() = Some(pause);
+    }
+
+    #[cfg(test)]
+    async fn pause_claimed_exchange_for_test(&self) {
+        let pause = self.exchange_pause.lock().unwrap().clone();
+        if let Some(pause) = pause {
+            pause.claimed.wait().await;
+            pause.release.wait().await;
+        }
+    }
+}
+
+fn activate_session(state: &mut AuthorityState, code: &[u8; 8], now: Duration) -> Option<[u8; 32]> {
+    let secret = new_session_secret(&state.instance_id, code)?;
+    state.session = SessionState::Active {
+        secret,
+        instance_id: state.instance_id,
+        workspace_binding: state.workspace_binding.clone(),
+        absolute_deadline: now + SESSION_ABSOLUTE_TTL,
+        idle_deadline: now + SESSION_IDLE_TTL,
+    };
+    Some(secret)
+}
+
+fn active_session_secret(state: &AuthorityState) -> Option<[u8; 32]> {
+    match state.session {
+        SessionState::Active { secret, .. } => Some(secret),
+        _ => None,
     }
 }
 
@@ -854,6 +920,80 @@ mod tests {
         let secret = authority.exchange(code).await.unwrap();
         assert!(authority.session_lease(&secret).is_some());
         assert!(authority.exchange(code).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn claimed_exchange_commits_at_terminal_verification_before_delivery_delay() {
+        let clock = ManualClock::new();
+        let authority = new_authority(clock.clone());
+        let pause = ExchangeTestPause::new();
+        authority.set_exchange_pause_for_test(pause.clone());
+        let code = [0x36; 8];
+        assert!(authority.register_bootstrap(code));
+        let exchange = {
+            let authority = authority.clone();
+            tokio::spawn(async move { authority.exchange(code).await })
+        };
+
+        pause.claimed.wait().await;
+        assert!(authority.exchange(code).await.is_none());
+        clock.set(119);
+        assert_eq!(
+            authority.verify_terminal(Some(code)),
+            TerminalVerification::Verified
+        );
+        {
+            let state = authority.inner.lock().unwrap();
+            assert_eq!(state.bootstrap, BootstrapState::Exchanged);
+            assert!(matches!(state.session, SessionState::Active { .. }));
+        }
+
+        // Delivery-task scheduling after the bootstrap deadline cannot undo an
+        // exchange that linearized with an in-time terminal verification.
+        clock.set(120);
+        pause.release.wait().await;
+        let secret = exchange.await.unwrap().unwrap();
+        assert!(authority.session_lease(&secret).is_some());
+        assert!(authority.exchange(code).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn claimed_exchange_delivery_still_fails_after_session_idle_expiry() {
+        let clock = ManualClock::new();
+        let authority = new_authority(clock.clone());
+        let pause = ExchangeTestPause::new();
+        authority.set_exchange_pause_for_test(pause.clone());
+        let code = [0x37; 8];
+        assert!(authority.register_bootstrap(code));
+        let exchange = {
+            let authority = authority.clone();
+            tokio::spawn(async move { authority.exchange(code).await })
+        };
+
+        pause.claimed.wait().await;
+        assert_eq!(
+            authority.verify_terminal(Some(code)),
+            TerminalVerification::Verified
+        );
+        clock.set(SESSION_IDLE_TTL.as_secs());
+        pause.release.wait().await;
+
+        assert!(exchange.await.unwrap().is_none());
+        assert!(matches!(
+            authority.inner.lock().unwrap().session,
+            SessionState::ExpiredIdle
+        ));
+        assert!(authority.exchange(code).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn notify_waiters_between_future_creation_and_first_poll_is_observed() {
+        let notify = Notify::new();
+        let notified = notify.notified();
+        notify.notify_waiters();
+        tokio::time::timeout(Duration::from_secs(1), notified)
+            .await
+            .expect("Tokio lost a notify_waiters broadcast before first poll");
     }
 
     #[tokio::test]

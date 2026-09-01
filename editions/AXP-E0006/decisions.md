@@ -385,3 +385,64 @@ D-E0006-013's final one-run authority is consumed. E0006-03 is blocked and
 quiescent; E0006-04 and Gate C remain unopened. This decision authorizes no
 retry, source or contract change, lifetime extension, E0002 work, commit, or
 push.
+
+## D-E0006-015 — Bounded delivery remediation and one post-review ceremony authorized
+
+Status: active · Date: 2026-08-31 · Decision owner: product owner
+
+After reviewing the blocked disposition and the orchestrator's exact proposed
+next step, the product owner responded `proceed`. This authorizes a bounded
+E0006 remediation wave to diagnose and fix the current-tab bootstrap/session
+exchange failure, preserve the frozen security contract, add regression
+evidence, and permit one final 14/14 verification ceremony after independent
+review. It authorizes no provider use or external effect.
+
+E0006-05 is the only source-writing task and retains the named E0006 security
+owner's exclusive `proof-transport-cli` boundary. It must establish a
+deterministic cause and may correct only the legitimate single-document
+delivery path. The one-use state machine, terminal verification, generic error
+boundary, reload/lost-response failure, TTLs, loopback/request boundaries,
+signing lease, and all frozen contract/evaluation digests remain binding. Any
+need to relax one of those rules stops for a new owner decision.
+
+E0006-06 remains a distinct non-author. It must pass source/test review before
+starting exactly one fresh provider-free synthetic ceremony. That ceremony
+must produce the complete same-tab, same-session 14/14 browser/process/decision/
+revoke result; any failed boundary consumes its authority without retry and
+prior-run evidence may not be combined into a PASS. This decision does not
+authorize E0006-04, Gate C self-approval, E0002 implementation, commit, or push.
+
+## D-E0006-016 — Post-remediation attachment failed; authority consumed
+
+Status: blocked · Date: 2026-08-31 · Decision owner: orchestrator
+
+E0006-05 completed the bounded source remediation and a distinct non-author
+accepted its deterministic cause, frozen-contract preservation, and 120/120
+host-context scoped result. The one D-E0006-015-authorized ceremony then used
+the current binary, a fresh provider-free synthetic fixture, one loopback
+listener, and one isolated headed named browser session initialized with one
+blank tab. The fixture contained one `release.publish::v1` request for exact
+arguments `preview` / `2026.08.29-rc1` and no decision or execution.
+
+Asynchronous navigation to the actual `127.0.0.1:34989` listener was reported
+scheduled, and the Human reported exact `Local confirmation verified.` after
+entering the displayed code in the controlling terminal. Direct credential-
+free reads by the orchestrator and verifier nevertheless found the isolated
+target still at `chrome://new-tab-page/`, titled `New Tab`. The Human-visible
+product page was in a regular browser, not that isolated target. The required
+same-visible-tab product attachment therefore could not be established. The
+verifier stopped without a screenshot, decision, reload, second navigation, or
+attempt to combine evidence.
+
+The Human ended the product session and confirmed terminal echo restoration.
+The listener was absent and the isolated browser was closed. Final durable
+inspection showed the sole request expired with null decision and execution,
+the run still `waiting_for_input`, the step still `waiting_for_approval`, and
+events ending at `approval_required`; there was no resume, tool success,
+provider use, or external effect. The exact private fixture and browser runtime
+were then permanently removed.
+
+This is an attachment/evidence-channel blocker, not a rejection of the accepted
+E0006-05 source/test remediation. D-E0006-015's one ceremony is consumed.
+E0006-06 is blocked and quiescent; E0006-04 and Gate C remain unopened. This
+decision authorizes no retry, repair, E0002 implementation, commit, or push.

@@ -263,13 +263,103 @@ comparison. The successful follow-up closed this evidence gap: after explicit
 browser revocation and controlled Ctrl+C, the same Terminal A reported exactly
 `echo restored`.
 
-## Blocked release disposition
+## Blocked release disposition after D-E0006-014
 
-D-E0006-013 was explicitly final and is consumed. No retry is authorized.
-E0006-03 is blocked and quiescent; E0006-04 and Gate C remain unopened. The
-secure approval console must not be released from this evidence.
+D-E0006-013 was explicitly final and consumed; E0006-03 stopped blocked and
+quiescent. E0006-04 and Gate C remained unopened, and the secure approval
+console was not releasable from that evidence. Terminal `proof approval
+approve` and `proof approval deny` remained the rollback path; the historical
+fragment and Web Storage bearer remained prohibited.
 
-Terminal `proof approval approve` and `proof approval deny` remain the rollback
-path. Do not restore the historical fragment or Web Storage bearer. Any future
-reconsideration would require a new explicit owner security decision; none is
-active or implied by this record.
+D-E0006-015 subsequently authorized one bounded source remediation and, only
+after a distinct non-author source/test PASS, one fresh provider-free ceremony.
+It did not convert prior evidence into a release result or open Gate C.
+
+## E0006-06 pre-ceremony remediation review
+
+**Source/test review: PASS — ceremony not started.**
+
+The distinct non-author reviewed the one-file E0006-05 CLI delta against the
+unchanged frozen contract and evaluation. The split-linearization diagnosis is
+reachable in the old source: an exchange may claim while pending, terminal
+verification may commit `Verified` at second 119, and the admitted delivery
+task may resume at second 120, where the old loop expires the bootstrap before
+session activation. The candidate activates the session under the same
+authority lock when in-time verification observes the already-admitted
+exchange, while leaving that exchange as the sole secret-delivery path.
+
+The candidate preserves the required boundaries:
+
+- a duplicate exchange cannot claim or receive authority;
+- delivery at or after session idle/absolute expiry returns no secret;
+- a lost or cancelled response consumes the one-shot authority, and reload or
+  replay cannot recover it;
+- deadline equality still rejects an unverified bootstrap, and only successful
+  authentication advances the idle deadline;
+- malformed, unauthenticated, wrong-scope, and replay failures retain generic
+  responses and pre-protected-work ordering; and
+- TTL constants, routes, response shapes, dependency/lock state, contract,
+  evaluation, provider budget, and rollback behavior are unchanged.
+
+The deterministic claimed-exchange regression uses explicit claim/release
+barriers rather than task yields or a wall-clock race. It passes on the
+candidate; inspection of the pre-remediation loop proves the same controlled
+schedule reaches `Expired` and returns no session. Focused delivery, idle,
+Tokio-notification, router single-use/revoke, generic-error, and lost-response/
+scope tests passed. Host-context CLI and reverse-impact runs each passed
+120/120; formatting passed and the impact set contains only
+`proof-transport-cli`.
+
+Frozen evidence remained exact: contract
+`e040b4a0913490b42a0af6143e35da2d25261ccaf8e67a169b06259e26b67463`,
+evaluation `7b91911ad524f5ea303ae939bf5f852e8a83b852814feba834134d298a230634`,
+14-check set
+`b5ddad83dc550468dd062ca814313e64fd04cb63ffad00a8a2dc7e5391c01889`,
+and 26-vector set
+`43ad301d7a86e91760961b3d309ff193515029d6c688ba19d816936f1ef10fe8`.
+Production-source sentinel scans were empty.
+
+This was readiness evidence only, not 14/14 browser/process evidence or a
+release result. No browser, server, product fixture, credential, provider
+boundary, external effect, execution, commit, or push was started during the
+review.
+
+## D-E0006-015 ceremony result
+
+**E0006-06 result: FAIL / BLOCKED — attachment/tooling blocker.** The
+source-remediation review above remains PASS; the single authorized product
+ceremony did not establish the frozen same-tab browser evidence.
+
+The current binary was built against a fresh provider-environment-unset
+synthetic fixture containing exactly one approval request,
+`01a0592b-2223-7743-af05-97b238bcd2d4`, for
+`release.publish::v1`, with exact arguments `environment=preview` and
+`version_label=2026.08.29-rc1`. One isolated headed session,
+`e0006-remediation`, contained one pre-existing New Tab. Async navigation to
+the actual listener at `http://127.0.0.1:34989/` was reported scheduled. The
+Human used the product page in a regular browser, and the terminal reported
+exactly `Local confirmation verified.`
+
+The independent credential-free direct read of the isolated verifier target
+remained `chrome://new-tab-page/`, titled `New Tab`. Product selectors and
+elements were absent on New Tab, so code clearing, bootstrap hiding, app
+visibility, and End Session visibility could not be established. The verifier
+therefore could not establish possession of the Human-visible product document
+or the required same-tab session, and no 14/14 result can be claimed.
+No navigation, reload, click, tab mutation, snapshot, screenshot, credential
+read, or credential capture occurred. Evidence from another tab or run was not
+combined into a result.
+
+The Human ended the session and confirmed exactly `echo restored`. The
+listener was absent and the isolated browser was closed. Pre-disposal CLI
+inspection showed that the sole request expired with `decision: null` and
+`execution_proof_id: null`; the run remained `waiting_for_input`, the step
+remained `waiting_for_approval`, and the event stream ended at
+`approval_required`. No resume, tool success, provider access, execution, or
+external effect occurred. The exact synthetic-fixture and browser-runtime
+directories were deleted after inspection and are not recoverable.
+
+D-E0006-015 ceremony authority is consumed. No retry or source repair is
+authorized. E0006-06 is complete and quiescent at **FAIL / BLOCKED
+(attachment/tooling blocker)**; E0006-04 and Gate C remain unopened, and
+terminal approvals remain the rollback.

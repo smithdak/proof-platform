@@ -18,13 +18,18 @@ normal implementation, and `gpt-5.6-sol` only for contracts, security, or
 cross-crate integration.
 
 AXP-E0001 is blocked and quiescent after its Gate C defer in D-E0001-020.
-AXP-E0006 is the current P0 edition; Gate A/B and its implementation are
-complete. Its five-minute Human decision/revoke path and later credential-free
-single-tab attachment probe passed separately. The final D-E0006-013 run
-reached terminal verification, but the current attached tab failed closed
-before session/app evidence; its one-run authority is consumed. Its tracked
-`editions/AXP-E0006/assignments.tsv` is the dispatch source of truth.
-E0002-E0005 remain ranked candidates without active writers.
+AXP-E0006 is the current P0 edition; Gate A/B and its initial implementation
+are complete. Its five-minute Human decision/revoke path and later
+credential-free single-tab attachment probe passed separately. The final
+D-E0006-013 run reached terminal verification, but the current attached tab
+failed closed before session/app evidence. The product owner then authorized
+D-E0006-015: one bounded CLI remediation wave, independent review, and one
+post-review exact ceremony under the unchanged frozen contract. The remediation
+and source/test review passed, but the Human-visible product page and isolated
+verifier target were different browser contexts in that single ceremony. Its
+authority is consumed and AXP-E0006 is blocked and quiescent. Its tracked
+`editions/AXP-E0006/assignments.tsv` is the dispatch source of truth. E0002-E0005
+remain ranked candidates without active writers.
 
 ## Ranked editions
 
@@ -99,7 +104,7 @@ reusable signing credential appearing in a URL, ordinary process output,
 process arguments, browser history, Web Storage, cookies, referrers, logs, or
 test artifacts.
 
-**Status:** Blocked P0 critical security edition, ranked ahead of AXP-E0002.
+**Status:** Blocked and quiescent P0 critical security edition, ranked ahead of AXP-E0002.
 Gate A/B are approved; E0006-02 is quiescent with 117/117 host tests and an
 independent source/contract PASS. E0006-03 passed pre-session browser/header
 checks and deterministic rejection coverage. A follow-up co-located Human
@@ -116,8 +121,15 @@ inventory metadata can remain stale after asynchronous navigation. Exact
 attachment pass in one ceremony. The final D-E0006-013 ceremony reached
 terminal verification but its current attached tab returned a generic
 rejection with hidden app controls; it created no decision or execution and
-its one-run authority is consumed. The standalone UI remains unreleased and
-terminal approval commands are the rollback path.
+its one-run authority was consumed. D-E0006-015 authorized a bounded
+current-document delivery remediation, non-author review, and one final exact
+14/14 ceremony without changing the frozen contract. E0006-05 passed its
+deterministic remediation, independent review, and 120/120 host tests. The one
+post-remediation ceremony then failed its same-visible-tab boundary: the Human
+used the product page in a regular browser while the isolated verifier target
+remained `New Tab`. It stopped before a decision or execution, and its authority
+is consumed. The standalone UI remains unreleased, E0006-04 and Gate C remain
+unopened, and terminal approval commands are the rollback path.
 
 **Dispatch source of truth:** `editions/AXP-E0006/assignments.tsv`. The
 backlog rows below are descriptive only and cannot authorize work.
@@ -136,7 +148,9 @@ automatic browser launcher may place either credential in child argv.
 | E0006-01 | Freeze the standalone-console threat model, bootstrap/session contract, and Gate A/B decision | D-E0001-020 + E0001 quiescent/writer-free | new E0006 records plus one narrowly scoped approval-session contract (orchestrator only) | Contract covers clean URL/output, secure handoff, one-use exchange, lifetime/scope/revocation, constant-time comparison, Host/Origin, and fail-closed recovery | critical | `gpt-5.6-sol` |
 | E0006-02 | Replace the reusable fragment bearer with the approved bootstrap/session flow | E0006-01 | `crates/proof-transport-cli/**` (one security owner) | Process tests prove secret-free output/argv; Tower tests prove one successful exchange, concurrent/replay/expiry/cross-instance rejection, no unauthorized signature, and unchanged v1/v2 actionability | critical | `gpt-5.6-sol` |
 | E0006-03 | Independently verify browser secrecy and signing boundaries | E0006-02 | non-author browser/security verifier; redacted dogfood evidence only | Clean loopback URL; no query/fragment/secret storage/cookie/referrer; no-store/CSP/no-referrer/frame/nosniff headers; secret-sentinel scan; exact 14/14 non-author PASS | critical | `gpt-5.6-sol` |
-| E0006-04 | Integrate, reconcile public guidance, run the quiescent gate, and request Gate C | E0006-01..03 | orchestrator-owned public guidance, contract, root manifests, and release records | Scoped/reverse impact and full final gate pass; rollback, limitations, zero provider spend, and dated owner decision are recorded | critical | `gpt-5.6-sol` |
+| E0006-05 | Remediate the current-document bootstrap/session delivery ambiguity | E0006-02, D-E0006-015 | `crates/proof-transport-cli/**` (same single security owner, later wave) | Deterministic reproduction/root cause, legitimate one-document path corrected, and reload/replay/lost-response paths remain fail closed | critical | `gpt-5.6-sol` |
+| E0006-06 | Independently review remediation and run one exact ceremony | E0006-05 | non-author browser/security verifier; redacted dogfood evidence only | Candidate source/test PASS followed by one same-tab, same-session exact 14/14 journey with zero execution/resume | critical | `gpt-5.6-sol` |
+| E0006-04 | Integrate, reconcile public guidance, run the quiescent gate, and request Gate C | E0006-01,02,05,06 | orchestrator-owned public guidance, contract, root manifests, and release records | Scoped/reverse impact and full final gate pass; rollback, limitations, zero provider spend, and dated owner decision are recorded | critical | `gpt-5.6-sol` |
 
 ### AXP-E0002 — One Human Oversees Many Runs
 

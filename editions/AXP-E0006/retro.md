@@ -1,5 +1,19 @@
 # E0006 Retrospective
 
+## Post-remediation blocked finding — 2026-08-31
+
+E0006-05 deterministically reproduced and removed the split deadline
+linearization while preserving the frozen contract; independent review and
+120/120 host-context tests passed. The single D-E0006-015 ceremony still could
+not produce one exact 14/14 journey. The Human completed terminal verification
+from a product page in a regular browser, while the isolated verifier session
+remained on its pre-existing `New Tab` target. Stopping there preserved the
+same-tab evidence rule and avoided manufacturing a PASS from separate browser
+contexts. Durable cleanup proved null decision/execution, zero resume/effect,
+listener shutdown, echo restoration, browser closure, and exact fixture
+disposal. The ceremony authority is consumed; E0006-06, E0006-04, Gate C, and
+E0002 remain blocked.
+
 ## Interim blocked finding — 2026-08-31
 
 The implementation and deterministic evaluation passed. A co-located Human
@@ -29,14 +43,13 @@ current attached document failed closed before exposing session/app evidence.
 
 ## Outcome
 
-Gate A/B, E0006-02 implementation, scoped validation, the direct Human product
+Gate A/B, E0006-02/E0006-05 implementation, scoped validation, the direct Human product
 journey, and headed current-session browser inspection completed across
 separate runs. E0006 remains blocked before E0006-04 and Gate C because the
-five-minute run's product path passed but its automation attachment exposed a
-different fresh tab; separate runs or tabs cannot be combined into one frozen
-14/14 result. The corrected attachment technique is now proven without a
-credential, but its final authorized product use ended at a generic current-tab
-rejection with no decision or execution. The one-run authority is consumed.
+post-remediation ceremony again split the Human-visible product document from
+the isolated verifier target; separate browser contexts cannot be combined
+into one frozen 14/14 result. The accepted remediation remains deterministic
+source/test evidence, not release evidence. The one-run authority is consumed.
 
 ## Keep / change / stop
 
@@ -49,11 +62,13 @@ rejection with no decision or execution. The one-run authority is consumed.
 
 ## Swarm metrics
 
-- Tasks completed / escalated / reworked: E0006-01 and E0006-02 done;
+- Tasks completed / escalated / reworked: E0006-01, E0006-02, and E0006-05 done;
   E0006-03 blocked after an automation-only expiry, one successful Human
   normal-browser ceremony, one headed expiry, and one successful five-minute
-  product path whose Human-visible tab was not exposed to automation; E0006-04
-  not started.
+  product path whose Human-visible tab was not exposed to automation; E0006-06
+  passed source/test review but blocked when its one ceremony again split the
+  regular-browser product page from the isolated verifier target; E0006-04 not
+  started.
 - Budget planned / used: three `gpt-5.6-luna` read-only audits plus bounded
   `gpt-5.6-sol` contract, implementation, review, and verification work; zero
   provider or external spend.
@@ -65,7 +80,9 @@ rejection with no decision or execution. The one-run authority is consumed.
   asynchronously navigated visible tab and identified stale tab-list metadata;
   it did not authorize or replace a product run. The final product run then
   reached terminal verification but not current-tab session/app evidence; no
-  screenshot, decision, or execution followed. All product failure paths
-  remained closed.
+  screenshot, decision, or execution followed. E0006-05 then corrected that
+  source race, but the post-remediation product page was not attached to the
+  isolated verifier target, so its one ceremony stopped before app, decision,
+  or revoke evidence. All product failure paths remained closed.
 - Ownership conflicts: none; writers remained exclusive and are quiescent.
 - Next backlog candidates: E0002 only after E0006 Gate C.

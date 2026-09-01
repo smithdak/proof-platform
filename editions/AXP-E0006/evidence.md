@@ -13,9 +13,9 @@
 - Provider/model configuration: none; zero provider use and zero live spend
 - Environment: disposable synthetic workspaces, loopback browser, and real
   controlling TTY; all fixtures removed after redacted inspection
-- Evaluator: distinct non-author E0006-03 verifier plus one authorized
+- Evaluator: distinct non-author E0006-03/E0006-06 verifier plus one authorized
   co-located Human for the non-communicated browser-to-TTY handoff
-- Result: `FAIL / blocked — final current tab failed closed before session/app evidence`
+- Result: `FAIL / blocked — post-remediation isolated same-tab attachment not established`
 
 ## Acceptance checks
 
@@ -23,15 +23,19 @@
 |---|---|---|---|---|
 | E0001 dependency | D-E0001-020 and E0001 status | prior edition blocked, quiescent, writer-free | owner defer recorded; host quiescent gate 614/614 | passed |
 | Read-only discovery | three bounded audits | exact threat/source/test/workgraph basis; zero effects | converged report in `discovery.md`; no writes/provider/browser/secrets | passed |
-| Edition structure | `rtk scripts/swarm.sh validate AXP-E0006` | complete artifact/task/handoff graph with disjoint paths | valid four-task W1-W4 graph; assignment validation and all four packet emissions pass | passed |
+| Edition structure | `rtk scripts/swarm.sh validate AXP-E0006` | complete artifact/task/handoff graph with disjoint paths | D-E0006-015 extends the valid graph with single-owner E0006-05 remediation and distinct E0006-06 verification | passed |
 | Proposed contract | `contracts/approval-console-session.md` | exact threat model, states, limits, routes, failure ordering, rollback | frozen digest; independent corrected-packet review PASS | passed |
 | Proposed evaluation | `evals/approval-console-security-v1.json` | 14 ordered required checks with normative assertions plus 26 ordered rejection vectors and frozen set digests | frozen digest; mechanical validation and independent corrected-packet review PASS | passed |
 | Gate A | D-E0006-002/D-E0006-004 | dated owner direction approval | approved 2026-08-31 | passed |
 | Gate B | D-E0006-003/D-E0006-004 | dated owner security/public-contract approval | approved 2026-08-31 with exact digests | passed |
 | CLI implementation | E0006-02 handoff and scoped impact | exact approved behavior and all focused regressions | 117/117 host tests; formatting/impact/diff clean; independent remediated source review PASS | passed |
+| Gate B remediation | D-E0006-015 | bounded source/test correction plus one post-review ceremony under frozen contract | owner responded `proceed` to the exact remediation authorization; no provider or external effect | passed |
+| Delivery remediation | E0006-05 handoff and scoped impact | deterministic cause, legitimate single-document correction, reload/replay/lost-response still closed | split deadline linearization corrected atomically; worker and orchestrator host scoped runs each passed 120/120; formatting/impact/diff clean | passed |
+| Independent remediation review | E0006-06 handoff and redacted dogfood record | non-author accepts source, deterministic regression, error/expiry boundaries, and frozen digests before ceremony | source/test review PASS; focused and host-context evidence accepted; contract/evaluation digests unchanged | passed |
+| Post-remediation ceremony | D-E0006-015 / D-E0006-016 | one same-tab, same-session exact 14/14 result | terminal handoff verified, but isolated verifier target remained `chrome://new-tab-page/` while the Human-visible product was in a regular browser; stopped before app/decision/revoke evidence, with null decision/execution and zero resume/effect | failed / blocked |
 | Independent verification | E0006-03 handoff and redacted dogfood record | exact 14/14 plus browser/process/security PASS | pre-session checks and all 26 deterministic vectors passed; prior runs separately passed headed browser secrecy/capture and the Human denial/revoke path; the final D-E0006-013 run reached terminal verification, but the current attached tab retained a cleared bootstrap surface, hidden app, and generic rejection, so no session-possession, screenshot, decision, or execution evidence could be claimed | failed / blocked |
-| Final gate | `rtk scripts/swarm.sh verify AXP-E0006 --quiescent` | edition valid, formatting and workspace suite pass | not run | pending |
-| Owner release | Gate C decision | dated accept/defer/reject | not reached | pending |
+| Final gate | `rtk scripts/swarm.sh verify AXP-E0006 --quiescent` | edition valid, formatting and workspace suite pass | not run; E0006-04 remains unopened after failed W5 dependency | blocked |
+| Owner release | Gate C decision | dated accept/defer/reject | not reached; exact 14/14 absent | blocked |
 
 ## Credential-free attachment diagnostic
 
@@ -84,6 +88,33 @@ execution, run `waiting_for_input`, step `waiting_for_approval`, and events
 ending at `approval_required`, with no resume, tool success, proof, evaluation,
 provider, or external effect. The browser, process, listeners, isolated runtime,
 and exact disposable fixture were removed. D-E0006-013 authority is consumed.
+
+## D-E0006-015 post-remediation ceremony
+
+The bounded E0006-05 correction passed independent source/test review under the
+unchanged frozen digests. The resulting one authorized ceremony used a fresh
+provider-free synthetic workspace with one `release.publish::v1` request for
+exact arguments `preview` / `2026.08.29-rc1`, one loopback listener at
+`127.0.0.1:34989`, and one isolated headed named browser session initialized
+with one blank tab. No provider credential was exposed to the process.
+
+The Human opened the product URL in a regular browser, entered its displayed
+code through the controlling non-echoing terminal, and reported exact `Local
+confirmation verified.` The separately isolated verifier target remained at
+`chrome://new-tab-page/`, titled `New Tab`, in both orchestrator and independent
+credential-free reads. Because that target was not the Human-visible product
+document, the required same-visible-tab app/session evidence could not be
+established. The verifier stopped without a screenshot, decision, reload,
+second navigation, or evidence combination.
+
+After the Human ended the session and confirmed echo restoration, the listener
+was absent and the isolated browser closed. Final durable reads found the sole
+request expired with null decision and execution, run `waiting_for_input`, step
+`waiting_for_approval`, and events ending at `approval_required`. No resume,
+tool success, proof, evaluation, provider use, or external effect occurred.
+The exact private fixture and isolated browser runtime were permanently
+removed. This attachment/tooling failure consumes D-E0006-015's ceremony but
+does not invalidate the accepted source remediation.
 
 ## Demo and limitations
 
