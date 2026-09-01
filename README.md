@@ -200,17 +200,17 @@ human once, sign the exact pending request, and resume the same checkpoint:
 ```bash
 proof approval approver-init
 proof approval approve '<REQUEST_ID>' --approver '<APPROVER_ID>'
+# Or record a denial without granting execution authority:
+proof approval deny '<REQUEST_ID>' --approver '<APPROVER_ID>'
 proof agent resume '<RUN_ID>'
 ```
 
-The standalone browser console is not currently an approved security path. Do
-not run `proof approval ui`, copy its printed URL, or capture it in terminal,
-agent, CI, supervisor, clipboard, or browser records: the fragment is a
-reusable Human signing-session credential for every actionable request exposed
-by that server. Use the terminal approval commands above until AXP-E0006 ships
-a clean-URL, bounded, one-use bootstrap and memory-only session. The approval
-command records a decision but does not execute the tool; resume the exact same
-run through its permitted runtime-specific command afterward.
+AXP-E0006 Gate C was deferred; the standalone browser console remains
+unreleased and is not a supported security path. Do not run `proof approval
+ui` or treat its candidate clean-URL/session work as released. Use the terminal
+`approval approve` or `approval deny` commands above. A decision does not
+execute the tool; after an approval, resume the exact same run only through its
+permitted runtime-specific command. A denial grants no execution authority.
 
 For a terminal run, execute a reproducible task-correctness policy and persist
 its evaluation of the signed trace:

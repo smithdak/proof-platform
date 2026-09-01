@@ -1,0 +1,14 @@
+task	wave	status	model	effort	owner	writable_paths	dependencies
+E0002-01	W1	review	gpt-5.6-sol	high	orchestrator	editions/AXP-E0002/**;editions/BACKLOG.md	none
+E0002-13	W2	blocked	gpt-5.6-sol	high	orchestrator	contracts/operator-control-plane.md;schemas/operator-control/**;evals/operator-control-v1.json;editions/AXP-E0002/assignments.tsv;editions/AXP-E0002/charter.md;editions/AXP-E0002/decisions.md;editions/AXP-E0002/evidence.md;editions/AXP-E0002/handoffs/E0002-13.md;editions/AXP-E0002/ownership.md;editions/AXP-E0002/status.md;editions/AXP-E0002/tasks/**;editions/AXP-E0002/workgraph.md	E0002-01
+E0002-05	W3	pending	gpt-5.6-sol	high	e0002-kernel	crates/proof-kernel/**;editions/AXP-E0002/handoffs/E0002-05.md	E0002-13
+E0002-08	W3	pending	gpt-5.6-sol	high	e0002-auth	Cargo.toml;Cargo.lock;crates/proof-operator-auth/**;editions/AXP-E0002/handoffs/E0002-08.md	E0002-13
+E0002-12	W3	pending	gpt-5.6-luna	medium	e0002-fixtures	evals/fixtures/operator-control/**;editions/AXP-E0002/handoffs/E0002-12.md	E0002-13
+E0002-06	W4	pending	gpt-5.6-sol	high	e0002-storage	crates/proof-storage/**;editions/AXP-E0002/handoffs/E0002-06.md	E0002-05
+E0002-07	W5	pending	gpt-5.6-sol	high	e0002-runtime	crates/proof-agent-runtime/**;editions/AXP-E0002/handoffs/E0002-07.md	E0002-06
+E0002-11	W6	pending	gpt-5.6-sol	high	e0002-control	Cargo.toml;Cargo.lock;crates/proof-operator-control/**;editions/AXP-E0002/handoffs/E0002-11.md	E0002-07;E0002-08
+E0002-02	W7	pending	gpt-5.6-terra	high	e0002-http	crates/proof-transport-http/**;editions/AXP-E0002/handoffs/E0002-02.md	E0002-06;E0002-08;E0002-11
+E0002-09	W8	pending	gpt-5.6-sol	high	e0002-http	crates/proof-transport-http/**;editions/AXP-E0002/handoffs/E0002-09.md	E0002-02;E0002-07;E0002-08;E0002-11
+E0002-03	W9	pending	gpt-5.6-terra	high	e0002-ui	apps/operator-console/**;editions/AXP-E0002/handoffs/E0002-03.md	E0002-02;E0002-09;E0002-11
+E0002-04	W10	pending	gpt-5.6-sol	high	e0002-verifier	docs/dogfood/operator-control.md;editions/AXP-E0002/handoffs/E0002-04.md	E0002-03;E0002-07;E0002-08;E0002-09;E0002-11;E0002-12
+E0002-10	W11	pending	gpt-5.6-sol	xhigh	orchestrator	Cargo.toml;Cargo.lock;README.md;docs/dogfood/operator-control.md;editions/BACKLOG.md;editions/AXP-E0002/**	E0002-01;E0002-02;E0002-03;E0002-04;E0002-05;E0002-06;E0002-07;E0002-08;E0002-09;E0002-11;E0002-12;E0002-13

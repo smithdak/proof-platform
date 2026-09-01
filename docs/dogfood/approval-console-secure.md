@@ -363,3 +363,151 @@ D-E0006-015 ceremony authority is consumed. No retry or source repair is
 authorized. E0006-06 is complete and quiescent at **FAIL / BLOCKED
 (attachment/tooling blocker)**; E0006-04 and Gate C remain unopened, and
 terminal approvals remain the rollback.
+
+## D-E0006-018 launcher-first ceremony
+
+**E0006-08 result: FAIL / BLOCKED — denial-only contract violated.** The one
+authorized launcher-first provider-free ceremony produced an unexpected signed
+approval instead of the required denial. It cannot count as 14/14 or 10,000
+basis points, and D-E0006-018 is consumed with no retry.
+
+The credential-free independent launcher preflight passed before product state
+existed. The isolated headed session `e0006-e08` had exactly one active session
+and one tab. Although tab inventory retained the permitted stale `New Tab` /
+`chrome://newtab/` label, the authoritative direct read returned exact URL
+`http://127.0.0.1:43125/launcher`, title `E0006 verified launcher`, marker
+`Proof approval launcher ready`, and state `verified launcher`. The body was
+non-empty; framework-overlay, captured console-error, console-message, and
+page-error checks were clean. No navigation, reload, click, screenshot,
+credential read, product-state creation, or file mutation occurred in that
+preflight.
+
+The fresh provider-environment-unset fixture contained exactly one request,
+`01a05c11-6b76-7e32-9c00-b3fd952b468a`, for
+`release.publish::v1`, with exact arguments `environment=preview` and
+`version_label=2026.08.29-rc1`. Durable read-only inspection found one signed
+**approved** decision at `2026-09-01T08:28:42.006835034Z`, reason `approve`,
+and `execution_proof_id: null`. No credential, private key, signature bytes,
+bootstrap value, or session value was extracted or retained; inspection
+established only signed-record presence.
+
+Containment remained exact: run `01a05c11-6b17-7ed3-b340-f2a333cba9b6`
+is `waiting_for_input`; step `01a05c11-6b36-7f00-adb4-75c34a4c20b5` is
+`waiting_for_approval` with no output; and events 0–4 end at
+`approval_required`, with no `approval_resumed` or `tool_succeeded`. There is
+one request, one decision, zero execution records, zero evaluations, zero
+input/output/total tokens, and zero cost. No resume, provider call, execution,
+proof, paid usage, or external/governed effect occurred.
+
+The browser session is closed. Following exact product PID termination,
+independent host checks found no listener on 43125 or 43126. The Human confirmed
+exact same-TTY `echo restored` after the product UI process fully exited. Root
+permanently disposed of the exact fixture `/tmp/proof-e0006-e08.OmPnh0`,
+browser runtime `/tmp/e0006-e08-browser.SnZSPF`, and launcher workspace
+`/tmp/e0006-e08-launcher.9eODNX`. Independent checks confirmed all three paths
+absent and not recoverable. The fixture was not copied or privately inspected
+by the verifier.
+
+Frozen evidence remained exact: contract
+`e040b4a0913490b42a0af6143e35da2d25261ccaf8e67a169b06259e26b67463`,
+evaluation `7b91911ad524f5ea303ae939bf5f852e8a83b852814feba834134d298a230634`,
+ordered 14-check set
+`b5ddad83dc550468dd062ca814313e64fd04cb63ffad00a8a2dc7e5391c01889`,
+and ordered 26-vector set
+`43ad301d7a86e91760961b3d309ff193515029d6c688ba19d816936f1ef10fe8`.
+
+**Final disposition: E0006-08 FAIL / BLOCKED. The approval outcome violates
+the frozen denial-only contract; no 14/14 result can be claimed, no retry is
+authorized, and Gate C remains unopened.**
+
+## E0006-10 independent intent-guard review
+
+**Source/test result: PASS.** A distinct non-author reviewed the complete
+D-E0006-020 remediation. The worktree delta is limited to the embedded approval
+HTML and embedded-UI tests; the Rust change is test-only. There is no backend
+handler/schema, authority lease, actionability, signing/key, session,
+credential, execution/resume, storage, migration, dependency, manifest,
+lockfile, contract, or evaluation drift.
+
+The source now separates initial outcome selection from final submission. The
+initial controls read `Sign denial` and `Sign approval`; approval uses red
+danger styling. The initial click creates an immutable page-memory snapshot of
+the exact request, outcome, operation/version, approver, and reason, but cannot
+POST a decision. It opens a labeled accessible in-document region showing the
+exact outcome, operation/version, request ID, and exact case-sensitive
+`DENY <request-id>` or `APPROVE <request-id>` challenge.
+
+The final control begins disabled and requires strict equality. There is no
+form, default submit path, native `confirm()`, or Enter activation on the
+challenge/final action. Inbox selection and approver/reason inputs are frozen;
+current-state mismatch keeps submission disabled. A fresh protected detail GET
+then rechecks the frozen object, selected request, operation/version,
+actionability/deadline, enrolled approver, and form values before the unchanged
+decision POST.
+
+Cancel, expiry, request disappearance/actionability loss, detail or inbox
+failure, End Session, session/preflight failure, and reload/page-memory loss
+clear intent before any known POST. Cancel and revoke can invalidate an
+in-flight preflight. Once the decision POST has started, a failed or lost
+response is conservatively reported as uncertain and directs the Human to
+review the inbox; it does not claim no request was sent. The unchanged backend
+lease remains authoritative for the post-preflight race. Static scans found no
+Web Storage, cookie, IndexedDB, form, submit, or native-confirm persistence
+path.
+
+Independent reproduction passed: focused embedded UI 7/7, JavaScript parse,
+formatting, host CLI 124/124, and host scoped impact 124/124 with only
+`proof-transport-cli` impacted. Scoped diff checks passed. Frozen evidence
+remained exact: contract
+`e040b4a0913490b42a0af6143e35da2d25261ccaf8e67a169b06259e26b67463`,
+evaluation `7b91911ad524f5ea303ae939bf5f852e8a83b852814feba834134d298a230634`,
+ordered 14-check set
+`b5ddad83dc550468dd062ca814313e64fd04cb63ffad00a8a2dc7e5391c01889`,
+and ordered 26-vector set
+`43ad301d7a86e91760961b3d309ff193515029d6c688ba19d816936f1ef10fe8`.
+
+No browser, server, product fixture, bootstrap/session, Human TTY handoff,
+decision, execution/resume, provider, external effect, credential, commit, or
+push occurred. E0006-10 is complete and quiescent at **PASS**. E0006-11 may be
+presented for a separate exact product-owner authorization, but remains pending
+and non-dispatchable; this review does not authorize a ceremony, E0006-04,
+Gate C, or release.
+
+## D-E0006-023 final intent-bound ceremony
+
+**E0006-11 result: FAIL / BLOCKED — launcher gate failed.** D-E0006-023
+authorized one exact intent-bound launcher-first run. The current CLI SHA-256
+was `bd874e65396f424b953e6d81c0405068cdd5dd1ec1c0b39fe0182855f45f36ed`.
+The contract, evaluation, ordered 14-check set, and ordered 26-vector set
+retained their exact frozen hashes:
+
+- `e040b4a0913490b42a0af6143e35da2d25261ccaf8e67a169b06259e26b67463`;
+- `7b91911ad524f5ea303ae939bf5f852e8a83b852814feba834134d298a230634`;
+- `b5ddad83dc550468dd062ca814313e64fd04cb63ffad00a8a2dc7e5391c01889`;
+  and
+- `43ad301d7a86e91760961b3d309ff193515029d6c688ba19d816936f1ef10fe8`.
+
+The credential-free launcher at `http://127.0.0.1:43127/launcher` served GET
+200, but the authorized `agent-browser open` timed out. Independent read-only
+attachment to the same isolated `e0006-e11` session found exactly one session
+and one tab. Inventory labeled the tab `New Tab - chrome://newtab/`, while the
+authoritative current document remained exactly `about:blank` with empty title
+and body. The exact launcher marker `Proof approval launcher ready` and state
+`verified launcher` were absent. Overlay and captured console-error counts were
+zero; console and page-error reads were clean. No screenshot was taken. Those
+clean error surfaces do not compensate for the missing launcher document.
+
+The launcher gate stopped the run before product state. No product fixture or
+port 43128 listener, bootstrap/session, request, Human TTY handoff, intent
+challenge, decision, provider, execution/resume, proof, external effect, or
+source repair existed. The independent verifier did not navigate, reload,
+click, capture, inspect a credential, or mutate the browser.
+
+The browser was closed and launcher stopped. Post-stop checks found no listener
+on 43127 or 43128, no active browser session, and no Proof process. The exact
+disposable launcher directory and browser runtime
+`/tmp/e0006-e11-browser.CrMu63` were removed and independently confirmed absent;
+no transient artifact remains recoverable.
+
+**Final disposition: E0006-11 FAIL / BLOCKED. D-E0006-023 is consumed and no
+retry, repair, ceremony, E0006-04, Gate C, commit, or push is authorized.**

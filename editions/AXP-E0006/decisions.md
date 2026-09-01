@@ -446,3 +446,272 @@ This is an attachment/evidence-channel blocker, not a rejection of the accepted
 E0006-05 source/test remediation. D-E0006-015's one ceremony is consumed.
 E0006-06 is blocked and quiescent; E0006-04 and Gate C remain unopened. This
 decision authorizes no retry, repair, E0002 implementation, commit, or push.
+
+## D-E0006-017 — Credential-free launcher-first attachment diagnostic passed
+
+Status: adopted · Date: 2026-09-01 · Decision owner: orchestrator
+
+After the product owner directed `let proceed`, the orchestrator bounded the
+work to a credential-free investigation of the D-E0006-016 attachment blocker.
+The scope explicitly excluded a product fixture or ceremony, credential, Human
+TTY handoff, source change, provider, execution, external effect, E0002 work,
+commit, and push.
+
+Installed `agent-browser 0.19.0` rejects `open about:blank` because its `open`
+command requires a hostname. That leaves Chrome's privileged New Tab document
+as the isolated target; D-E0006-015 then scheduled navigation from that document
+while the Human opened the product in a regular browser. The diagnostic instead
+opened one fast credential-free IPv4-loopback launcher in one isolated headed
+session. Although `open` itself returned a `Page.navigate` timeout, direct URL,
+title, body, console, overlay, snapshot, and visual checks proved the launcher
+was live.
+
+The existing launcher document then scheduled `location.assign` to a second
+credential-free page holding a pending request. Direct reads from later CLI
+processes reached the exact target URL and title, marker `Credential-free
+single-tab attachment probe`, and state `pending`, with no console or overlay
+error. Inventory remained exactly one tab but retained the stale label `New Tab
+- chrome://newtab/`. This reproduces and resolves the evidence-channel class:
+direct current-document reads are authoritative; initialization inventory is
+not.
+
+The browser closed, the fixed `127.0.0.1:43125` listener stopped, listener
+absence was confirmed, and the exact transient server/browser directories and
+credential-free screenshots were permanently removed. No product or credential
+state existed.
+
+E0006-07 is done and quiescent. E0006-08 is scaffolded as a launcher-first exact
+ceremony but remains pending and non-dispatchable. D-E0006-015 stays consumed;
+this decision does not authorize E0006-08, E0006-04, Gate C, or E0002.
+
+## D-E0006-018 — One launcher-first E0006-08 ceremony authorized
+
+Status: consumed by D-E0006-019 · Date: 2026-09-01 · Decision owner: product owner
+
+The orchestrator presented the exact authorization: `Authorize exactly one
+launcher-first, provider-free E0006-08 synthetic ceremony using one preverified
+visible headed tab, one synthetic denial, zero execution/resume/external effect,
+and no retry or source repair.` The product owner responded `proceed`.
+
+This activates only E0006-08 under the unchanged frozen contract, evaluation,
+14-check digest, and 26-vector digest. The credential-free launcher must be
+created, directly verified by orchestrator and distinct verifier, and visibly
+confirmed by the Human before any product fixture or approval lifetime begins.
+The existing launcher document must then navigate asynchronously to the clean
+product URL; the Human uses that same headed window and must not open the URL in
+a regular browser.
+
+No bootstrap or session value may be extracted, printed, copied, messaged,
+captured, or persisted. Exactly one synthetic denial is permitted after the
+source-ordered app checks. No approval, execution, resume, provider use,
+external effect, second tab/session, retry, repair, lifetime extension, E0006-04,
+Gate C self-approval, E0002 work, commit, or push is authorized. Any failed
+boundary consumes this one authority and stops the run.
+
+## D-E0006-019 — E0006-08 denial-only ceremony failed; authority consumed
+
+Status: blocked · Date: 2026-09-01 · Decision owner: orchestrator
+
+The single D-E0006-018-authorized run began with a provider-free,
+credential-free launcher in one isolated headed named session. The Human
+visually confirmed the launcher, and a distinct non-author independently
+verified the same live document through direct URL, title, marker, state,
+console, overlay, and one-tab reads. That preflight passed but supplies no
+product evidence by itself.
+
+After same-tab navigation to the fresh product listener, durable inspection
+found one signed **approved** decision for the synthetic
+`release.publish::v1` request, with reason `approve`, instead of the sole
+authorized denial. The approval-console source permits that outcome only
+through an authenticated decision submission; the available retained evidence
+does not establish which same-session interaction initiated it. The denial-only
+acceptance contract is therefore violated, and neither the launcher preflight
+nor historical runs may be combined into a 14/14 result.
+
+Containment completed without exercising the approved authority. The request
+has `execution_proof_id: null`; the run remains `waiting_for_input`; the
+step remains `waiting_for_approval`; events end at `approval_required`; and
+tokens, cost, resume, tool success, provider use, execution, evaluation, proof,
+and external effect are all zero or absent. The controlled browser and exact
+product PID stopped, both loopback listeners disappeared, and the Human
+confirmed exact same-terminal `echo restored`.
+
+The exact disposable product fixture, isolated browser runtime, and launcher
+directory were then permanently removed, and independent absence checks passed.
+
+D-E0006-018 is consumed. E0006-08 is blocked and quiescent. No retry, source
+repair, execution, resume, E0006-04, Gate C, E0002 work, commit, or push is
+authorized by this decision. A new bounded owner decision is required before
+any further product ceremony or remediation.
+
+## D-E0006-020 — Bounded Human-intent confirmation remediation authorized
+
+Status: approved · Date: 2026-09-01 · Decision owner: product owner
+
+After reviewing the contained E0006-08 result, the product owner directed:
+`either fix this or we move on`. Because E0002 depends on the secure approval
+primitive, the orchestrator selected the bounded fix and explicitly limited it
+to the browser's Human-intent confirmation surface.
+
+E0006-09 may change only `proof-transport-cli` UI source and tests. The first
+decision click must open an in-document confirmation bound to the exact request
+and selected outcome. Final submission stays disabled until the Human enters
+the exact case-sensitive phrase `DENY <request-id>` or
+`APPROVE <request-id>`. The confirmation freezes request selection,
+approver, reason, and outcome; cancellation, expiry, actionability loss, revoke,
+reload, or session loss clears it without a POST. Native `confirm()` is
+removed, approval receives danger styling, and action labels become explicit.
+
+This is a Human-error guard, not a new authentication or authorization
+boundary. It does not change the decision request schema or server handler,
+backend actionability, authority lease, signatures, durable outcomes, session
+state, credential transport/lifetimes, execution/resume behavior, dependencies,
+or provider budget. The four frozen contract/evaluation hashes remain binding
+and must not change.
+
+E0006-10 is a distinct non-author source/test review with no product runtime.
+E0006-11 is a non-dispatchable future ceremony packet and requires a separate
+exact owner authorization after E0006-10 PASS. This decision authorizes no
+ceremony, approval, execution/resume, provider, external effect, E0006-04,
+Gate C, E0002 implementation, commit, or push.
+
+## D-E0006-021 — E0006-09 accepted for independent source/test review
+
+Status: adopted · Date: 2026-09-01 · Decision owner: orchestrator
+
+The named CLI security owner completed the D-E0006-020 UI-only remediation.
+The initial actions are explicit, approval uses danger styling, and the native
+confirmation dialog is replaced by an accessible in-document region displaying
+the exact outcome, operation/version, request ID, and exact case-sensitive
+challenge. Request, outcome, approver, and reason are captured in one frozen
+page-memory intent; selection and form inputs remain disabled; a fresh protected
+detail read is checked before the unchanged decision POST; and cancellation,
+expiry, actionability/session failure, revoke, or reload clears intent without a
+known pre-POST write.
+
+The security owner and orchestrator each reproduced the focused 7/7 embedded-UI
+tests, JavaScript parsing, formatting, and clean diff checks. The owner also
+passed both host CLI and scoped-impact suites at 124/124. Source inspection and
+path checks show no backend decision handler/schema, authority, signing,
+session, execution/resume, dependency, contract, evaluation, manifest, or
+lockfile change.
+
+E0006-09 is done and quiescent. E0006-10 is activated for the distinct
+non-author source/test review only. No product fixture, bootstrap/session,
+decision, ceremony, provider, external effect, E0006-11, E0006-04, Gate C,
+E0002 implementation, commit, or push is authorized.
+
+## D-E0006-022 — Intent guard independently accepted; ceremony remains gated
+
+Status: adopted · Date: 2026-09-01 · Decision owner: orchestrator
+
+The distinct non-author reviewed the exact E0006-09 delta and accepted every
+D-E0006-020 boundary. The review verified explicit initial/final action
+separation, request/outcome challenge construction, approval danger styling,
+accessible labels/focus, frozen request/outcome/operation/approver/reason,
+disabled selection/form controls, strict case-sensitive equality, no
+form/default submit/Enter/native confirmation/persistence, protected fresh
+detail revalidation, pre-POST clearing paths, and conservative uncertainty
+after a decision POST begins.
+
+Independent reproduction passed 7/7 focused embedded-UI tests, JavaScript
+parsing, formatting, host CLI 124/124, scoped-impact 124/124 with a CLI-only
+impact set, persistence/native-confirm scans, and scoped diff checks. The
+contract, evaluation, 14-check set, and 26-vector set retain their exact frozen
+hashes. No backend handler/schema, authority lease, signing, session,
+execution/resume, dependency, manifest, or lockfile drift exists.
+
+E0006-09 and E0006-10 are done and quiescent. The Human-intent defect class is
+fixed and independently verified. E0006-11 remains pending and
+non-dispatchable: source/test acceptance does not authorize a product fixture,
+bootstrap/session, decision, provider, external effect, or ceremony. E0006-04,
+Gate C, and E0002 remain closed until a future exact owner decision and
+successful E0006-11 result. No commit or push is authorized by this decision.
+
+The orchestrator's final host-context scoped rerun passed 124/124. Formatting,
+CLI-only impact listing, edition validation, frozen file hashes, and diff checks
+also passed. A preceding restricted-sandbox attempt failed only on known
+trusted-ancestor/PTY permission boundaries and is not product evidence.
+
+## D-E0006-023 — One final intent-bound E0006-11 ceremony authorized
+
+Status: active · Date: 2026-09-01 · Decision owner: product owner
+
+After E0006-10 independently accepted the Human-intent guard, the product owner
+authorized: `Authorize exactly one intent-bound, launcher-first, provider-free
+E0006-11 synthetic ceremony using one preverified visible headed tab, one
+explicit denial challenge, one durable denial, zero approval/execution/resume/
+external effect, and no retry or source repair.`
+
+This activates only E0006-11 under the unchanged frozen contract, evaluation,
+14-check digest, and 26-vector digest. One credential-free launcher must be
+created and directly preverified before product state exists. The same one
+visible headed tab must then navigate to one fresh disposable synthetic
+workspace containing exactly one `release.publish::v1` request for `preview` /
+`2026.08.29-rc1`. The Human alone reads the browser-generated code and enters it
+directly into the controlling terminal, then reviews the exact request, enters
+the exact case-sensitive `DENY <request-id>` challenge, and signs exactly one
+denial with reason `E0006 synthetic verification — deny; no execution
+authorized.`
+
+No bootstrap or session value may be extracted, printed, copied, messaged,
+captured, persisted, or placed in retained evidence. No approval, execution,
+resume, provider call, external effect, second tab/session, retry, source
+repair, lifetime extension, E0006-04, Gate C self-approval, E0002 work, commit,
+or push is authorized. Any failed launcher, Human handoff, session, intent,
+decision, revoke, evidence, listener, browser, cleanup, or TTY boundary consumes
+this one authority and stops the run.
+
+## D-E0006-024 — E0006-11 launcher gate failed; authority consumed
+
+Status: blocked · Date: 2026-09-01 · Decision owner: orchestrator
+
+The credential-free launcher bound only to `127.0.0.1:43127` and served one
+GET 200. The authorized headed `agent-browser` open nevertheless timed out.
+The orchestrator and distinct non-author attached read-only to the same named
+session and independently found exactly one session and one tab whose
+authoritative current URL remained `about:blank`, with empty title/body and no
+launcher marker or verified state. Overlay, console, and page-error surfaces
+were clean, but they cannot substitute for the missing launcher document. No
+screenshot was taken.
+
+The fail-closed launcher gate stopped before any product fixture, port 43128
+listener, bootstrap/session, approval request, Human TTY handoff, intent
+challenge, decision, provider call, execution/resume, proof, or external effect
+existed. The browser closed and launcher stopped. Independent checks found both
+ports absent, no active browser session or Proof process, and both exact
+transient directories absent after authorized disposal.
+
+D-E0006-023 is consumed. E0006-11 is blocked and quiescent; no retry, source
+repair, product ceremony, E0006-04, Gate C self-approval, E0002 implementation,
+commit, or push is authorized. Exact 14/14 remains unavailable.
+
+## D-E0006-025 — Gate C deferred; E0002 Gate A scaffolding exception
+
+Status: adopted · Date: 2026-09-01 · Decision owner: product owner
+
+The product owner directed: `Defer AXP-E0006 Gate C, keep the standalone
+approval UI unreleased with terminal approve/deny as rollback, and authorize
+AXP-E0002 Gate A scaffolding only. E0002 must define independent scoped
+operator authentication and may not claim or reuse E0006 as released.`
+
+AXP-E0006 is therefore blocked and quiescent with a dated Gate C defer/no-go,
+not release acceptance. `proof approval ui` remains an unreleased path. The
+supported rollback is the existing terminal `approval approve` and `approval
+deny` commands; the historical fragment/Web Storage bearer remains prohibited.
+No E0006 retry, repair, ceremony, release claim, or evidence waiver is approved.
+
+As an explicit roadmap exception, AXP-E0002 may create only its Gate A planning
+scaffold: charter, dependency-safe workgraph, disjoint future ownership,
+assignments, task/handoff placeholders, status, decisions, evidence plan,
+retrospective placeholder, and owner-ready Gate A/Gate B proposal. Its status
+must remain proposed/review and every implementation task non-dispatchable.
+E0002 must specify an independent Human-bound, workspace/instance-bound,
+capability-scoped operator authentication contract. E0006 may be a read-only
+source of lessons, but E0002 may not describe it as released, inherit its
+acceptance evidence, reuse its session contract as release authority, or widen
+its session implicitly.
+
+This decision does not approve E0002 Gate A or Gate B, a public contract,
+migration, shared type, dependency, source implementation, provider call,
+browser/server runtime, external effect, destructive action, commit, or push.

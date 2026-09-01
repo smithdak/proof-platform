@@ -1523,7 +1523,102 @@ mod tests {
             "selectedId = requestId;\n        selectedApproval = null;\n        updateActions();"
         ));
         assert!(APPROVAL_UI_HTML.contains("approval.request_id !== expectedRequestId"));
-        assert!(APPROVAL_UI_HTML.contains("Request: ${requestId}\\nGoal: ${goal}"));
+        assert!(APPROVAL_UI_HTML.contains("role=\"region\""));
+        assert!(APPROVAL_UI_HTML.contains("aria-labelledby=\"intent-title\""));
+        assert!(APPROVAL_UI_HTML.contains("aria-describedby=\"intent-instruction\""));
+        assert!(
+            APPROVAL_UI_HTML.contains("document.getElementById(\"intent-outcome\").textContent")
+        );
+        assert!(
+            APPROVAL_UI_HTML.contains("document.getElementById(\"intent-operation\").textContent")
+        );
+        assert!(
+            APPROVAL_UI_HTML.contains("document.getElementById(\"intent-request-id\").textContent")
+        );
+    }
+
+    #[test]
+    fn embedded_ui_requires_exact_request_bound_case_sensitive_intent() {
+        assert!(APPROVAL_UI_HTML
+            .contains("const command = intent.outcome === \"approved\" ? \"APPROVE\" : \"DENY\";"));
+        assert!(APPROVAL_UI_HTML.contains("return `${command} ${intent.requestId}`;"));
+        assert!(APPROVAL_UI_HTML.contains("intentEntry.value !== challengeFor(pendingIntent)"));
+        assert!(APPROVAL_UI_HTML.contains(
+            "<button class=\"approve\" id=\"confirm-decision\" type=\"button\" disabled>"
+        ));
+        assert!(APPROVAL_UI_HTML.contains("if (event.key === \"Enter\") event.preventDefault();"));
+        assert!(APPROVAL_UI_HTML.contains("confirmDecisionButton.addEventListener(\"keydown\""));
+        assert!(!APPROVAL_UI_HTML.contains("<form"));
+        assert!(!APPROVAL_UI_HTML.contains("confirm("));
+    }
+
+    #[test]
+    fn embedded_ui_labels_approval_as_a_dangerous_signing_action() {
+        assert!(APPROVAL_UI_HTML
+            .contains("<button class=\"deny\" id=\"deny\" type=\"button\">Sign denial</button>"));
+        assert!(APPROVAL_UI_HTML.contains(
+            "<button class=\"approve\" id=\"approve\" type=\"button\">Sign approval</button>"
+        ));
+        assert!(APPROVAL_UI_HTML.contains(
+            ".approve { border-color: #d15a68 !important; background: #6b202b; color: #fff2f3; }"
+        ));
+        assert!(!APPROVAL_UI_HTML.contains(".approve { background: #45c99a"));
+    }
+
+    #[test]
+    fn embedded_ui_freezes_and_rechecks_the_exact_intent_before_post() {
+        for captured in [
+            "requestId,",
+            "outcome,",
+            "operation: exactOperation(approval),",
+            "approverId,",
+            "reason: reasonInput.value",
+        ] {
+            assert!(APPROVAL_UI_HTML.contains(captured), "missing {captured}");
+        }
+        assert!(APPROVAL_UI_HTML.contains("pendingIntent = Object.freeze({"));
+        assert!(APPROVAL_UI_HTML.contains("setInboxDisabled(frozen);"));
+        assert!(APPROVAL_UI_HTML.contains("approverSelect.disabled = frozen;"));
+        assert!(APPROVAL_UI_HTML.contains("reasonInput.disabled = frozen;"));
+        assert!(APPROVAL_UI_HTML.contains("approverSelect.value === intent.approverId"));
+        assert!(APPROVAL_UI_HTML.contains("reasonInput.value === intent.reason"));
+
+        let submit = APPROVAL_UI_HTML
+            .find("async function submitIntent()")
+            .unwrap();
+        let preflight = APPROVAL_UI_HTML[submit..]
+            .find("await api(`/api/approvals/${encodeURIComponent(intent.requestId)}`)")
+            .unwrap()
+            + submit;
+        let recheck = APPROVAL_UI_HTML[preflight..]
+            .find("pendingIntent !== intent")
+            .unwrap()
+            + preflight;
+        let post = APPROVAL_UI_HTML[recheck..]
+            .find("/decision`, {\n            method: \"POST\"")
+            .unwrap()
+            + recheck;
+        assert!(preflight < recheck && recheck < post);
+        assert!(APPROVAL_UI_HTML.contains("approver_id: intent.approverId"));
+        assert!(APPROVAL_UI_HTML.contains("outcome: intent.outcome"));
+        assert!(APPROVAL_UI_HTML.contains("reason: intent.reason"));
+    }
+
+    #[test]
+    fn embedded_ui_clears_intent_on_every_pre_post_invalidation() {
+        for evidence in [
+            "Decision confirmation canceled. No decision was sent.",
+            "Pending decision confirmation cleared. No decision was sent.",
+            "The selected request expired. No decision was sent.",
+            "The selected request is no longer actionable. No decision was sent.",
+            "The session or inbox could not be refreshed. No decision was sent.",
+            "pendingIntent !== intent",
+        ] {
+            assert!(APPROVAL_UI_HTML.contains(evidence), "missing {evidence}");
+        }
+        assert!(APPROVAL_UI_HTML.contains("pendingIntent = null;"));
+        assert!(APPROVAL_UI_HTML.contains("intentEntry.value = \"\";"));
+        assert!(APPROVAL_UI_HTML.contains("intentConfirmation.hidden = true;"));
     }
 
     #[tokio::test]
@@ -1588,8 +1683,9 @@ mod tests {
             clear > failure,
             "the session token cleared before revoke success"
         );
-        assert!(APPROVAL_UI_HTML
-            .contains("decisionPending || sessionAuthorityUncertain || !selectedApproval"));
+        assert!(APPROVAL_UI_HTML.contains("|| decisionPending"));
+        assert!(APPROVAL_UI_HTML.contains("|| sessionAuthorityUncertain"));
+        assert!(APPROVAL_UI_HTML.contains("|| !selectedApproval"));
     }
 
     #[test]

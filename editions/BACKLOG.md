@@ -18,8 +18,8 @@ normal implementation, and `gpt-5.6-sol` only for contracts, security, or
 cross-crate integration.
 
 AXP-E0001 is blocked and quiescent after its Gate C defer in D-E0001-020.
-AXP-E0006 is the current P0 edition; Gate A/B and its initial implementation
-are complete. Its five-minute Human decision/revoke path and later
+AXP-E0006 is blocked and quiescent after its P0 security work; Gate A/B and its
+candidate implementation are complete. Its five-minute Human decision/revoke path and later
 credential-free single-tab attachment probe passed separately. The final
 D-E0006-013 run reached terminal verification, but the current attached tab
 failed closed before session/app evidence. The product owner then authorized
@@ -27,9 +27,24 @@ D-E0006-015: one bounded CLI remediation wave, independent review, and one
 post-review exact ceremony under the unchanged frozen contract. The remediation
 and source/test review passed, but the Human-visible product page and isolated
 verifier target were different browser contexts in that single ceremony. Its
-authority is consumed and AXP-E0006 is blocked and quiescent. Its tracked
-`editions/AXP-E0006/assignments.tsv` is the dispatch source of truth. E0002-E0005
-remain ranked candidates without active writers.
+authority is consumed. A later credential-free launcher-first diagnostic passed
+without product state and isolated the tooling failure. D-E0006-018 then
+authorized exactly one launcher-first provider-free product ceremony. Its
+launcher and same-tab preflight passed, but the product run persisted an
+unexpected signed approval instead of the authorized denial. Execution remained
+null, and D-E0006-019 consumed the run without retry. AXP-E0006 is blocked and
+quiescent at that boundary. The owner then directed either a fix or a move;
+D-E0006-020 selects a bounded UI-only Human-intent guard in W8, followed by
+non-author source/test review and no product runtime. Both passed. D-E0006-023
+then authorized one final E0006-11 ceremony, but its credential-free launcher
+never became the current document in the sole headed tab. D-E0006-024 consumed
+the run before product state, with complete cleanup and no retry. The product
+owner deferred Gate C in D-E0006-025. E0006 is quiescent and unreleased, its
+standalone UI remains unsupported, and terminal approve/deny is the rollback.
+The same decision creates a narrow roadmap exception for E0002 Gate A
+scaffolding only; no E0002 implementation or contract authority follows. The
+tracked `editions/AXP-E0006/assignments.tsv` remains E0006's dispatch source of
+truth. E0003-E0005 remain ranked candidates without active writers.
 
 ## Ranked editions
 
@@ -104,7 +119,9 @@ reusable signing credential appearing in a URL, ordinary process output,
 process arguments, browser history, Web Storage, cookies, referrers, logs, or
 test artifacts.
 
-**Status:** Blocked and quiescent P0 critical security edition, ranked ahead of AXP-E0002.
+**Status:** Blocked, quiescent, and unreleased after the D-E0006-020
+Human-intent remediation, D-E0006-022 independent PASS, D-E0006-024 terminal
+launcher-gate failure, and D-E0006-025 product-owner Gate C defer/no-go.
 Gate A/B are approved; E0006-02 is quiescent with 117/117 host tests and an
 independent source/contract PASS. E0006-03 passed pre-session browser/header
 checks and deterministic rejection coverage. A follow-up co-located Human
@@ -128,8 +145,21 @@ deterministic remediation, independent review, and 120/120 host tests. The one
 post-remediation ceremony then failed its same-visible-tab boundary: the Human
 used the product page in a regular browser while the isolated verifier target
 remained `New Tab`. It stopped before a decision or execution, and its authority
-is consumed. The standalone UI remains unreleased, E0006-04 and Gate C remain
-unopened, and terminal approval commands are the rollback path.
+is consumed. E0006-07 then proved a credential-free launcher-first pattern in
+one visible headed tab: direct reads reached a pending target while inventory
+retained stale New Tab metadata. D-E0006-018 activated exactly one E0006-08
+provider-free ceremony with no retry. Its launcher preflight passed, but the
+product run persisted an unexpected approval instead of the authorized denial;
+execution remained null and D-E0006-019 consumed the run. D-E0006-020 now
+authorized a UI-only exact request/outcome Human-intent challenge plus
+independent source/test review. E0006-09 and E0006-10 passed focused 7/7,
+host/scoped 124/124, JavaScript, formatting, frozen-hash, and distinct review
+gates. D-E0006-022 accepts that fix. D-E0006-023 then authorized one exact
+E0006-11 run, but the launcher returned GET 200 while the sole headed tab
+remained empty `about:blank`; D-E0006-024 consumed the authority before product
+state. D-E0006-025 records the product owner's Gate C defer/no-go. The
+standalone UI remains unreleased, E0006-11 and E0006-04 are blocked and
+quiescent, and terminal approval commands are the rollback path.
 
 **Dispatch source of truth:** `editions/AXP-E0006/assignments.tsv`. The
 backlog rows below are descriptive only and cannot authorize work.
@@ -150,32 +180,60 @@ automatic browser launcher may place either credential in child argv.
 | E0006-03 | Independently verify browser secrecy and signing boundaries | E0006-02 | non-author browser/security verifier; redacted dogfood evidence only | Clean loopback URL; no query/fragment/secret storage/cookie/referrer; no-store/CSP/no-referrer/frame/nosniff headers; secret-sentinel scan; exact 14/14 non-author PASS | critical | `gpt-5.6-sol` |
 | E0006-05 | Remediate the current-document bootstrap/session delivery ambiguity | E0006-02, D-E0006-015 | `crates/proof-transport-cli/**` (same single security owner, later wave) | Deterministic reproduction/root cause, legitimate one-document path corrected, and reload/replay/lost-response paths remain fail closed | critical | `gpt-5.6-sol` |
 | E0006-06 | Independently review remediation and run one exact ceremony | E0006-05 | non-author browser/security verifier; redacted dogfood evidence only | Candidate source/test PASS followed by one same-tab, same-session exact 14/14 journey with zero execution/resume | critical | `gpt-5.6-sol` |
-| E0006-04 | Integrate, reconcile public guidance, run the quiescent gate, and request Gate C | E0006-01,02,05,06 | orchestrator-owned public guidance, contract, root manifests, and release records | Scoped/reverse impact and full final gate pass; rollback, limitations, zero provider spend, and dated owner decision are recorded | critical | `gpt-5.6-sol` |
+| E0006-07 | Prove launcher-first isolated-browser attachment without product state | E0006-05 + D-E0006-016 failure context | orchestrator-owned transient diagnostic and edition records | One headed tab reaches a pending credential-free target through direct reads; stale inventory classified; exact cleanup passes | high | `gpt-5.6-sol` |
+| E0006-08 | Run one launcher-first exact product ceremony under D-E0006-018 | E0006-07 + D-E0006-018 | non-author browser/security verifier; redacted dogfood evidence only | One already-visible headed tab supplies the complete same-session 14/14 journey; no retry, provider, execution, or retained credential | critical | `gpt-5.6-sol` |
+| E0006-09 | Require explicit request-bound Human intent before browser decision POST | E0006-08 + D-E0006-020 | `crates/proof-transport-cli/**` plus unique handoff | Exact `DENY/APPROVE <request-id>` challenge, frozen form identity, cancellation, and unchanged backend/frozen hashes pass deterministic tests | critical | `gpt-5.6-sol` |
+| E0006-10 | Independently verify the intent guard without a product runtime | E0006-09 | non-author source/test verifier; redacted dogfood evidence only | Source review and scoped host tests pass with no fixture, credential, decision, provider, or effect | critical | `gpt-5.6-sol` |
+| E0006-11 | Run one intent-bound exact ceremony after separate owner authorization | E0006-10 + D-E0006-023 | non-author browser/security verifier; redacted dogfood evidence only | Failed at launcher gate under D-E0006-024; no product state, complete cleanup, authority consumed | critical | `gpt-5.6-sol` |
+| E0006-04 | Reconcile public guidance and record the owner Gate C disposition | E0006-01,02,05,07,08,09,10,11 | orchestrator-owned public guidance and release records | Gate C defer/no-go, unreleased status, terminal rollback, absent 14/14, and intentionally unclaimed final verifier are durable | critical | `gpt-5.6-sol` |
 
 ### AXP-E0002 — One Human Oversees Many Runs
 
 **Outcome:** An operator can inspect, approve, deny, revoke, resume, and audit
 multiple governed runs from one authenticated control plane.
 
-**Dependency:** AXP-E0006 Gate C. E0002 may reuse only the released approval
-session contract; the current standalone fragment bearer is not a bootstrap or
-authentication primitive for the operator control plane.
+**Dependency and exception:** AXP-E0006 Gate C was deferred/no-go in
+D-E0006-025; E0006 is not released. That owner decision permits this E0002
+Gate A planning scaffold only. E0002 must define an independent operator
+authentication boundary and may use E0006 only as read-only failure/design
+input. It may not inherit, wrap, relabel, or claim the E0006 session, evidence,
+release status, bootstrap, or authority.
 
-Read-only operator-control discovery completed on 2026-08-31 and is preserved
-without activating an E0002 writer. It found durable per-run records but no
-authenticated multi-run projection; unfiltered run/approval listing, an
-execution-context-only HTTP audit view, per-run CLI controls, and cancellation
-without a dedicated append-only cancellation event are the principal contract
-gaps. The proposed decomposition remains contract/storage/runtime followed by
-authenticated HTTP/UI and independent concurrency/recovery verification, but
-no E0002 directory or product writer may start before E0006 Gate C.
+Read-only operator-control discovery completed on 2026-08-31 and was refined by
+three independent path-level audits on 2026-09-01 without activating an E0002
+writer. The repository has durable per-run records but no authenticated
+multi-run projection, scoped operator identity, bounded keyset pagination,
+append-only cancellation/resume command record, durable fenced lease, aggregate
+budget ledger, or complete operator audit chronology. The generic HTTP audit is
+an unauthenticated execution-context view, and current cancellation changes
+only run status. Kernel, storage, runtime, and shared operator-auth work must
+therefore be explicit tasks rather than hidden inside an HTTP assignment.
+
+The current authorization ends after the owner-ready Gate A packet. It creates
+no public contract, schema, evaluator, source, migration, provider run, browser
+ceremony, or external effect. After a separate Gate A, E0002-13 may freeze the
+operator contract/schema/evaluation and request Gate B. After Gate B, kernel,
+independent auth, and mechanical fixtures may fan out in parallel. Storage
+follows kernel; runtime follows storage; authenticated HTTP reads follow
+storage/auth and the dedicated control-plane assembly; mutations follow
+runtime/auth; UI and independent verification follow the protected APIs. The
+two HTTP waves use one named crate owner and are strictly sequential.
 
 | ID | Assignable work item | Depends on | Exclusive path suggestion | Acceptance evidence | Risk | Tier |
 |---|---|---|---|---|---|---|
-| E0002-01 | Define operator run-list, approval, revocation, and audit contract | E0001 | `contracts/**`, `schemas/**` | Contract covers authority, pagination, and terminal states | high | `gpt-5.6-sol` |
-| E0002-02 | Add batch run/approval query APIs | E0002-01 | `crates/proof-transport-http/**` | Tower integration tests cover auth, filtering, and pagination | high | `gpt-5.6-terra` |
-| E0002-03 | Build operator console surfaces | E0002-01 | new operator-UI path reserved by the charter | Browser evidence shows pending, decision, and audit state | medium | `gpt-5.6-terra` |
-| E0002-04 | Cross-run budget, revoke, and audit verification | E0002-02,03 | `crates/proof-agent-runtime/**`, `evals/**` | Concurrent runs stop on revoke and retain append-only evidence | critical | `gpt-5.6-sol` |
+| E0002-01 | Scaffold the owner-ready Gate A direction packet only | D-E0006-025 planning exception | `editions/AXP-E0002/**`; E0002 backlog rows | Complete charter, journey, metric, non-goals, budgets, acceptance proposal, workgraph, exclusive paths, stop gates, and owner decision text; edition validates with every product task non-dispatchable | high | `gpt-5.6-sol` |
+| E0002-13 | Freeze the independent operator authority, projection, pagination, command, audit, recovery, and evaluation contract | E0002 Gate A | `contracts/operator-control-plane.md`; `schemas/operator-control/**`; `evals/operator-control-v1.json`; W2 edition decision/status records | Gate B packet binds Human/workspace/instance/capability scopes, exact routes/DTOs, cursor bindings, mutation ordering, no-remote boundary, and frozen required-check/vector digests | critical | `gpt-5.6-sol` |
+| E0002-05 | Add kernel operator-command, audit, cursor, lease/fence, and aggregate-budget contracts | E0002-13 + Gate B | `crates/proof-kernel/**` | Strict public types reject unknown fields; canonical cancel/resume records, transition/idempotency conflicts, cursor bindings, fences, and budget values pass unit tests | critical | `gpt-5.6-sol` |
+| E0002-08 | Implement independent scoped Human operator authentication without reusing E0006 authority | E0002-13 + Gate B | `crates/proof-operator-auth/**` plus explicitly delegated W3 root manifest/lock delta | Fresh enrolled-Human signed challenge and volatile session bind exact Human/workspace/instance plus least granted scopes; replay, self-escalation, auth-first, revoke/expiry, cross-scope, Host/Origin, and persistence vectors pass | critical | `gpt-5.6-sol` |
+| E0002-12 | Build mechanical contract fixtures and rejection-vector harness | E0002-13 + Gate B | `evals/fixtures/operator-control/**` | Frozen valid/invalid DTO, cursor, scope, receipt, and chronology fixtures replay deterministically with no security-policy judgment or product effect | medium | `gpt-5.6-luna` |
+| E0002-06 | Persist filtered multi-run projections and an atomic append-only operator-command ledger | E0002-05 | `crates/proof-storage/**` | Next migration and reopen round trips pass; bounded keyset pagination has no skips/duplicates; cancel/complete, lease/reclaim, stale-fence, command replay, and aggregate-budget races linearize exactly | critical | `gpt-5.6-sol` |
+| E0002-07 | Enforce runtime cancel/resume, fenced recovery, and aggregate budgets | E0002-06 | `crates/proof-agent-runtime/**` | Barrier tests prove cancel-before-dispatch has zero provider/tool effect, cancel/resume has one winner, stale epochs cannot write, recovery is single-owner, and concurrent runs cannot exceed aggregate limits | critical | `gpt-5.6-sol` |
+| E0002-11 | Build the loopback operator-control launcher, signed-challenge adapter, synthetic same-origin assembly interface, revoke, and shutdown | E0002-07, E0002-08 | `crates/proof-operator-control/**` plus explicitly delegated W6 root manifest/lock delta | Process/Tower tests prove clean loopback delivery, independent issuance, generic failures, injected-router/static-source assembly, no persistence, explicit revoke, control-plane restart invalidation, runtime-worker restart continuity, and fail-closed shutdown | critical | `gpt-5.6-sol` |
+| E0002-02 | Add authenticated operator read APIs for attention inbox, run detail, approvals, and audit | E0002-06, E0002-08, E0002-11 | `crates/proof-transport-http/**` in the first HTTP wave | Tower tests prove auth-before-enumeration, scoped/redacted DTOs, stable cursor/filter behavior under inserts, generic unauthorized/not-found results, and exact Host/security headers | high | `gpt-5.6-terra` with `gpt-5.6-sol` security review |
+| E0002-09 | Add authenticated approve/deny, cancel, and explicit-resume APIs | E0002-02, E0002-07, E0002-08, E0002-11 | `crates/proof-transport-http/**` in a later sequential wave | Deterministic mutation races preserve one decision/command winner, no automatic resume, no key/provider/write after lost authority, expected revisions, idempotent receipts, and uncertain-response recovery | critical | `gpt-5.6-sol` |
+| E0002-03 | Build the multi-run operator console against frozen schemas and scoped APIs | E0002-02, E0002-09, E0002-11 | `apps/operator-console/**` | Browser evidence covers attention filters, exact run/approval/audit detail, distinct decision/cancel/session-revoke challenges, accessibility, stale controls, session loss, uncertain-write recovery, and no credential persistence | high | `gpt-5.6-terra` |
+| E0002-04 | Independently verify API/browser concurrency, recovery, authority, and zero-effect boundaries | E0002-02, E0002-03, E0002-07, E0002-08, E0002-09, E0002-11 | verifier-only dogfood evidence and unique handoff | Frozen all-required evaluation passes exact auth, pagination, decision, cancel/resume, lease/recovery, budget, browser secrecy, audit chronology, separate worker/control-plane restart, and sentinel vectors | critical | `gpt-5.6-sol` |
+| E0002-10 | Quiescent integration and product-owner Gate C | E0002-01,02,03,04,05,06,07,08,09,11,12,13 | root integration, public guidance, edition release records | Scoped/reverse-impact and quiescent gates pass; limitations, rollback, spend, independent verdict, and dated owner accept/defer/reject are recorded without claiming E0006 release evidence | high | `gpt-5.6-sol` |
 
 ### AXP-E0003 — Governed Agent Teams
 

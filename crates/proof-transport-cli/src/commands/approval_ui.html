@@ -13,8 +13,8 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; background: #0b0e14; }
-    button, select, textarea { font: inherit; }
-    button:focus-visible, select:focus-visible, textarea:focus-visible {
+    button, input, select, textarea { font: inherit; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
       outline: 3px solid #7cb7ff;
       outline-offset: 2px;
     }
@@ -156,7 +156,7 @@
       border-top: 1px solid #293140;
     }
     label { display: block; margin: .8rem 0 .35rem; color: #c8d0dc; font-size: .85rem; font-weight: 650; }
-    select, textarea {
+    input, select, textarea {
       width: 100%;
       padding: .7rem;
       border: 1px solid #394252;
@@ -175,8 +175,28 @@
       cursor: pointer;
     }
     .actions button:disabled { opacity: .45; cursor: not-allowed; }
-    .approve { background: #45c99a; color: #07140f; }
+    .approve { border-color: #d15a68 !important; background: #6b202b; color: #fff2f3; }
     .deny { border-color: #9c4d5b !important; background: #321b21; color: #ffc5cb; }
+    .intent-confirmation {
+      margin-top: 1rem;
+      padding: 1rem;
+      border: 2px solid #d15a68;
+      border-radius: .65rem;
+      background: #21141a;
+    }
+    .intent-confirmation h4 { margin: 0 0 .5rem; font-size: 1rem; }
+    .intent-facts { margin: .75rem 0; }
+    .intent-facts div { margin-top: .35rem; }
+    .intent-facts dt { display: inline; color: #aeb8c7; font-weight: 700; }
+    .intent-facts dd { display: inline; margin: 0 0 0 .4rem; overflow-wrap: anywhere; }
+    .intent-challenge {
+      padding: .15rem .3rem;
+      border-radius: .25rem;
+      background: #080b10;
+      color: #fff2f3;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
     .receipt { margin-top: 1rem; color: #9be6ca; line-height: 1.5; white-space: pre-wrap; }
     #page-status { min-height: 1.4rem; color: #aeb8c7; font-size: .84rem; }
     .fatal { max-width: 42rem; margin: 4rem auto; padding: 1.5rem; }
@@ -253,9 +273,28 @@
           <label for="reason">Reason (optional)</label>
           <textarea id="reason" placeholder="What did you verify?"></textarea>
           <div class="actions">
-            <button class="approve" id="approve" type="button">Approve</button>
-            <button class="deny" id="deny" type="button">Deny</button>
+            <button class="deny" id="deny" type="button">Sign denial</button>
+            <button class="approve" id="approve" type="button">Sign approval</button>
           </div>
+          <section id="intent-confirmation" class="intent-confirmation" role="region"
+            aria-labelledby="intent-title" aria-describedby="intent-instruction" hidden>
+            <h4 id="intent-title">Confirm the exact signed decision</h4>
+            <dl class="intent-facts">
+              <div><dt>Outcome:</dt><dd id="intent-outcome"></dd></div>
+              <div><dt>Operation:</dt><dd id="intent-operation"></dd></div>
+              <div><dt>Request ID:</dt><dd id="intent-request-id"></dd></div>
+            </dl>
+            <p id="intent-instruction">Enter the exact case-sensitive challenge
+              <code id="intent-challenge" class="intent-challenge"></code>
+            </p>
+            <label for="intent-entry">Decision challenge</label>
+            <input id="intent-entry" type="text" autocomplete="off" spellcheck="false"
+              aria-describedby="intent-instruction">
+            <div class="actions">
+              <button class="refresh" id="cancel-intent" type="button">Cancel</button>
+              <button class="approve" id="confirm-decision" type="button" disabled>Sign this exact decision</button>
+            </div>
+          </section>
           <div class="receipt" id="receipt" role="status" aria-live="polite"></div>
         </section>
       </article>
@@ -277,9 +316,17 @@
       const card = document.getElementById("detail-card");
       const approveButton = document.getElementById("approve");
       const denyButton = document.getElementById("deny");
+      const approverSelect = document.getElementById("approver");
+      const reasonInput = document.getElementById("reason");
+      const intentConfirmation = document.getElementById("intent-confirmation");
+      const intentEntry = document.getElementById("intent-entry");
+      const confirmDecisionButton = document.getElementById("confirm-decision");
+      const cancelIntentButton = document.getElementById("cancel-intent");
       let selectedId = null;
       let selectedApproval = null;
       let decisionPending = false;
+      let intentPreflightPending = false;
+      let pendingIntent = null;
       let sessionAuthorityUncertain = false;
       let selectionGeneration = 0;
       let session = null;
@@ -336,7 +383,79 @@
         for (const row of list.querySelectorAll(".approval-row")) row.disabled = disabled;
       }
 
+      function exactOperation(approval) {
+        return `${approval.operation.name} ${approval.operation.version}`;
+      }
+
+      function challengeFor(intent) {
+        const command = intent.outcome === "approved" ? "APPROVE" : "DENY";
+        return `${command} ${intent.requestId}`;
+      }
+
+      function intentMatchesCurrent(intent) {
+        return Boolean(
+          intent
+          && session
+          && !sessionAuthorityUncertain
+          && selectedApproval
+          && selectedApproval.actionable
+          && selectedId === intent.requestId
+          && selectedApproval.request_id === intent.requestId
+          && exactOperation(selectedApproval) === intent.operation
+          && approverSelect.value === intent.approverId
+          && reasonInput.value === intent.reason
+          && new Date(selectedApproval.expires_at).getTime() > Date.now()
+        );
+      }
+
+      function updateIntentSubmission() {
+        confirmDecisionButton.disabled = Boolean(
+          !pendingIntent
+          || intentPreflightPending
+          || decisionPending
+          || intentEntry.value !== challengeFor(pendingIntent)
+          || !intentMatchesCurrent(pendingIntent)
+        );
+        cancelIntentButton.disabled = decisionPending;
+      }
+
+      function updateFrozenControls() {
+        const frozen = Boolean(
+          pendingIntent || intentPreflightPending || decisionPending || sessionAuthorityUncertain
+        );
+        setInboxDisabled(frozen);
+        approverSelect.disabled = frozen;
+        reasonInput.disabled = frozen;
+        refreshButton.disabled = decisionPending || sessionAuthorityUncertain;
+        endSessionButton.disabled = decisionPending || sessionAuthorityUncertain;
+      }
+
+      function clearPendingIntent(message = null) {
+        pendingIntent = null;
+        intentPreflightPending = false;
+        intentEntry.value = "";
+        document.getElementById("intent-outcome").textContent = "";
+        document.getElementById("intent-operation").textContent = "";
+        document.getElementById("intent-request-id").textContent = "";
+        document.getElementById("intent-challenge").textContent = "";
+        intentConfirmation.hidden = true;
+        updateFrozenControls();
+        updateActions();
+        if (message) setStatus(message);
+      }
+
       function renderInbox(payload) {
+        if (pendingIntent) {
+          const current = payload.approvals.find(
+            approval => approval.request_id === pendingIntent.requestId
+          );
+          if (!current || !current.actionable) {
+            if (selectedApproval && selectedApproval.request_id === pendingIntent.requestId) {
+              selectedApproval.actionable = false;
+            }
+            clearPendingIntent("The selected request is no longer actionable. No decision was sent.");
+          }
+        }
         list.replaceChildren();
         count.textContent = `${payload.approvals.length} total`;
         if (!payload.approvals.length) {
@@ -358,7 +477,9 @@
           button.type = "button";
           button.className = "approval-row";
           button.dataset.requestId = approval.request_id;
-          button.disabled = decisionPending || sessionAuthorityUncertain;
+          button.disabled = Boolean(
+            pendingIntent || intentPreflightPending || decisionPending || sessionAuthorityUncertain
+          );
           button.setAttribute("aria-current", String(approval.request_id === selectedId));
           const top = document.createElement("span");
           top.className = "row-top";
@@ -391,6 +512,7 @@
           renderInbox(await api("/api/approvals"));
           if (!quiet) setStatus("Approval inbox is up to date.");
         } catch (error) {
+          clearPendingIntent("The session or inbox could not be refreshed. No decision was sent.");
           setStatus(error.message);
         }
       }
@@ -403,6 +525,13 @@
           return false;
         }
         selectedApproval = approval;
+        if (pendingIntent && (
+          approval.request_id !== pendingIntent.requestId
+          || !approval.actionable
+          || exactOperation(approval) !== pendingIntent.operation
+        )) {
+          clearPendingIntent("The selected request changed or is no longer actionable. No decision was sent.");
+        }
         empty.hidden = true;
         card.hidden = false;
         setText("detail-title", `${approval.operation.name} ${approval.operation.version}`);
@@ -433,19 +562,18 @@
           blockedList.append(item);
         }
 
-        const approver = document.getElementById("approver");
-        approver.replaceChildren();
+        approverSelect.replaceChildren();
         for (const id of payload.approvers) {
           const option = document.createElement("option");
           option.value = id;
           option.textContent = id;
-          approver.append(option);
+          approverSelect.append(option);
         }
         if (!payload.approvers.length) {
           const option = document.createElement("option");
           option.textContent = "No enrolled local approver";
           option.value = "";
-          approver.append(option);
+          approverSelect.append(option);
         }
         document.getElementById("receipt").textContent = approval.decision
           ? `${statusLabel(approval.decision.outcome)} by ${approval.decision.decided_by}${approval.decision.reason ? `\nReason: ${approval.decision.reason}` : ""}`
@@ -456,7 +584,7 @@
       }
 
       async function selectApproval(requestId, force = false) {
-        if (decisionPending && !force) return;
+        if ((pendingIntent || intentPreflightPending || decisionPending) && !force) return;
         const generation = ++selectionGeneration;
         selectedId = requestId;
         selectedApproval = null;
@@ -476,6 +604,7 @@
           setStatus("Review the exact arguments and signed digest before deciding.");
         } catch (error) {
           if (generation !== selectionGeneration || selectedId !== requestId) return;
+          clearPendingIntent("The selected request could not be revalidated. No decision was sent.");
           empty.textContent = "Approval details could not be loaded.";
           setStatus(error.message);
         } finally {
@@ -486,10 +615,18 @@
       }
 
       function updateActions() {
-        const approver = document.getElementById("approver").value;
-        const disabled = decisionPending || sessionAuthorityUncertain || !selectedApproval || !selectedApproval.actionable || !approver;
+        const disabled = Boolean(
+          pendingIntent
+          || intentPreflightPending
+          || decisionPending
+          || sessionAuthorityUncertain
+          || !selectedApproval
+          || !selectedApproval.actionable
+          || !approverSelect.value
+        );
         approveButton.disabled = disabled;
         denyButton.disabled = disabled;
+        updateIntentSubmission();
       }
 
       function updateCountdown() {
@@ -498,8 +635,12 @@
         const countdown = document.getElementById("countdown");
         if (milliseconds <= 0) {
           countdown.textContent = "Expired";
-          approveButton.disabled = true;
-          denyButton.disabled = true;
+          selectedApproval.actionable = false;
+          if (pendingIntent && !decisionPending) {
+            clearPendingIntent("The selected request expired. No decision was sent.");
+          } else {
+            updateActions();
+          }
           return;
         }
         const seconds = Math.floor(milliseconds / 1000);
@@ -507,44 +648,106 @@
         countdown.textContent = `${minutes}m ${seconds % 60}s`;
       }
 
-      async function decide(outcome) {
+      function beginIntent(outcome) {
         if (!selectedApproval || !selectedApproval.actionable) return;
         const approval = selectedApproval;
         const requestId = approval.request_id;
         if (selectedId !== requestId) return;
-        const approverId = document.getElementById("approver").value;
-        const verb = outcome === "approved" ? "approve" : "deny";
-        const goal = approval.run ? approval.run.goal : "Native run goal unavailable";
-        if (!confirm(
-          `Sign and ${verb} this exact ${approval.operation.name} call?\n\nRequest: ${requestId}\nGoal: ${goal}`
-        )) return;
-        decisionPending = true;
-        setInboxDisabled(true);
+        const approverId = approverSelect.value;
+        if (!approverId) return;
+        pendingIntent = Object.freeze({
+          requestId,
+          outcome,
+          operation: exactOperation(approval),
+          approverId,
+          reason: reasonInput.value
+        });
+        document.getElementById("intent-outcome").textContent = outcome === "approved"
+          ? "APPROVE"
+          : "DENY";
+        document.getElementById("intent-operation").textContent = pendingIntent.operation;
+        document.getElementById("intent-request-id").textContent = pendingIntent.requestId;
+        document.getElementById("intent-challenge").textContent = challengeFor(pendingIntent);
+        intentEntry.value = "";
+        intentConfirmation.hidden = false;
+        updateFrozenControls();
         updateActions();
-        setStatus(`Signing ${verb} decision…`);
+        setStatus("Confirm the exact request and outcome before signing.");
+        intentEntry.focus();
+      }
+
+      function reviewMatchesIntent(payload, intent) {
+        const approval = payload.approval;
+        return Boolean(
+          approval
+          && approval.actionable
+          && approval.request_id === intent.requestId
+          && exactOperation(approval) === intent.operation
+          && payload.approvers.includes(intent.approverId)
+        );
+      }
+
+      async function submitIntent() {
+        const intent = pendingIntent;
+        let decisionPostStarted = false;
+        if (
+          !intent
+          || intentPreflightPending
+          || decisionPending
+          || intentEntry.value !== challengeFor(intent)
+          || !intentMatchesCurrent(intent)
+        ) return;
+        intentPreflightPending = true;
+        updateFrozenControls();
+        updateActions();
+        setStatus("Revalidating the exact request before signing…");
         try {
-          const result = await api(`/api/approvals/${encodeURIComponent(requestId)}/decision`, {
+          const latest = await api(`/api/approvals/${encodeURIComponent(intent.requestId)}`);
+          if (
+            pendingIntent !== intent
+            || !intentMatchesCurrent(intent)
+            || !reviewMatchesIntent(latest, intent)
+          ) {
+            if (selectedApproval) selectedApproval.actionable = false;
+            clearPendingIntent(
+              "The request, outcome, approver, reason, or actionability changed. No decision was sent."
+            );
+            return;
+          }
+          intentPreflightPending = false;
+          decisionPending = true;
+          updateFrozenControls();
+          updateActions();
+          const verb = intent.outcome === "approved" ? "approval" : "denial";
+          setStatus(`Signing ${verb}…`);
+          decisionPostStarted = true;
+          const result = await api(`/api/approvals/${encodeURIComponent(intent.requestId)}/decision`, {
             method: "POST",
             body: JSON.stringify({
-              approver_id: approverId,
-              outcome,
-              reason: document.getElementById("reason").value
+              approver_id: intent.approverId,
+              outcome: intent.outcome,
+              reason: intent.reason
             })
           });
           const receipt = document.getElementById("receipt");
           receipt.textContent = `Decision signed: ${result.status}.${result.resume_command ? `\nNext: ${result.resume_command}` : ""}`;
           setStatus("Decision signed. No operation was executed or resumed by this console.");
           await loadInbox(true);
-          if (selectedId === requestId) await selectApproval(requestId, true);
-          if (selectedId === requestId && selectedApproval && selectedApproval.request_id === requestId) {
+          if (selectedId === intent.requestId) await selectApproval(intent.requestId, true);
+          if (selectedId === intent.requestId && selectedApproval && selectedApproval.request_id === intent.requestId) {
             receipt.textContent = `Decision signed: ${result.status}.${result.resume_command ? `\nNext: ${result.resume_command}` : ""}`;
             setStatus("Decision signed. No operation was executed or resumed by this console.");
           }
         } catch (error) {
-          setStatus(error.message);
+          const message = decisionPostStarted
+            ? `${error.message} The decision result is uncertain; review the inbox before another action.`
+            : `${error.message} No decision was sent.`;
+          clearPendingIntent(message);
         } finally {
+          intentPreflightPending = false;
           decisionPending = false;
-          setInboxDisabled(false);
+          if (pendingIntent === intent) clearPendingIntent();
+          updateFrozenControls();
           updateActions();
         }
       }
@@ -552,6 +755,7 @@
       refreshButton.addEventListener("click", () => loadInbox());
       endSessionButton.addEventListener("click", async () => {
         if (!session) return;
+        clearPendingIntent("Pending decision confirmation cleared. No decision was sent.");
         sessionAuthorityUncertain = true;
         refreshButton.disabled = true;
         endSessionButton.disabled = true;
@@ -574,9 +778,25 @@
         fatal.hidden = false;
         fatal.textContent = "This approval session has ended. Restart the console for a new session.";
       });
-      document.getElementById("approver").addEventListener("change", updateActions);
-      approveButton.addEventListener("click", () => decide("approved"));
-      denyButton.addEventListener("click", () => decide("denied"));
+      approverSelect.addEventListener("change", updateActions);
+      reasonInput.addEventListener("input", updateActions);
+      approveButton.addEventListener("click", () => beginIntent("approved"));
+      denyButton.addEventListener("click", () => beginIntent("denied"));
+      intentEntry.addEventListener("input", updateIntentSubmission);
+      intentEntry.addEventListener("keydown", event => {
+        if (event.key === "Enter") event.preventDefault();
+      });
+      confirmDecisionButton.addEventListener("keydown", event => {
+        if (event.key === "Enter") event.preventDefault();
+      });
+      cancelIntentButton.addEventListener("click", () => {
+        const returnFocus = pendingIntent && pendingIntent.outcome === "approved"
+          ? approveButton
+          : denyButton;
+        clearPendingIntent("Decision confirmation canceled. No decision was sent.");
+        returnFocus.focus();
+      });
+      confirmDecisionButton.addEventListener("click", submitIntent);
       setInterval(updateCountdown, 1000);
       setInterval(() => { if (session) loadInbox(true); }, 5000);
       establishSession();
