@@ -249,19 +249,21 @@ impl LiveRunStartClaim {
         if self.schema != LIVE_RUN_START_CLAIM_SCHEMA
             || self.readiness_binding_digest == ContentDigest::from_bytes([0; 32])
             || self.setup_digest == ContentDigest::from_bytes([0; 32])
-            || run.id.get_version_num() != 7
-            || run.agent_id.is_none_or(|id| id.get_version_num() != 7)
+            || !crate::operator::uuid_is_v7(run.id)
+            || run
+                .agent_id
+                .is_none_or(|id| !crate::operator::uuid_is_v7(id))
             || run.mode != AgentRunMode::Session
             || run.status != AgentRunStatus::Running
             || run.retry_count != 0
             || run.revision != 1
             || run.created_at != run.updated_at
             || run.completed_at.is_some()
-            || checkpoint.id.get_version_num() != 7
+            || !crate::operator::uuid_is_v7(checkpoint.id)
             || checkpoint.run_id != run.id
             || checkpoint.sequence != 0
             || checkpoint.created_at < run.created_at
-            || started_event.id.get_version_num() != 7
+            || !crate::operator::uuid_is_v7(started_event.id)
             || started_event.run_id != run.id
             || started_event.sequence != 0
             || started_event.kind != AgentRunEventKind::Started
@@ -303,7 +305,7 @@ impl LiveRunStartClaim {
             || runtime_run_id != Some(run.id)
             || runtime_agent_id != run.agent_id
             || runtime_started_at != Some(run.created_at)
-            || process_epoch_id.is_none_or(|id| id.get_version_num() != 7)
+            || process_epoch_id.is_none_or(|id| !crate::operator::uuid_is_v7(id))
         {
             return Err(AgentRunError::InvalidLiveStartClaim);
         }

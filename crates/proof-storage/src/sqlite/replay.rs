@@ -26,6 +26,43 @@ struct ReplayRow {
     execution_context_id: Option<String>,
 }
 
+pub(crate) fn claim_execution_replay_in_transaction(
+    transaction: &Transaction<'_>,
+    claim: &ExecutionReplayClaim,
+) -> Result<ExecutionReplayClaimResult, StorageError> {
+    validate_claim_shape(claim)?;
+    let existing = load_replay(transaction, claim)?;
+    if let Some(row) = existing {
+        if row.input_digest != claim.input_digest.hex() {
+            return Ok(ExecutionReplayClaimResult::Conflict);
+        }
+        return match row.state.as_str() {
+            "claimed" => Ok(ExecutionReplayClaimResult::InProgress),
+            "failed" => Ok(ExecutionReplayClaimResult::Failed),
+            "completed" => load_completed_outcome(transaction, &row),
+            _ => Err(StorageError::Conflict(
+                "invalid execution replay state".into(),
+            )),
+        };
+    }
+    transaction.execute(
+        "INSERT INTO execution_replays (
+             operation, version, idempotency_key, input_digest, state, claim_token,
+             claimed_by, claimed_at
+         ) VALUES (?1, ?2, ?3, ?4, 'claimed', ?5, ?6, ?7)",
+        rusqlite::params![
+            claim.key.operation,
+            claim.key.version,
+            claim.key.idempotency_key.to_string(),
+            claim.input_digest.hex(),
+            claim.claim_token.to_string(),
+            claim.claimed_by.as_uuid().to_string(),
+            claim.claimed_at.to_rfc3339(),
+        ],
+    )?;
+    Ok(ExecutionReplayClaimResult::Acquired)
+}
+
 impl SqliteStore {
     /// Atomically claims an exact-replay tuple before the governed mutation begins.
     pub fn claim_execution_replay(

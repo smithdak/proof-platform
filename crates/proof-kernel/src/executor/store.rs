@@ -7,7 +7,9 @@ use crate::canonical::ContentDigest;
 use crate::delegation::Delegation;
 use crate::evidence::Proof;
 use crate::identity::PrincipalId;
+use crate::operator::{GovernedEffectPolicy, PreparedHandlerOutput};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -21,20 +23,26 @@ pub enum IdempotencyPolicy {
 }
 
 /// The durable scope of an execution replay claim.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecutionReplayKey {
     pub operation: String,
     pub version: String,
+    #[serde(with = "crate::operator::strict_uuid_v7")]
     pub idempotency_key: Uuid,
 }
 
 /// A caller's attempt to claim an exact-replay key before mutation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecutionReplayClaim {
     pub key: ExecutionReplayKey,
     pub input_digest: ContentDigest,
+    #[serde(with = "crate::operator::strict_uuid_v7")]
     pub claim_token: Uuid,
+    #[serde(with = "crate::operator::strict_principal_id")]
     pub claimed_by: PrincipalId,
+    #[serde(with = "crate::operator::strict_utc")]
     pub claimed_at: DateTime<Utc>,
 }
 
@@ -358,6 +366,21 @@ pub trait OperationHandler: Send + Sync {
         context: &ExecutionContext,
     ) -> Result<Value, ExecutionError> {
         self.execute(input, context)
+    }
+    /// Declares whether this version is eligible for prepared governed execution.
+    fn governed_effect_policy_for(&self, _version: &str) -> GovernedEffectPolicy {
+        GovernedEffectPolicy::Ineligible
+    }
+    /// Executes the single bounded boundary without persisting any result.
+    fn execute_governed_versioned(
+        &self,
+        _version: &str,
+        _input: &Value,
+        _context: &ExecutionContext,
+    ) -> Result<PreparedHandlerOutput, ExecutionError> {
+        Err(ExecutionError::HandlerFailed(
+            "handler is ineligible for governed execution".to_string(),
+        ))
     }
 }
 

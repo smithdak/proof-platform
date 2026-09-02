@@ -36,6 +36,11 @@ impl SqliteStore {
             transaction.commit()?;
             return Ok(());
         }
+        reject_if_operator_governed_approval(
+            &transaction,
+            &request.body.id,
+            "insert approval request evidence",
+        )?;
         reject_if_approval_is_bound_to_sealed_trace(
             &transaction,
             &request.body.id,
@@ -127,6 +132,11 @@ impl SqliteStore {
             transaction.commit()?;
             return Ok(());
         }
+        reject_if_operator_governed_approval(
+            &transaction,
+            &decision.body.request_id,
+            "insert approval decision evidence",
+        )?;
         reject_if_approval_is_bound_to_sealed_trace(
             &transaction,
             &decision.body.request_id,
@@ -201,6 +211,11 @@ impl SqliteStore {
             transaction.commit()?;
             return Ok(());
         }
+        reject_if_operator_governed_approval(
+            &transaction,
+            &execution.request_id,
+            "insert approval execution evidence",
+        )?;
         reject_if_approval_is_bound_to_sealed_trace(
             &transaction,
             &execution.request_id,
@@ -258,6 +273,33 @@ impl SqliteStore {
             })
             .transpose()
     }
+}
+
+fn reject_if_operator_governed_approval(
+    transaction: &Transaction<'_>,
+    request_id: &Uuid,
+    action: &str,
+) -> Result<(), StorageError> {
+    if super::migrations::schema_version(transaction)? < 14 {
+        return Ok(());
+    }
+    let governed: i64 = transaction.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM operator_approval_bindings WHERE approval_request_id = ?1
+             UNION ALL
+             SELECT 1 FROM agent_run_steps s
+             JOIN operator_run_control c ON c.run_id = s.run_id
+             WHERE s.approval_request_id = ?1
+         )",
+        [request_id.to_string()],
+        |row| row.get(0),
+    )?;
+    if governed != 0 {
+        return Err(StorageError::Conflict(format!(
+            "operator-governed approval {request_id} may not use the legacy storage path to {action}"
+        )));
+    }
+    Ok(())
 }
 
 impl ApprovalStore for SqliteStore {

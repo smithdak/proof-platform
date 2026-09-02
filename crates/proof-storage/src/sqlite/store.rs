@@ -10,6 +10,7 @@ use proof_kernel::{
 use rusqlite::Connection;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 
@@ -18,6 +19,12 @@ pub struct SqliteStore {
     // guards, so SQLite has finished all close-time filesystem work first.
     pub(super) conn: Mutex<Connection>,
     _trusted_path_guards: Option<TrustedSqlitePathGuards>,
+    pub(super) operator: Option<OperatorStoreContext>,
+}
+
+pub(super) struct OperatorStoreContext {
+    pub environment: Arc<dyn proof_kernel::OperatorControlEnvironment>,
+    pub catalog: Arc<proof_kernel::OperatorSchemaCatalog>,
 }
 
 pub(super) struct TrustedSqlitePathGuards {
@@ -170,6 +177,17 @@ impl ExecutionStore for SqliteStore {
 impl SqliteStore {
     /// Opens (or creates) a SQLite database at the given path and initializes the schema.
     pub fn open(path: &Path) -> Result<Self, StorageError> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .mode(0o600)
+                .open(path)?;
+        }
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -177,6 +195,7 @@ impl SqliteStore {
         Ok(Self {
             conn: Mutex::new(conn),
             _trusted_path_guards: None,
+            operator: None,
         })
     }
 
@@ -188,6 +207,7 @@ impl SqliteStore {
         Ok(Self {
             conn: Mutex::new(conn),
             _trusted_path_guards: None,
+            operator: None,
         })
     }
 
@@ -201,6 +221,27 @@ impl SqliteStore {
             _trusted_path_guards: Some(TrustedSqlitePathGuards {
                 _directory: directory,
                 _database: database,
+            }),
+            operator: None,
+        }
+    }
+
+    pub(super) fn from_operator_existing_connection(
+        conn: Connection,
+        directory: File,
+        database: File,
+        environment: Arc<dyn proof_kernel::OperatorControlEnvironment>,
+        catalog: Arc<proof_kernel::OperatorSchemaCatalog>,
+    ) -> Self {
+        Self {
+            conn: Mutex::new(conn),
+            _trusted_path_guards: Some(TrustedSqlitePathGuards {
+                _directory: directory,
+                _database: database,
+            }),
+            operator: Some(OperatorStoreContext {
+                environment,
+                catalog,
             }),
         }
     }

@@ -77,6 +77,46 @@ mod linux {
     where
         F: FnMut(TrustedOpenStage) -> Result<(), StorageError>,
     {
+        let (connection, directory, database) = open_existing_connection_with_hook(
+            directory,
+            expected_directory,
+            database_name,
+            true,
+            &mut hook,
+        )?;
+        Ok(SqliteStore::from_trusted_existing_connection(
+            connection, directory, database,
+        ))
+    }
+
+    pub(crate) fn open_existing_no_migration_with_hook<F>(
+        directory: File,
+        expected_directory: &Path,
+        database_name: &str,
+        mut hook: F,
+    ) -> Result<(Connection, File, File), StorageError>
+    where
+        F: FnMut(TrustedOpenStage) -> Result<(), StorageError>,
+    {
+        open_existing_connection_with_hook(
+            directory,
+            expected_directory,
+            database_name,
+            false,
+            &mut hook,
+        )
+    }
+
+    fn open_existing_connection_with_hook<F>(
+        directory: File,
+        expected_directory: &Path,
+        database_name: &str,
+        migrate: bool,
+        hook: &mut F,
+    ) -> Result<(Connection, File, File), StorageError>
+    where
+        F: FnMut(TrustedOpenStage) -> Result<(), StorageError>,
+    {
         validate_expected_directory_path(expected_directory)?;
         validate_database_name(database_name)?;
 
@@ -118,7 +158,9 @@ mod linux {
 
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
-        run_migrations(&connection)?;
+        if migrate {
+            run_migrations(&connection)?;
+        }
 
         require_database_not_moved(&connection)?;
         verify_guarded_paths(
@@ -130,9 +172,7 @@ mod linux {
         )?;
         validate_existing_sidecars(&directory, database_name, effective_uid)?;
 
-        Ok(SqliteStore::from_trusted_existing_connection(
-            connection, directory, database,
-        ))
+        Ok((connection, directory, database))
     }
 
     fn validate_expected_directory_path(path: &Path) -> Result<(), StorageError> {
@@ -217,7 +257,25 @@ mod linux {
                 "trusted SQLite {description} must have exactly one link"
             )));
         }
+        if metadata.mode() & 0o777 != 0o600 {
+            return Err(permission_denied(format!(
+                "trusted SQLite {description} must have mode 0600"
+            )));
+        }
         Ok(())
+    }
+
+    pub(crate) fn validate_existing_operator_files(
+        directory: &File,
+        database_name: &str,
+    ) -> Result<(), StorageError> {
+        validate_database_name(database_name)?;
+        // SAFETY: geteuid takes no arguments and has no memory-safety
+        // preconditions.
+        let effective_uid = unsafe { geteuid() };
+        let database = open_database_guard(directory, database_name, effective_uid)?;
+        drop(database);
+        validate_existing_sidecars(directory, database_name, effective_uid)
     }
 
     fn open_database_guard(
@@ -390,6 +448,9 @@ mod linux {
         StorageError::Io(Error::new(ErrorKind::PermissionDenied, message.into()))
     }
 }
+
+#[cfg(target_os = "linux")]
+pub(crate) use linux::{open_existing_no_migration_with_hook, validate_existing_operator_files};
 
 #[cfg(all(test, target_os = "linux"))]
 pub(super) use linux::{

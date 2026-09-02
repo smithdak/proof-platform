@@ -1,0 +1,8 @@
+{
+  "schema": "proof.operator.session.challenge-issue-request/v1",
+  "client_nonce_digest": "blake3-256:0000000000000000000000000000000000000000000000000000000000000000",
+  "client_nonce_digest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "requested_capabilities": [
+    "run.read"
+  ]
+}

@@ -15,4 +15,5 @@ blake3.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 ed25519-dalek.workspace = true
+rustix.workspace = true
 tempfile = "3"

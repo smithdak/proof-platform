@@ -101,6 +101,7 @@ impl SqliteStore {
             return Ok(());
         }
 
+        reject_if_operator_governed_run(&transaction, &event.run_id, "append an event")?;
         reject_if_agent_trace_sealed(&transaction, &event.run_id, "append an event")?;
         validate_event_run_status(&transaction, event)?;
         validate_next_event_sequence(&transaction, event)?;
@@ -136,6 +137,27 @@ impl SqliteStore {
         })
         .collect()
     }
+}
+
+pub(super) fn reject_if_operator_governed_run(
+    transaction: &Transaction<'_>,
+    run_id: &Uuid,
+    action: &str,
+) -> Result<(), StorageError> {
+    if super::migrations::schema_version(transaction)? < 14 {
+        return Ok(());
+    }
+    let governed: i64 = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM operator_run_control WHERE run_id = ?1)",
+        [run_id.to_string()],
+        |row| row.get(0),
+    )?;
+    if governed != 0 {
+        return Err(StorageError::Conflict(format!(
+            "operator-governed run {run_id} may not use the legacy storage path to {action}"
+        )));
+    }
+    Ok(())
 }
 
 pub(super) fn reject_if_agent_trace_sealed(

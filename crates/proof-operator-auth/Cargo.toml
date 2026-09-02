@@ -1,0 +1,20 @@
+[package]
+name = "proof-operator-auth"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+proof-kernel = { path = "../proof-kernel" }
+base64.workspace = true
+blake3.workspace = true
+chrono.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+zeroize.workspace = true

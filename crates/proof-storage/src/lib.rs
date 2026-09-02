@@ -5,10 +5,13 @@ pub mod sqlite;
 
 pub use cas::{BlobReference, ContentAddressedStore, GarbageCollectionResult};
 pub use sqlite::{
-    AnalyticsInsight, AnalyticsInsightStatus, AnalyticsQuery, AnalyticsSnapshot, Catalog,
-    CatalogProduct, Migration, Order, OrderLine, OrderStatus, ProofFilter, SqliteStore,
-    WorkflowDefinition, WorkflowRun, WorkflowRunStatus, WorkflowStep, WorkflowStepKind,
-    WorkflowStepStatus, WorkflowStepTemplate, MIGRATIONS,
+    acquire_operator_workspace_lock, initialize_operator_workspace_guarded,
+    open_operator_schema14_existing, release_operator_workspace_lock,
+    upgrade_operator_schema14_offline, AnalyticsInsight, AnalyticsInsightStatus, AnalyticsQuery,
+    AnalyticsSnapshot, Catalog, CatalogProduct, Migration, OperatorLockMode, Order, OrderLine,
+    OrderStatus, OwnedOperatorWorkspaceLock, ProofFilter, SqliteStore, WorkflowDefinition,
+    WorkflowRun, WorkflowRunStatus, WorkflowStep, WorkflowStepKind, WorkflowStepStatus,
+    WorkflowStepTemplate, MIGRATIONS,
 };
 
 #[derive(Debug, thiserror::Error)]

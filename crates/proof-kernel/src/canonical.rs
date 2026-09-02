@@ -131,7 +131,11 @@ impl<'de> Deserialize<'de> for ContentDigest {
         D: serde::Deserializer<'de>,
     {
         let hex = String::deserialize(deserializer)?;
-        if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        if hex.len() != 64
+            || !hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
             return Err(serde::de::Error::invalid_value(
                 serde::de::Unexpected::Str(&hex),
                 &"64 hexadecimal characters",

@@ -1,0 +1,12 @@
+{
+  "schema": "proof.operator.session.challenge-issue-request/v1",
+  "client_nonce_digest": "blake3-256:0000000000000000000000000000000000000000000000000000000000000000",
+  "requested_capabilities": [
+    "approval.decide",
+    "approval.read",
+    "audit.read",
+    "run.cancel",
+    "run.read",
+    "run.resume"
+  ]
+}

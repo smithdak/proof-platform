@@ -1543,10 +1543,13 @@ dependencies = [
  "rand 0.8.8",
  "serde",
  "serde_json",
+ "sha2",
+ "subtle",
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -1565,6 +1568,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "proof-operator-auth"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "blake3",
+ "chrono",
+ "ed25519-dalek",
+ "proof-kernel",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "thiserror 2.0.20",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "proof-operator-control"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64",
+ "blake3",
+ "chrono",
+ "ed25519-dalek",
+ "proof-kernel",
+ "proof-operator-auth",
+ "rand 0.8.8",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "proof-storage"
 version = "0.1.0"
 dependencies = [
@@ -1574,6 +1619,7 @@ dependencies = [
  "proof-content",
  "proof-kernel",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

@@ -1,0 +1,357 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof.local/schemas/operator-control/auth/v1",
+  "title": "Proof operator control v1 authentication shapes",
+  "type": "object",
+  "maxProperties": 0,
+  "additionalProperties": false,
+  "$defs": {
+    "ChallengeIssueRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "client_nonce_digest",
+        "requested_capabilities"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.session.challenge-issue-request/v1"
+        },
+        "client_nonce_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "requested_capabilities": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        }
+      }
+    },
+    "SessionChallenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "challenge_id",
+        "server_instance_id",
+        "server_nonce",
+        "workspace_id",
+        "workspace_fingerprint",
+        "human_id",
+        "human_public_key_fingerprint",
+        "auth_epoch",
+        "policy_revision",
+        "origin",
+        "client_nonce_digest",
+        "requested_capabilities",
+        "granted_capabilities",
+        "issued_at",
+        "expires_at",
+        "challenge_ttl_seconds",
+        "session_absolute_ttl_seconds",
+        "session_idle_ttl_seconds"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.session.challenge/v1"
+        },
+        "challenge_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "server_instance_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "server_nonce": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32"
+        },
+        "workspace_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "workspace_fingerprint": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "human_public_key_fingerprint": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "auth_epoch": {
+          "const": 1
+        },
+        "policy_revision": {
+          "const": 1
+        },
+        "origin": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Origin"
+        },
+        "client_nonce_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "requested_capabilities": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "granted_capabilities": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "issued_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "challenge_ttl_seconds": {
+          "const": 120
+        },
+        "session_absolute_ttl_seconds": {
+          "const": 900
+        },
+        "session_idle_ttl_seconds": {
+          "const": 300
+        }
+      }
+    },
+    "ChallengeIssueResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "challenge",
+        "challenge_code"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.session.challenge-issue-response/v1"
+        },
+        "challenge": {
+          "$ref": "#/$defs/SessionChallenge"
+        },
+        "challenge_code": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{10}$"
+        }
+      }
+    },
+    "SessionAttestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "challenge",
+        "signature_algorithm",
+        "signature",
+        "signed_bytes_digest"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.session.attestation/v1"
+        },
+        "challenge": {
+          "$ref": "#/$defs/SessionChallenge"
+        },
+        "signature_algorithm": {
+          "const": "ed25519"
+        },
+        "signature": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Ed25519Signature"
+        },
+        "signed_bytes_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        }
+      }
+    },
+    "SessionExchangeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "challenge_id",
+        "client_nonce"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.session.exchange-request/v1"
+        },
+        "challenge_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "client_nonce": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32"
+        }
+      }
+    },
+    "SessionExchangeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "session_id",
+        "session_token",
+        "workspace_id",
+        "server_instance_id",
+        "human_id",
+        "auth_epoch",
+        "policy_revision",
+        "granted_capabilities",
+        "issued_at",
+        "absolute_expires_at",
+        "idle_expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.session.exchange-response/v1"
+        },
+        "session_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "session_token": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32"
+        },
+        "workspace_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "server_instance_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "auth_epoch": {
+          "const": 1
+        },
+        "policy_revision": {
+          "const": 1
+        },
+        "granted_capabilities": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "issued_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "absolute_expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "idle_expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      }
+    },
+    "SessionAuthorityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "session_id", "workspace_id", "server_instance_id",
+        "human_id", "auth_epoch", "policy_revision", "origin", "granted_capabilities",
+        "issued_at", "absolute_expires_at"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.session.authority-binding/v1" },
+        "session_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "server_instance_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "auth_epoch": { "const": 1 },
+        "policy_revision": { "const": 1 },
+        "origin": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Origin" },
+        "granted_capabilities": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet" },
+        "issued_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+        "absolute_expires_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" }
+      }
+    },
+    "SessionClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "session_id",
+        "token_digest",
+        "workspace_id",
+        "server_instance_id",
+        "human_id",
+        "auth_epoch",
+        "policy_revision",
+        "origin",
+        "granted_capabilities",
+        "issued_at",
+        "absolute_expires_at",
+        "authority_digest",
+        "idle_expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.session.claims/v1"
+        },
+        "session_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "token_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "workspace_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "server_instance_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "auth_epoch": {
+          "const": 1
+        },
+        "policy_revision": {
+          "const": 1
+        },
+        "origin": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Origin"
+        },
+        "granted_capabilities": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "issued_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "absolute_expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "authority_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "idle_expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      }
+    },
+    "GrantedCapabilityIntersection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "requested",
+        "enrolled",
+        "policy",
+        "supported",
+        "granted"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.capability-intersection/v1"
+        },
+        "requested": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "enrolled": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "policy": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "supported": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "granted": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        }
+      }
+    }
+  }
+}

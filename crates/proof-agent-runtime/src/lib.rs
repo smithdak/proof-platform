@@ -2,6 +2,7 @@
 
 mod model;
 mod openai;
+mod operator;
 mod runtime;
 mod trace_eval;
 
@@ -10,6 +11,11 @@ pub use model::{
     ModelTurnRequest, ModelUsage,
 };
 pub use openai::{OpenAiResponsesGateway, DEFAULT_OPENAI_BASE_URL};
+pub use operator::{
+    GovernedRuntimeCall, GovernedRuntimeOutcome, OperatorLease, OperatorLeaseClaim,
+    OperatorLeaseReclaim, OperatorReclaimOutcome, OperatorRuntime, OperatorRuntimeError,
+    OperatorRuntimeStage,
+};
 pub use runtime::{
     runtime_approval_context, runtime_state_view, AgentRuntime, AgentRuntimeError,
     AgentRuntimeOutcome, AgentRuntimeState, LiveAuthoritySetup, LiveBindingInputs,

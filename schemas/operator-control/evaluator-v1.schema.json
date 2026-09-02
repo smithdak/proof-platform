@@ -1,0 +1,5256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof.local/schemas/operator-control/evaluator/v1",
+  "title": "Proof operator control v1 evaluator policy",
+  "$ref": "#/$defs/EvaluatorPolicy",
+  "$defs": {
+    "EvaluatorPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "contract",
+        "edition",
+        "status",
+        "artifact_policy",
+        "artifacts",
+        "execution_policy",
+        "fixture_protocol",
+        "valid_scenarios",
+        "checks",
+        "rejection_vectors",
+        "semantic_digests",
+        "scoring",
+        "required_evidence",
+        "rollback",
+        "backend_subset",
+        "store_error_matrix",
+        "result_invariants"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.evaluator-policy/v1"
+        },
+        "contract": {
+          "const": "proof-operator-control/v1"
+        },
+        "edition": {
+          "const": "AXP-E0002"
+        },
+        "status": {
+          "const": "proposed-gate-b"
+        },
+        "artifact_policy": {
+          "$ref": "#/$defs/ArtifactPolicy"
+        },
+        "artifacts": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/Artifact"
+          }
+        },
+        "execution_policy": {
+          "$ref": "#/$defs/ExecutionPolicy"
+        },
+        "fixture_protocol": {
+          "$ref": "#/$defs/FixtureProtocol"
+        },
+        "valid_scenarios": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ValidScenario"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 20,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/Check"
+          }
+        },
+        "rejection_vectors": {
+          "type": "array",
+          "minItems": 105,
+          "maxItems": 105,
+          "items": {
+            "$ref": "#/$defs/RejectionVector"
+          }
+        },
+        "semantic_digests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "algorithm",
+            "canonical_input",
+            "checks",
+            "rejection_vectors",
+            "valid_scenarios",
+            "backend_subset",
+            "store_error_matrix"
+          ],
+          "properties": {
+            "algorithm": {
+              "const": "sha256"
+            },
+            "canonical_input": {
+              "const": "selected ordered JSON value; compact UTF-8 JSON; recursively lexicographically sorted object keys; no trailing newline"
+            },
+            "checks": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            },
+            "rejection_vectors": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            },
+            "valid_scenarios": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            },
+            "backend_subset": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            },
+            "store_error_matrix": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            }
+          }
+        },
+        "scoring": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "all_required",
+            "skip_allowed",
+            "required_score_bps",
+            "passed_equals_total",
+            "independent_non_author"
+          ],
+          "properties": {
+            "all_required": {
+              "const": true
+            },
+            "skip_allowed": {
+              "const": false
+            },
+            "required_score_bps": {
+              "const": 10000
+            },
+            "passed_equals_total": {
+              "const": true
+            },
+            "independent_non_author": {
+              "const": true
+            }
+          }
+        },
+        "required_evidence": {
+          "const": [
+            "artifact_digest_report",
+            "audit_chain_report",
+            "browser_accessibility_report",
+            "browser_secret_scan",
+            "command_race_report",
+            "fresh_workspace_report",
+            "migration14_report",
+            "process_secret_scan",
+            "restart_recovery_report",
+            "route_inventory_report",
+            "scoped_test_report",
+            "zero_effect_counter_report"
+          ]
+        },
+        "rollback": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "disable_operator",
+            "preserve_durable_evidence",
+            "schema_down_requires_owner",
+            "forbidden_restorations"
+          ],
+          "properties": {
+            "disable_operator": {
+              "const": true
+            },
+            "preserve_durable_evidence": {
+              "const": true
+            },
+            "schema_down_requires_owner": {
+              "const": true
+            },
+            "forbidden_restorations": {
+              "type": "array",
+              "minItems": 5,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{2,63}$"
+              }
+            }
+          }
+        },
+        "backend_subset": {
+          "$ref": "#/$defs/BackendSubsetPolicy"
+        },
+        "store_error_matrix": {
+          "$ref": "#/$defs/StoreErrorMatrixPolicy"
+        },
+        "result_invariants": {
+          "const": [
+            "all_requirements_present",
+            "backend_subset_ids_exact_order",
+            "binary_all_required_score",
+            "completion_not_before_start",
+            "distinct_workspace_instances",
+            "equal_semantic_observations",
+            "evidence_references_closed",
+            "no_orphan_evidence",
+            "policy_result_ids_exact_order",
+            "proof_references_verified",
+            "replay_ordinals_1_2",
+            "root_evidence_union",
+            "store_error_matrix_complete"
+          ]
+        }
+      }
+    },
+    "ArtifactPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "unknown_fields",
+        "duplicate_fields",
+        "schema_dialect",
+        "exact_order",
+        "exact_cardinality"
+      ],
+      "properties": {
+        "digest": {
+          "const": "sha256-raw-file-bytes"
+        },
+        "unknown_fields": {
+          "const": "reject-recursively"
+        },
+        "duplicate_fields": {
+          "const": "reject-recursively-before-value-construction"
+        },
+        "schema_dialect": {
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "exact_order": {
+          "const": true
+        },
+        "exact_cardinality": {
+          "const": true
+        }
+      }
+    },
+    "Artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "path",
+        "role",
+        "sha256"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^(contracts/operator-control-plane\\.md|schemas/operator-control/[a-z0-9-]+-v1(\\.schema)?\\.json)$"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "contract",
+            "schema",
+            "schema_manifest"
+          ]
+        },
+        "sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "ExecutionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspace",
+        "repository_root_proof_forbidden",
+        "fresh_agent_and_human",
+        "external_network",
+        "external_effects",
+        "browser",
+        "clock",
+        "randomness",
+        "fixture_replay",
+        "quiescent_cleanup",
+        "live_provider_calls",
+        "provider_mode"
+      ],
+      "properties": {
+        "workspace": {
+          "const": "fresh-disposable-trusted"
+        },
+        "repository_root_proof_forbidden": {
+          "const": true
+        },
+        "fresh_agent_and_human": {
+          "const": true
+        },
+        "external_network": {
+          "const": false
+        },
+        "external_effects": {
+          "const": false
+        },
+        "browser": {
+          "const": "local-deterministic"
+        },
+        "clock": {
+          "const": "injectable-monotonic-plus-fixed-utc"
+        },
+        "randomness": {
+          "const": "injectable-fixture-csprng"
+        },
+        "fixture_replay": {
+          "const": "byte-identical-twice"
+        },
+        "quiescent_cleanup": {
+          "const": true
+        },
+        "live_provider_calls": {
+          "const": 0
+        },
+        "provider_mode": {
+          "const": "synthetic_instrumented_only"
+        }
+      }
+    },
+    "FixtureProtocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "fixture_index",
+        "result_path",
+        "one_fixture_per_id",
+        "one_mutation_per_rejection",
+        "counter_scope",
+        "replay_count",
+        "pass_exit",
+        "evaluation_failure_exit",
+        "harness_error_min_exit",
+        "case_semantic_input"
+      ],
+      "properties": {
+        "command": {
+          "const": "rtk cargo run -p proof-conformance --bin evaluate-operator-control --offline -- --policy evals/operator-control-v1.json --fixtures evals/fixtures/operator-control --output target/operator-control-eval/result.json"
+        },
+        "fixture_index": {
+          "const": "evals/fixtures/operator-control/index-v1.json"
+        },
+        "result_path": {
+          "const": "target/operator-control-eval/result.json"
+        },
+        "one_fixture_per_id": {
+          "const": true
+        },
+        "one_mutation_per_rejection": {
+          "const": true
+        },
+        "counter_scope": {
+          "const": "delta_from_post_setup_baseline"
+        },
+        "replay_count": {
+          "const": 2
+        },
+        "pass_exit": {
+          "const": 0
+        },
+        "evaluation_failure_exit": {
+          "const": 1
+        },
+        "harness_error_min_exit": {
+          "const": 2
+        },
+        "case_semantic_input": {
+          "const": "closed CaseSemantic projection of fixture id, subject, baseline or null, and complete fixture_blueprint; compact UTF-8 JSON; recursively sorted keys; no trailing newline"
+        }
+      }
+    },
+    "ValidScenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "id",
+        "owner_task",
+        "fixture_schema",
+        "fixture_path",
+        "subject_schema",
+        "setup",
+        "action",
+        "oracles",
+        "required",
+        "fixture_blueprint",
+        "case_semantic_sha256"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^valid_[a-z0-9_]+$"
+        },
+        "owner_task": {
+          "type": "string",
+          "pattern": "^E0002-(0[2-9]|1[0-5])$"
+        },
+        "fixture_schema": {
+          "const": "ValidFixture"
+        },
+        "fixture_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/valid/[0-9]{3}-valid_[a-z0-9_]+\\.json$"
+        },
+        "subject_schema": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]+$"
+        },
+        "setup": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 300
+          }
+        },
+        "action": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 300
+        },
+        "oracles": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 300
+          }
+        },
+        "required": {
+          "const": true
+        },
+        "fixture_blueprint": {
+          "$ref": "#/$defs/ValidRecipeBlueprint"
+        },
+        "case_semantic_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "Check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "id",
+        "title",
+        "owner_tasks",
+        "scenario_ids",
+        "assertions",
+        "required",
+        "zero_live_effects"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^check_[a-z0-9_]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "owner_tasks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^E0002-(0[2-9]|1[0-5])$"
+          }
+        },
+        "scenario_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^valid_[a-z0-9_]+$"
+          }
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        },
+        "required": {
+          "const": true
+        },
+        "zero_live_effects": {
+          "const": true
+        }
+      }
+    },
+    "RejectionVector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "id",
+        "surface",
+        "owner_tasks",
+        "fixture_schema",
+        "fixture_path",
+        "subject_schema",
+        "baseline_scenario_id",
+        "action",
+        "mutation",
+        "counter_scope",
+        "assertions",
+        "required",
+        "fixture_blueprint",
+        "case_semantic_sha256"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^reject_[a-z0-9_]+$"
+        },
+        "surface": {
+          "type": "string",
+          "enum": [
+            "approval",
+            "artifact",
+            "auth",
+            "browser",
+            "budget",
+            "cancel",
+            "command",
+            "cursor",
+            "evidence",
+            "fence",
+            "request",
+            "restart",
+            "resume",
+            "router",
+            "schema",
+            "signer",
+            "store"
+          ]
+        },
+        "owner_tasks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^E0002-(0[2-9]|1[0-5])$"
+          }
+        },
+        "fixture_schema": {
+          "const": "RejectionFixture"
+        },
+        "fixture_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/reject/[0-9]{3}-reject_[a-z0-9_]+\\.json$"
+        },
+        "subject_schema": {
+          "type": "string",
+          "pattern": "^(raw_http|raw_json|[A-Z][A-Za-z0-9]+)$"
+        },
+        "baseline_scenario_id": {
+          "type": "string",
+          "pattern": "^valid_[a-z0-9_]+$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "browser_assertion",
+            "evaluator_assertion",
+            "http_request",
+            "journey",
+            "launch",
+            "runtime_call",
+            "store_operation",
+            "tty_ceremony"
+          ]
+        },
+        "mutation": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 300
+        },
+        "counter_scope": {
+          "const": "delta_from_post_setup_baseline"
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        },
+        "required": {
+          "const": true
+        },
+        "fixture_blueprint": {
+          "$ref": "#/$defs/RejectionRecipeBlueprint"
+        },
+        "case_semantic_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "FixtureRecipeDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "fixture_id",
+        "phase",
+        "recipe_id",
+        "subject_schema",
+        "payload_sha256",
+        "zero_secret_sentinels",
+        "payload_schema",
+        "payload"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.fixture-recipe-document/v1"
+        },
+        "fixture_id": {
+          "type": "string",
+          "pattern": "^(valid|reject)_[a-z0-9_]+$"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "setup",
+            "mutation",
+            "action",
+            "expected"
+          ]
+        },
+        "recipe_id": {
+          "type": "string",
+          "pattern": "^(valid|reject)_[a-z0-9_]+\\.(setup|mutation|action|expected)\\.v1$"
+        },
+        "subject_schema": {
+          "type": "string",
+          "pattern": "^(raw_http|raw_json|[A-Z][A-Za-z0-9]+)$"
+        },
+        "payload_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "zero_secret_sentinels": {
+          "const": true
+        },
+        "payload_schema": {
+          "type": "string",
+          "enum": [
+            "ActionRecipe",
+            "ExpectedRecipe",
+            "MutationRecipe",
+            "SetupRecipe"
+          ]
+        },
+        "payload": {}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "setup"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload_schema": {
+                "const": "SetupRecipe"
+              },
+              "payload": {
+                "$ref": "#/$defs/SetupRecipe"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "mutation"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload_schema": {
+                "const": "MutationRecipe"
+              },
+              "payload": {
+                "$ref": "#/$defs/MutationRecipe"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "action"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload_schema": {
+                "const": "ActionRecipe"
+              },
+              "payload": {
+                "$ref": "#/$defs/ActionRecipe"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "expected"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload_schema": {
+                "const": "ExpectedRecipe"
+              },
+              "payload": {
+                "$ref": "#/$defs/ExpectedRecipe"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ValidFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "fixture_id",
+        "policy_sha256",
+        "case_semantic_sha256",
+        "seed",
+        "setup_path",
+        "setup_sha256",
+        "action_path",
+        "action_sha256",
+        "expected_path",
+        "expected_sha256"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.valid-fixture/v1"
+        },
+        "fixture_id": {
+          "type": "string",
+          "pattern": "^valid_[a-z0-9_]+$"
+        },
+        "policy_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "case_semantic_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "seed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32"
+        },
+        "setup_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/data/valid_[a-z0-9_]+/setup\\.json$"
+        },
+        "setup_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "action_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/data/valid_[a-z0-9_]+/action\\.json$"
+        },
+        "action_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "expected_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/data/valid_[a-z0-9_]+/expected\\.json$"
+        },
+        "expected_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "RejectionFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "fixture_id",
+        "baseline_fixture_id",
+        "policy_sha256",
+        "case_semantic_sha256",
+        "seed",
+        "setup_path",
+        "setup_sha256",
+        "mutation_path",
+        "mutation_sha256",
+        "action_path",
+        "action_sha256",
+        "expected_path",
+        "expected_sha256"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.rejection-fixture/v1"
+        },
+        "fixture_id": {
+          "type": "string",
+          "pattern": "^reject_[a-z0-9_]+$"
+        },
+        "baseline_fixture_id": {
+          "type": "string",
+          "pattern": "^valid_[a-z0-9_]+$"
+        },
+        "policy_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "case_semantic_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "seed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32"
+        },
+        "setup_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/data/reject_[a-z0-9_]+/setup\\.json$"
+        },
+        "setup_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "mutation_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/data/reject_[a-z0-9_]+/mutation\\.json$"
+        },
+        "mutation_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "action_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/data/reject_[a-z0-9_]+/action\\.json$"
+        },
+        "action_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "expected_path": {
+          "type": "string",
+          "pattern": "^evals/fixtures/operator-control/data/reject_[a-z0-9_]+/expected\\.json$"
+        },
+        "expected_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "FixtureIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "policy_sha256",
+        "valid",
+        "rejections"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.fixture-index/v1"
+        },
+        "policy_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "valid": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^evals/fixtures/operator-control/valid/[0-9]{3}-valid_[a-z0-9_]+\\.json$"
+          }
+        },
+        "rejections": {
+          "type": "array",
+          "minItems": 105,
+          "maxItems": 105,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^evals/fixtures/operator-control/reject/[0-9]{3}-reject_[a-z0-9_]+\\.json$"
+          }
+        }
+      }
+    },
+    "CheckResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "check_id",
+        "outcome",
+        "assertions_total",
+        "assertions_passed",
+        "failure_codes",
+        "evidence_ids"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.check-result/v1"
+        },
+        "check_id": {
+          "type": "string",
+          "pattern": "^check_[a-z0-9_]+$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "assertions_total": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        },
+        "assertions_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "failure_codes": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "EvidenceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "evidence_id",
+        "requirement",
+        "kind",
+        "scope",
+        "scope_id",
+        "replay_ordinal",
+        "relative_path",
+        "media_type",
+        "sha256",
+        "created_at",
+        "redacted",
+        "proof_references",
+        "proofs_verified"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.evidence-record/v1"
+        },
+        "evidence_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "requirement": {
+          "type": "string",
+          "enum": [
+            "artifact_digest_report",
+            "audit_chain_report",
+            "browser_accessibility_report",
+            "browser_secret_scan",
+            "command_race_report",
+            "fresh_workspace_report",
+            "migration14_report",
+            "process_secret_scan",
+            "restart_recovery_report",
+            "route_inventory_report",
+            "scoped_test_report",
+            "zero_effect_counter_report"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "browser",
+            "counter",
+            "database",
+            "http",
+            "process",
+            "static_bundle",
+            "test_report"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "check",
+            "evaluation",
+            "replay",
+            "scenario",
+            "vector"
+          ]
+        },
+        "scope_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{3,96}$"
+        },
+        "replay_ordinal": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "enum": [
+                1,
+                2
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relative_path": {
+          "type": "string",
+          "pattern": "^target/operator-control-eval/evidence/[A-Za-z0-9._/-]{1,240}$"
+        },
+        "media_type": {
+          "type": "string",
+          "enum": [
+            "application/json",
+            "application/octet-stream",
+            "image/png",
+            "text/plain"
+          ]
+        },
+        "sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "created_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "redacted": {
+          "const": true
+        },
+        "proof_references": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+          }
+        },
+        "proofs_verified": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "enum": [
+                  "replay",
+                  "scenario",
+                  "vector"
+                ]
+              }
+            },
+            "required": [
+              "scope"
+            ]
+          },
+          "then": {
+            "properties": {
+              "replay_ordinal": {
+                "type": "integer",
+                "enum": [
+                  1,
+                  2
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "replay_ordinal": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "VectorResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "vector_id",
+        "outcome",
+        "deterministic",
+        "replays",
+        "failure_codes",
+        "evidence_ids"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.vector-result/v1"
+        },
+        "vector_id": {
+          "type": "string",
+          "pattern": "^reject_[a-z0-9_]+$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "replays": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ReplayResult"
+                },
+                {
+                  "properties": {
+                    "replay_ordinal": {
+                      "const": 1
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ReplayResult"
+                },
+                {
+                  "properties": {
+                    "replay_ordinal": {
+                      "const": 2
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "deterministic": {
+                "const": true
+              },
+              "failure_codes": {
+                "maxItems": 0
+              },
+              "replays": {
+                "prefixItems": [
+                  {
+                    "allOf": [
+                      {
+                        "allOf": [
+                          {
+                            "$ref": "#/$defs/ReplayResult"
+                          },
+                          {
+                            "properties": {
+                              "outcome": {
+                                "const": "passed"
+                              },
+                              "expected_matched": {
+                                "const": true
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "replay_ordinal": {
+                            "const": 1
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "allOf": [
+                      {
+                        "allOf": [
+                          {
+                            "$ref": "#/$defs/ReplayResult"
+                          },
+                          {
+                            "properties": {
+                              "outcome": {
+                                "const": "passed"
+                              },
+                              "expected_matched": {
+                                "const": true
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "replay_ordinal": {
+                            "const": 2
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "EvaluationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "policy_sha256",
+        "outcome",
+        "checks_total",
+        "checks_passed",
+        "vectors_total",
+        "vectors_passed",
+        "skipped",
+        "score_bps",
+        "check_results",
+        "vector_results",
+        "evidence_ids",
+        "started_at",
+        "completed_at",
+        "scenarios_total",
+        "scenarios_passed",
+        "scenario_results",
+        "evidence_records",
+        "failure_codes",
+        "store_error_matrix_result"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.evaluation-result/v1"
+        },
+        "policy_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "checks_total": {
+          "const": 20
+        },
+        "checks_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "vectors_total": {
+          "const": 105
+        },
+        "vectors_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "skipped": {
+          "const": 0
+        },
+        "score_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "check_results": {
+          "type": "array",
+          "minItems": 20,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/CheckResult"
+          }
+        },
+        "vector_results": {
+          "type": "array",
+          "minItems": 105,
+          "maxItems": 105,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/VectorResult"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        },
+        "started_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "completed_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "scenarios_total": {
+          "const": 16
+        },
+        "scenarios_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "scenario_results": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/ScenarioResult"
+          },
+          "uniqueItems": true
+        },
+        "evidence_records": {
+          "type": "array",
+          "minItems": 12,
+          "items": {
+            "$ref": "#/$defs/EvidenceRecord"
+          },
+          "uniqueItems": true
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "store_error_matrix_result": {
+          "$ref": "#/$defs/StoreErrorMatrixResult"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "scenarios_passed": {
+                "const": 16
+              },
+              "checks_passed": {
+                "const": 20
+              },
+              "vectors_passed": {
+                "const": 105
+              },
+              "score_bps": {
+                "const": 10000
+              },
+              "failure_codes": {
+                "maxItems": 0
+              },
+              "store_error_matrix_result": {
+                "properties": {
+                  "outcome": {
+                    "const": "passed"
+                  }
+                },
+                "required": [
+                  "outcome"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "score_bps": {
+                "const": 0
+              },
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "StaticBundleInventory": {
+      "$ref": "https://proof.local/schemas/operator-control/manifest/v1#/$defs/StaticBundleInventory"
+    },
+    "TypedDocument": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "shape",
+            "schema_ref",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "typed"
+            },
+            "shape": {
+              "const": "ErrorEnvelope"
+            },
+            "schema_ref": {
+              "const": "https://proof.local/schemas/operator-control/common/v1#/$defs/ErrorEnvelope"
+            },
+            "value": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ErrorEnvelope"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "shape",
+            "schema_ref",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "typed"
+            },
+            "shape": {
+              "const": "EvaluatorSetupSpec"
+            },
+            "schema_ref": {
+              "const": "https://proof.local/schemas/operator-control/evaluator/v1#/$defs/EvaluatorSetupSpec"
+            },
+            "value": {
+              "$ref": "https://proof.local/schemas/operator-control/evaluator/v1#/$defs/EvaluatorSetupSpec"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "shape",
+            "schema_ref",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "typed"
+            },
+            "shape": {
+              "const": "EvaluatorMutationSpec"
+            },
+            "schema_ref": {
+              "const": "https://proof.local/schemas/operator-control/evaluator/v1#/$defs/EvaluatorMutationSpec"
+            },
+            "value": {
+              "$ref": "https://proof.local/schemas/operator-control/evaluator/v1#/$defs/EvaluatorMutationSpec"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "shape",
+            "schema_ref",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "typed"
+            },
+            "shape": {
+              "const": "EvaluatorActionSpec"
+            },
+            "schema_ref": {
+              "const": "https://proof.local/schemas/operator-control/evaluator/v1#/$defs/EvaluatorActionSpec"
+            },
+            "value": {
+              "$ref": "https://proof.local/schemas/operator-control/evaluator/v1#/$defs/EvaluatorActionSpec"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "shape",
+            "schema_ref",
+            "value"
+          ],
+          "properties": {
+            "kind": {
+              "const": "typed"
+            },
+            "shape": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z0-9]+$",
+              "not": {
+                "enum": [
+                  "ErrorEnvelope",
+                  "EvaluatorSetupSpec",
+                  "EvaluatorMutationSpec",
+                  "EvaluatorActionSpec"
+                ]
+              }
+            },
+            "schema_ref": {
+              "type": "string",
+              "pattern": "^https://proof\\.local/schemas/.+#/\\$defs/[A-Za-z][A-Za-z0-9]+$"
+            },
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "utf8",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "raw_json"
+            },
+            "utf8": {
+              "type": "string",
+              "maxLength": 262144
+            },
+            "sha256": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "bytes_base64",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "raw_http"
+            },
+            "bytes_base64": {
+              "type": "string",
+              "maxLength": 349526,
+              "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+            },
+            "sha256": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            }
+          }
+        }
+      ]
+    },
+    "StepArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 512
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "FixtureStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "adapter",
+        "operation",
+        "input",
+        "arguments",
+        "barrier"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "adapter": {
+          "type": "string",
+          "enum": [
+            "auth",
+            "barrier",
+            "browser",
+            "evaluator",
+            "fault",
+            "http",
+            "launch",
+            "runtime",
+            "store",
+            "tty",
+            "workspace"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "await_barrier",
+            "browser_assert",
+            "call_http",
+            "call_runtime",
+            "call_store",
+            "cleanup_workspace",
+            "clone_baseline",
+            "corrupt_document",
+            "evaluator_assert",
+            "execute_synthetic_boundary",
+            "inject_fault",
+            "launch_control",
+            "provision_workspace",
+            "release_barrier",
+            "run_process",
+            "seed_fixture",
+            "tty_authorize",
+            "verify_state"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/TypedDocument"
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 0,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/StepArgument"
+          }
+        },
+        "barrier": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "adapter": {
+              "const": "workspace"
+            },
+            "operation": {
+              "enum": [
+                "cleanup_workspace",
+                "clone_baseline",
+                "provision_workspace",
+                "seed_fixture"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorSetupSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "fault"
+            },
+            "operation": {
+              "enum": [
+                "corrupt_document",
+                "inject_fault"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorMutationSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "http"
+            },
+            "operation": {
+              "enum": [
+                "call_http"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "store"
+            },
+            "operation": {
+              "enum": [
+                "call_store"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "runtime"
+            },
+            "operation": {
+              "enum": [
+                "call_runtime",
+                "execute_synthetic_boundary"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "launch"
+            },
+            "operation": {
+              "enum": [
+                "launch_control",
+                "run_process"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "browser"
+            },
+            "operation": {
+              "enum": [
+                "browser_assert"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "evaluator"
+            },
+            "operation": {
+              "enum": [
+                "evaluator_assert",
+                "verify_state"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "tty"
+            },
+            "operation": {
+              "enum": [
+                "tty_authorize"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "adapter": {
+              "const": "barrier"
+            },
+            "operation": {
+              "enum": [
+                "await_barrier",
+                "release_barrier"
+              ]
+            },
+            "input": {
+              "properties": {
+                "kind": {
+                  "const": "typed"
+                },
+                "shape": {
+                  "const": "EvaluatorActionSpec"
+                }
+              },
+              "required": [
+                "kind",
+                "shape"
+              ]
+            }
+          },
+          "required": [
+            "adapter",
+            "operation"
+          ]
+        }
+      ]
+    },
+    "SetupRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "steps"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.setup-recipe/v1"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/FixtureStep"
+          }
+        }
+      }
+    },
+    "MutationRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "operation"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.mutation-recipe/v1"
+        },
+        "operation": {
+          "$ref": "#/$defs/FixtureStep"
+        }
+      }
+    },
+    "ActionRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "schedule",
+        "steps"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.action-recipe/v1"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "browser_assertion",
+            "evaluator_assertion",
+            "http_request",
+            "journey",
+            "launch",
+            "runtime_call",
+            "store_operation",
+            "tty_ceremony"
+          ]
+        },
+        "schedule": {
+          "type": "string",
+          "enum": [
+            "barrier_ordered",
+            "sequential"
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/FixtureStep"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "journey"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "steps": {
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SchemaBodyExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "shape",
+        "schema_ref",
+        "deterministic_replay_equal"
+      ],
+      "properties": {
+        "kind": {
+          "const": "schema"
+        },
+        "shape": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]+$"
+        },
+        "schema_ref": {
+          "type": "string",
+          "pattern": "^https://proof\\.local/schemas/.+#/\\$defs/[A-Za-z][A-Za-z0-9]+$"
+        },
+        "deterministic_replay_equal": {
+          "const": true
+        }
+      }
+    },
+    "HttpResponseObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "count",
+        "delivery",
+        "status",
+        "body"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 121
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "delivered",
+            "dropped"
+          ]
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "body": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TypedDocument"
+            },
+            {
+              "$ref": "#/$defs/SchemaBodyExpectation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "delivery": {
+                "const": "dropped"
+              }
+            },
+            "required": [
+              "delivery"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "body": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/TypedDocument"
+                  },
+                  {
+                    "$ref": "#/$defs/SchemaBodyExpectation"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "StoreObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "disposition",
+        "result",
+        "result_variant",
+        "error"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "error",
+            "ok"
+          ]
+        },
+        "result": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TypedDocument"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_variant": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorStoreError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "ok"
+              }
+            },
+            "required": [
+              "disposition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result_variant": {
+                "type": "string"
+              },
+              "error": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "result": {
+                "type": "null"
+              },
+              "result_variant": {
+                "type": "null"
+              },
+              "error": {
+                "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorStoreError"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RuntimeObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "stage",
+        "disposition",
+        "result",
+        "result_variant",
+        "error"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "load_replay",
+            "claim_lease",
+            "renew_lease",
+            "release_lease",
+            "reserve",
+            "settle_budget",
+            "begin_dispatch",
+            "engine",
+            "commit",
+            "settle_failure",
+            "reclaim"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "error",
+            "ok"
+          ]
+        },
+        "result": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TypedDocument"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_variant": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorStoreError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "ok"
+              }
+            },
+            "required": [
+              "disposition"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result_variant": {
+                "type": "string"
+              },
+              "error": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "result": {
+                "type": "null"
+              },
+              "result_variant": {
+                "type": "null"
+              },
+              "error": {
+                "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorStoreError"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "HttpExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "responses",
+        "process_disposition"
+      ],
+      "properties": {
+        "kind": {
+          "const": "http_request"
+        },
+        "responses": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/HttpResponseObservation"
+          }
+        },
+        "process_disposition": {
+          "type": "string",
+          "enum": [
+            "serving",
+            "terminated_fail_closed"
+          ]
+        }
+      }
+    },
+    "StoreExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "observations",
+        "process_disposition"
+      ],
+      "properties": {
+        "kind": {
+          "const": "store_operation"
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/StoreObservation"
+          }
+        },
+        "process_disposition": {
+          "type": "string",
+          "enum": [
+            "continuing",
+            "terminated_fail_closed"
+          ]
+        }
+      }
+    },
+    "RuntimeExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "observations",
+        "process_disposition"
+      ],
+      "properties": {
+        "kind": {
+          "const": "runtime_call"
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/RuntimeObservation"
+          }
+        },
+        "process_disposition": {
+          "type": "string",
+          "enum": [
+            "continuing",
+            "terminated_fail_closed"
+          ]
+        }
+      }
+    },
+    "LaunchExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "disposition",
+        "reason",
+        "listener_bound",
+        "exit_code"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "kind": {
+          "const": "launch"
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "failed_closed",
+            "refused",
+            "started"
+          ]
+        },
+        "reason": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorProvisioningError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "listener_bound": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      }
+    },
+    "BrowserExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "disposition",
+        "failure_code"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "kind": {
+          "const": "browser_assertion"
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "failure_code": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{2,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "EvaluatorExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "disposition",
+        "failure_code"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "kind": {
+          "const": "evaluator_assertion"
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "failure_code": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{2,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "TtyExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "disposition",
+        "failure_code",
+        "process_disposition"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "kind": {
+          "const": "tty_ceremony"
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "failure_code": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{2,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "process_disposition": {
+          "type": "string",
+          "enum": [
+            "continuing",
+            "terminated_fail_closed"
+          ]
+        }
+      }
+    },
+    "JourneyExpectedOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "outcomes",
+        "final_process_disposition"
+      ],
+      "properties": {
+        "kind": {
+          "const": "journey"
+        },
+        "outcomes": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 16,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/HttpExpectedOutcome"
+              },
+              {
+                "$ref": "#/$defs/StoreExpectedOutcome"
+              },
+              {
+                "$ref": "#/$defs/RuntimeExpectedOutcome"
+              },
+              {
+                "$ref": "#/$defs/LaunchExpectedOutcome"
+              },
+              {
+                "$ref": "#/$defs/BrowserExpectedOutcome"
+              },
+              {
+                "$ref": "#/$defs/EvaluatorExpectedOutcome"
+              },
+              {
+                "$ref": "#/$defs/TtyExpectedOutcome"
+              }
+            ]
+          }
+        },
+        "final_process_disposition": {
+          "type": "string",
+          "enum": [
+            "continuing",
+            "serving",
+            "terminated_fail_closed"
+          ]
+        }
+      }
+    },
+    "ExpectedOutcome": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/HttpExpectedOutcome"
+        },
+        {
+          "$ref": "#/$defs/StoreExpectedOutcome"
+        },
+        {
+          "$ref": "#/$defs/RuntimeExpectedOutcome"
+        },
+        {
+          "$ref": "#/$defs/LaunchExpectedOutcome"
+        },
+        {
+          "$ref": "#/$defs/BrowserExpectedOutcome"
+        },
+        {
+          "$ref": "#/$defs/EvaluatorExpectedOutcome"
+        },
+        {
+          "$ref": "#/$defs/TtyExpectedOutcome"
+        },
+        {
+          "$ref": "#/$defs/JourneyExpectedOutcome"
+        }
+      ]
+    },
+    "DurableExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "assertions"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "allowed_audit_only",
+            "approval_decision_committed",
+            "approval_expired_rejection_committed",
+            "budget_reservation_winner_committed",
+            "cancel_committed_pre_dispatch_release",
+            "control_lock_held",
+            "control_restart_completed",
+            "dispatching_reservation_unchanged",
+            "exact_prior_receipt_only",
+            "full_reservation_forfeited",
+            "lease_claim_winner_committed",
+            "migration_unchanged",
+            "no_change",
+            "pagination_insert_committed",
+            "recovery_reclaim_committed",
+            "resume_committed",
+            "runtime_commit_committed",
+            "runtime_failure_settled",
+            "session_invalidated",
+            "session_issued_token_unrecoverable",
+            "transition_applied_then_rejected",
+            "workspace_removed"
+          ]
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        }
+      }
+    },
+    "AuditEventExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "outcome",
+        "proof_operation",
+        "sequence_offset",
+        "previous_digest",
+        "subject_binding",
+        "full_event_schema",
+        "digest_recomputed",
+        "event_semantic_sha256"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "https://proof.local/schemas/operator-control/reads/v1#/$defs/AuditEventKind"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "conflict",
+            "expired",
+            "failed",
+            "rejected"
+          ]
+        },
+        "proof_operation": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sequence_offset": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "previous_digest": {
+          "type": "string",
+          "enum": [
+            "baseline_head",
+            "prior_expected_event"
+          ]
+        },
+        "subject_binding": {
+          "type": "string",
+          "enum": [
+            "approval_command",
+            "approval_expiry",
+            "budget_reservation",
+            "command_attempt",
+            "control_process",
+            "lease_authority",
+            "recovery_directive",
+            "run_command",
+            "runtime_commit",
+            "session_challenge",
+            "session_command",
+            "session_authority"
+          ]
+        },
+        "full_event_schema": {
+          "const": "https://proof.local/schemas/operator-control/reads/v1#/$defs/AuditEvent"
+        },
+        "digest_recomputed": {
+          "const": true
+        },
+        "event_semantic_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "AuditExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prior_events_preserved",
+        "new_events"
+      ],
+      "properties": {
+        "prior_events_preserved": {
+          "const": true
+        },
+        "new_events": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/AuditEventExpectation"
+          }
+        }
+      }
+    },
+    "ExpectedRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "outcome",
+        "durable",
+        "audit",
+        "effect_deltas",
+        "required_evidence",
+        "cleanup"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.expected-recipe/v1"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ExpectedOutcome"
+        },
+        "durable": {
+          "$ref": "#/$defs/DurableExpectation"
+        },
+        "audit": {
+          "$ref": "#/$defs/AuditExpectation"
+        },
+        "effect_deltas": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/EffectCounters"
+        },
+        "required_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "artifact_digest_report",
+              "audit_chain_report",
+              "browser_accessibility_report",
+              "browser_secret_scan",
+              "command_race_report",
+              "fresh_workspace_report",
+              "migration14_report",
+              "process_secret_scan",
+              "restart_recovery_report",
+              "route_inventory_report",
+              "scoped_test_report",
+              "zero_effect_counter_report"
+            ]
+          }
+        },
+        "cleanup": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "lock_released",
+              "secrets_zeroized",
+              "workspace_removed"
+            ]
+          }
+        }
+      }
+    },
+    "ValidRecipeBlueprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "setup",
+        "action",
+        "expected"
+      ],
+      "properties": {
+        "setup": {
+          "$ref": "#/$defs/SetupRecipe"
+        },
+        "action": {
+          "$ref": "#/$defs/ActionRecipe"
+        },
+        "expected": {
+          "$ref": "#/$defs/ExpectedRecipe"
+        }
+      }
+    },
+    "RejectionRecipeBlueprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "setup_fixture_id",
+        "setup",
+        "mutation",
+        "action",
+        "expected"
+      ],
+      "properties": {
+        "setup_fixture_id": {
+          "type": "string",
+          "pattern": "^valid_[a-z0-9_]+$"
+        },
+        "setup": {
+          "$ref": "#/$defs/SetupRecipe"
+        },
+        "mutation": {
+          "$ref": "#/$defs/MutationRecipe"
+        },
+        "action": {
+          "$ref": "#/$defs/ActionRecipe"
+        },
+        "expected": {
+          "$ref": "#/$defs/ExpectedRecipe"
+        }
+      }
+    },
+    "RealProductAssembly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "binary_sha256",
+        "schema_manifest_sha256",
+        "static_bundle",
+        "workspace_database",
+        "control_lock",
+        "agent",
+        "human",
+        "workspace_binding_digest",
+        "components",
+        "routes",
+        "repository_root_proof_used",
+        "alternate_database_used",
+        "general_router_fallback",
+        "external_network",
+        "external_effects"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.real-product-assembly/v1"
+        },
+        "binary_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "schema_manifest_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "static_bundle": {
+          "$ref": "#/$defs/StaticBundleInventory"
+        },
+        "workspace_database": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "database_name",
+            "state",
+            "schema_version",
+            "opener"
+          ],
+          "properties": {
+            "database_name": {
+              "const": "storage.db"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "existing_schema14",
+                "missing"
+              ]
+            },
+            "schema_version": {
+              "oneOf": [
+                {
+                  "const": 14
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "opener": {
+              "const": "existing_nofollow_no_migration_schema14"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "existing_schema14"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "schema_version": {
+                    "const": 14
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "missing"
+                  }
+                },
+                "required": [
+                  "state"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "schema_version": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "control_lock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "operation"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "available",
+                "held"
+              ]
+            },
+            "operation": {
+              "const": "rustix_bsd_flock_nonblocking_exclusive"
+            }
+          }
+        },
+        "agent": {
+          "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/PrincipalBinding"
+        },
+        "human": {
+          "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/PrincipalBinding"
+        },
+        "workspace_binding_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "control",
+            "router",
+            "store",
+            "runtime",
+            "auth",
+            "static_source"
+          ],
+          "properties": {
+            "control": {
+              "const": "proof_operator_control_v1"
+            },
+            "router": {
+              "const": "dedicated_operator_router_v1"
+            },
+            "store": {
+              "const": "sqlite_operator_store_v1"
+            },
+            "runtime": {
+              "const": "operator_runtime_v1"
+            },
+            "auth": {
+              "const": "independent_operator_auth_v1"
+            },
+            "static_source": {
+              "const": "embedded_digest_bundle_v1"
+            }
+          }
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 15,
+          "maxItems": 15,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/manifest/v1#/$defs/Route"
+          }
+        },
+        "repository_root_proof_used": {
+          "const": false
+        },
+        "alternate_database_used": {
+          "const": false
+        },
+        "general_router_fallback": {
+          "const": false
+        },
+        "external_network": {
+          "const": false
+        },
+        "external_effects": {
+          "const": false
+        }
+      }
+    },
+    "RealProductAssemblyExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "source",
+        "binary_binding",
+        "schema_manifest_sha256",
+        "static_bundle_binding",
+        "identity_binding",
+        "workspace_binding",
+        "workspace_database",
+        "control_lock",
+        "components",
+        "routes",
+        "repository_root_proof_used",
+        "alternate_database_used",
+        "general_router_fallback",
+        "external_network",
+        "external_effects"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.real-product-assembly-expectation/v1"
+        },
+        "source": {
+          "const": "assembled_product_evidence"
+        },
+        "binary_binding": {
+          "const": "measure_sha256_and_replay_equal"
+        },
+        "schema_manifest_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "static_bundle_binding": {
+          "const": "validate_inventory_measure_sha256_and_replay_equal"
+        },
+        "identity_binding": {
+          "const": "fresh_enrolled_agent_human_from_setup"
+        },
+        "workspace_binding": {
+          "const": "recompute_and_match_open_descriptors"
+        },
+        "workspace_database": {
+          "const": "existing_storage_db_schema14_nofollow_no_migration"
+        },
+        "control_lock": {
+          "const": "held_rustix_bsd_flock_nonblocking_exclusive"
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "control",
+            "router",
+            "store",
+            "runtime",
+            "auth",
+            "static_source"
+          ],
+          "properties": {
+            "control": {
+              "const": "proof_operator_control_v1"
+            },
+            "router": {
+              "const": "dedicated_operator_router_v1"
+            },
+            "store": {
+              "const": "sqlite_operator_store_v1"
+            },
+            "runtime": {
+              "const": "operator_runtime_v1"
+            },
+            "auth": {
+              "const": "independent_operator_auth_v1"
+            },
+            "static_source": {
+              "const": "embedded_digest_bundle_v1"
+            }
+          }
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 15,
+          "maxItems": 15,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/manifest/v1#/$defs/Route"
+          }
+        },
+        "repository_root_proof_used": {
+          "const": false
+        },
+        "alternate_database_used": {
+          "const": false
+        },
+        "general_router_fallback": {
+          "const": false
+        },
+        "external_network": {
+          "const": false
+        },
+        "external_effects": {
+          "const": false
+        }
+      }
+    },
+    "ReplayResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "replay_ordinal",
+        "outcome",
+        "expected_matched",
+        "observation",
+        "semantic_observation_sha256",
+        "workspace_instance_sha256",
+        "failure_codes",
+        "evidence_ids"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.replay-result/v1"
+        },
+        "replay_ordinal": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "expected_matched": {
+          "type": "boolean"
+        },
+        "observation": {
+          "$ref": "#/$defs/TypedDocument"
+        },
+        "semantic_observation_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "workspace_instance_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "expected_matched": {
+                "const": true
+              },
+              "failure_codes": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "expected_matched": {
+                "const": false
+              },
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ScenarioResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "scenario_id",
+        "outcome",
+        "deterministic",
+        "replays",
+        "failure_codes",
+        "evidence_ids"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.scenario-result/v1"
+        },
+        "scenario_id": {
+          "type": "string",
+          "pattern": "^valid_[a-z0-9_]+$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "replays": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ReplayResult"
+                },
+                {
+                  "properties": {
+                    "replay_ordinal": {
+                      "const": 1
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ReplayResult"
+                },
+                {
+                  "properties": {
+                    "replay_ordinal": {
+                      "const": 2
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "deterministic": {
+                "const": true
+              },
+              "failure_codes": {
+                "maxItems": 0
+              },
+              "replays": {
+                "prefixItems": [
+                  {
+                    "allOf": [
+                      {
+                        "allOf": [
+                          {
+                            "$ref": "#/$defs/ReplayResult"
+                          },
+                          {
+                            "properties": {
+                              "outcome": {
+                                "const": "passed"
+                              },
+                              "expected_matched": {
+                                "const": true
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "replay_ordinal": {
+                            "const": 1
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "allOf": [
+                      {
+                        "allOf": [
+                          {
+                            "$ref": "#/$defs/ReplayResult"
+                          },
+                          {
+                            "properties": {
+                              "outcome": {
+                                "const": "passed"
+                              },
+                              "expected_matched": {
+                                "const": true
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "properties": {
+                          "replay_ordinal": {
+                            "const": 2
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "BackendSubsetPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "subset_id",
+        "owner_task",
+        "scored",
+        "replay_count",
+        "scenario_ids",
+        "vector_ids",
+        "result_path"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.backend-subset-policy/v1"
+        },
+        "subset_id": {
+          "const": "E0002-14"
+        },
+        "owner_task": {
+          "const": "E0002-14"
+        },
+        "scored": {
+          "const": false
+        },
+        "replay_count": {
+          "const": 2
+        },
+        "scenario_ids": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "pattern": "^valid_[a-z0-9_]+$"
+          }
+        },
+        "vector_ids": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "pattern": "^reject_[a-z0-9_]+$"
+          }
+        },
+        "result_path": {
+          "const": "target/operator-control-eval/backend-E0002-14.json"
+        }
+      }
+    },
+    "BackendSubsetResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "subset_id",
+        "policy_sha256",
+        "outcome",
+        "scenarios_total",
+        "scenarios_passed",
+        "vectors_total",
+        "vectors_passed",
+        "scenario_results",
+        "vector_results",
+        "evidence_ids",
+        "evidence_records",
+        "failure_codes",
+        "store_error_matrix_result",
+        "started_at",
+        "completed_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.backend-subset-result/v1"
+        },
+        "subset_id": {
+          "const": "E0002-14"
+        },
+        "policy_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "scenarios_total": {
+          "const": 4
+        },
+        "scenarios_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "vectors_total": {
+          "const": 16
+        },
+        "vectors_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "scenario_results": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/ScenarioResult"
+          },
+          "uniqueItems": true
+        },
+        "vector_results": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/VectorResult"
+          },
+          "uniqueItems": true
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        },
+        "evidence_records": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/EvidenceRecord"
+          },
+          "uniqueItems": true
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "started_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "completed_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "store_error_matrix_result": {
+          "$ref": "#/$defs/StoreErrorMatrixResult"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "scenarios_passed": {
+                "const": 4
+              },
+              "vectors_passed": {
+                "const": 16
+              },
+              "failure_codes": {
+                "maxItems": 0
+              },
+              "store_error_matrix_result": {
+                "properties": {
+                  "outcome": {
+                    "const": "passed"
+                  }
+                },
+                "required": [
+                  "outcome"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "StoreErrorMatrixCaseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "case_id",
+        "boundary",
+        "store_error",
+        "expected_disposition",
+        "outcome",
+        "replays",
+        "failure_codes",
+        "evidence_ids"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 193
+        },
+        "case_id": {
+          "type": "string",
+          "pattern": "^store_matrix_[a-z0-9_]+$"
+        },
+        "boundary": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64
+        },
+        "store_error": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorStoreError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_disposition": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 96
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "replays": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ReplayResult"
+                },
+                {
+                  "properties": {
+                    "replay_ordinal": {
+                      "const": 1
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ReplayResult"
+                },
+                {
+                  "properties": {
+                    "replay_ordinal": {
+                      "const": 2
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "failure_codes": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "StoreErrorMatrixResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "outcome",
+        "cells_total",
+        "cells_passed",
+        "specials_total",
+        "specials_passed",
+        "cell_results",
+        "special_results",
+        "failure_codes",
+        "evidence_ids"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.store-error-matrix-result/v1"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "failed",
+            "passed"
+          ]
+        },
+        "cells_total": {
+          "const": 189
+        },
+        "cells_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "specials_total": {
+          "const": 4
+        },
+        "specials_passed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "cell_results": {
+          "type": "array",
+          "minItems": 189,
+          "maxItems": 189,
+          "items": {
+            "$ref": "#/$defs/StoreErrorMatrixCaseResult"
+          },
+          "uniqueItems": true
+        },
+        "special_results": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/StoreErrorMatrixCaseResult"
+          },
+          "uniqueItems": true
+        },
+        "failure_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,63}$"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "passed"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cells_passed": {
+                "const": 189
+              },
+              "specials_passed": {
+                "const": 4
+              },
+              "failure_codes": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure_codes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "StoreErrorDispositionCode": {
+      "type": "string",
+      "enum": [
+        "authority_append_503_no_audit_clear_terminate",
+        "command_conflict_409_audit",
+        "command_not_actionable_409_audit",
+        "command_not_found_404_no_audit",
+        "command_stale_fence_409_audit",
+        "command_stale_revision_409_audit",
+        "http_fatal_503_control_failure_terminate",
+        "http_illegal_as_corrupt_503_control_failure_terminate",
+        "http_unavailable_503_no_audit_terminate",
+        "runtime_fatal_control_failure_terminate",
+        "runtime_illegal_as_corrupt_control_failure_terminate",
+        "runtime_not_actionable_rejection",
+        "runtime_not_found_rejection",
+        "runtime_stale_fence_rejection",
+        "runtime_stale_revision_rejection",
+        "runtime_unavailable_no_audit_terminate",
+        "startup_fatal_no_bind_exit1"
+      ]
+    },
+    "StoreErrorVariantMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conflict",
+        "corrupt",
+        "invalid",
+        "not_actionable",
+        "not_found",
+        "signer_failed",
+        "stale_fence",
+        "stale_revision",
+        "unavailable"
+      ],
+      "properties": {
+        "conflict": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "corrupt": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "invalid": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "not_actionable": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "not_found": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "signer_failed": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "stale_fence": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "stale_revision": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        },
+        "unavailable": {
+          "$ref": "#/$defs/StoreErrorDispositionCode"
+        }
+      }
+    },
+    "StoreErrorBoundaryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "boundary",
+        "variant_dispositions"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 21
+        },
+        "boundary": {
+          "type": "string",
+          "enum": [
+            "load_operator_workspace",
+            "register_governed_run",
+            "append_authority_event",
+            "page_attention",
+            "load_run_detail",
+            "page_approvals",
+            "load_approval_detail",
+            "page_commands",
+            "load_command_receipt",
+            "page_operator_audit",
+            "execute_operator_command",
+            "load_completed_replay",
+            "claim_run_lease",
+            "renew_run_lease",
+            "release_run_lease",
+            "reserve_aggregate_budget",
+            "settle_budget_reservation",
+            "begin_dispatch",
+            "commit_runtime_barrier",
+            "settle_runtime_failure",
+            "reclaim_run"
+          ]
+        },
+        "variant_dispositions": {
+          "$ref": "#/$defs/StoreErrorVariantMap"
+        }
+      }
+    },
+    "StoreSpecialResultCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "case",
+        "boundary",
+        "result_variant",
+        "boundary_outcome",
+        "http_status",
+        "error_code",
+        "audit_events",
+        "governed_writes",
+        "process_disposition"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "case": {
+          "type": "string",
+          "enum": [
+            "run_detail_option_none",
+            "approval_detail_option_none",
+            "command_receipt_option_none",
+            "completed_replay_typed_not_found"
+          ]
+        },
+        "boundary": {
+          "type": "string",
+          "enum": [
+            "load_run_detail",
+            "load_approval_detail",
+            "load_command_receipt",
+            "load_completed_replay"
+          ]
+        },
+        "result_variant": {
+          "type": "string",
+          "enum": [
+            "option_none",
+            "typed_not_found"
+          ]
+        },
+        "boundary_outcome": {
+          "type": "string",
+          "enum": [
+            "http_404_not_found_no_audit",
+            "runtime_replay_not_found_no_authority"
+          ]
+        },
+        "http_status": {
+          "oneOf": [
+            {
+              "const": 404
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_code": {
+          "oneOf": [
+            {
+              "const": "not_found"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "audit_events": {
+          "const": 0
+        },
+        "governed_writes": {
+          "const": 0
+        },
+        "process_disposition": {
+          "type": "string",
+          "enum": [
+            "continuing",
+            "serving"
+          ]
+        }
+      }
+    },
+    "StoreErrorMatrixPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "required",
+        "recording_store",
+        "closed_error_variants",
+        "expected_cross_product_entries",
+        "boundaries",
+        "special_results"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.store-error-matrix-policy/v1"
+        },
+        "required": {
+          "const": true
+        },
+        "recording_store": {
+          "const": "kernel_recording_operator_control_store"
+        },
+        "closed_error_variants": {
+          "const": [
+            "conflict",
+            "corrupt",
+            "invalid",
+            "not_actionable",
+            "not_found",
+            "signer_failed",
+            "stale_fence",
+            "stale_revision",
+            "unavailable"
+          ]
+        },
+        "expected_cross_product_entries": {
+          "const": 189
+        },
+        "boundaries": {
+          "type": "array",
+          "minItems": 21,
+          "maxItems": 21,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/StoreErrorBoundaryPolicy"
+          }
+        },
+        "special_results": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/StoreSpecialResultCase"
+          }
+        }
+      }
+    },
+    "EvaluatorSetupSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "baseline_fixture_id",
+        "baseline_case_semantic_sha256",
+        "workspace_state",
+        "identity_state",
+        "control_state",
+        "session_state",
+        "capabilities",
+        "authority_records",
+        "run_records",
+        "reservation_state",
+        "component_state",
+        "real_product_assembly",
+        "fixed_clock",
+        "deterministic_entropy"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.evaluator-setup-spec/v1"
+        },
+        "baseline_fixture_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^valid_[a-z0-9_]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "baseline_case_semantic_sha256": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_state": {
+          "type": "string",
+          "enum": [
+            "fresh_schema14_locked",
+            "existing_schema14_locked",
+            "schema13_offline_upgrade_locked"
+          ]
+        },
+        "identity_state": {
+          "const": "fresh_enrolled_agent_human"
+        },
+        "control_state": {
+          "type": "string",
+          "enum": [
+            "live_same_instance",
+            "restarted_new_instance",
+            "stopped"
+          ]
+        },
+        "session_state": {
+          "type": "string",
+          "enum": [
+            "active",
+            "none",
+            "replaced",
+            "revoked"
+          ]
+        },
+        "capabilities": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "authority_records": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "challenge_consumed",
+              "challenge_pending",
+              "challenge_signed",
+              "cursor_issued",
+              "receipt_committed",
+              "session_active",
+              "session_revoked"
+            ]
+          }
+        },
+        "run_records": {
+          "type": "array",
+          "maxItems": 17,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "actionable_command",
+              "approval_waiting",
+              "approved_waiting",
+              "attention_awaiting_approval",
+              "attention_pre_dispatch_recoverable",
+              "attention_running",
+              "attention_terminal",
+              "budget_contender_a",
+              "budget_contender_b",
+              "denied_waiting",
+              "durable_control_restart_state",
+              "expired_lease_checkpoint",
+              "pagination_projection_set",
+              "reserved_pre_dispatch_run",
+              "reclaimed_live_lease_checkpoint",
+              "runtime_live_lease_checkpoint",
+              "ui_actionable_approval",
+              "ui_cancellable_run"
+            ]
+          }
+        },
+        "reservation_state": {
+          "type": "string",
+          "enum": [
+            "aggregate_contention",
+            "dispatching_ambiguous",
+            "none",
+            "reserved_pre_dispatch"
+          ]
+        },
+        "component_state": {
+          "type": "string",
+          "enum": [
+            "real_backend",
+            "real_product",
+            "synthetic_shell"
+          ]
+        },
+        "fixed_clock": {
+          "const": true
+        },
+        "deterministic_entropy": {
+          "const": true
+        },
+        "real_product_assembly": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RealProductAssemblyExpectation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "baseline_fixture_id": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "baseline_fixture_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "baseline_case_semantic_sha256": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "baseline_case_semantic_sha256": {
+                "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "component_state": {
+                "const": "real_product"
+              }
+            },
+            "required": [
+              "component_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "real_product_assembly": {
+                "$ref": "#/$defs/RealProductAssemblyExpectation"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "real_product_assembly": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "EvaluatorMutationSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "operator",
+        "target",
+        "field_path",
+        "replacement",
+        "timing",
+        "injected_error",
+        "barrier"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.evaluator-mutation-spec/v1"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "advance_clock",
+            "alter_counter",
+            "alter_evidence",
+            "alter_static_bundle",
+            "database_move",
+            "delete_required_value",
+            "descriptor_alias",
+            "duplicate_header",
+            "duplicate_json_member",
+            "filesystem_hard_link",
+            "filesystem_mode",
+            "filesystem_remove",
+            "filesystem_symlink",
+            "flip_digest_byte",
+            "hold_control_lock",
+            "inject_environment_error",
+            "inject_store_error",
+            "insert_browser_secret",
+            "insert_external_effect",
+            "insert_json_member",
+            "insert_sidecar",
+            "process_restart",
+            "race_at_barrier",
+            "remove_capability",
+            "replace_header",
+            "replace_identity",
+            "replace_json_value",
+            "replace_peer",
+            "replace_route",
+            "replace_signer_material",
+            "replay_authority",
+            "replay_command",
+            "replay_cursor",
+            "replay_exchange",
+            "state_transition",
+            "tty_channel_fault"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9_./:$-]+$"
+        },
+        "field_path": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 192,
+              "pattern": "^(/([^~/]|~[01])*)*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replacement": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 256
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timing": {
+          "type": "string",
+          "enum": [
+            "after_authority",
+            "after_dispatch_permit",
+            "after_setup",
+            "at_deadline",
+            "before_authority",
+            "before_bind",
+            "before_decode",
+            "before_key_load",
+            "before_lookup",
+            "before_movement_recheck",
+            "in_transaction",
+            "post_commit_pre_response"
+          ]
+        },
+        "injected_error": {
+          "oneOf": [
+            {
+              "oneOf": [
+                {
+                  "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorStoreError"
+                },
+                {
+                  "$ref": "https://proof.local/schemas/operator-control/store/v1#/$defs/OperatorProvisioningError"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "barrier": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "EvaluatorActionSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "surface",
+        "operation",
+        "subject_schema",
+        "authority_selector",
+        "method",
+        "path",
+        "store_method",
+        "repeat",
+        "schedule",
+        "input_source",
+        "output_binding",
+        "barrier"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.evaluator-action-spec/v1"
+        },
+        "surface": {
+          "type": "string",
+          "enum": [
+            "browser_assertion",
+            "evaluator_assertion",
+            "http_request",
+            "launch",
+            "runtime_call",
+            "store_operation",
+            "tty_ceremony"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "approval_decide",
+            "attention_read",
+            "audit_read",
+            "begin_dispatch",
+            "browser_accessibility",
+            "browser_sas_display",
+            "browser_secret_scan",
+            "claim_run_lease",
+            "command_read",
+            "commit_runtime_barrier",
+            "control_serve",
+            "evaluate_artifacts",
+            "evaluate_case",
+            "evaluate_cleanup",
+            "evaluate_evidence",
+            "evaluate_result",
+            "evaluate_route_inventory",
+            "load_completed_replay",
+            "protected_fallback",
+            "protected_read",
+            "reclaim_run",
+            "reserve_aggregate_budget",
+            "run_cancel",
+            "run_detail",
+            "run_resume",
+            "session_challenge",
+            "session_exchange",
+            "session_revoke",
+            "settle_budget_reservation",
+            "settle_runtime_failure",
+            "tty_authorize",
+            "workspace_init"
+          ]
+        },
+        "subject_schema": {
+          "type": "string",
+          "pattern": "^(raw_http|raw_json|[A-Z][A-Za-z0-9]+)$"
+        },
+        "authority_selector": {
+          "type": "string",
+          "enum": [
+            "active",
+            "fixture_primary",
+            "mutated",
+            "none",
+            "replayed",
+            "revoked"
+          ]
+        },
+        "method": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "OPTIONS"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "/",
+                "/assets/..%2Fconfig.json",
+                "/assets/:asset",
+                "/operator/v1/unknown",
+                "/operator/v1/session/challenges",
+                "/operator/v1/session/exchange",
+                "/operator/v1/session/revoke",
+                "/operator/v1/attention",
+                "/operator/v1/runs/:run_id",
+                "/operator/v1/approvals",
+                "/operator/v1/approvals/:request_id",
+                "/operator/v1/commands",
+                "/operator/v1/commands/:command_id",
+                "/operator/v1/audit",
+                "/operator/v1/approvals/:request_id/decisions",
+                "/operator/v1/runs/:run_id/cancel",
+                "/operator/v1/runs/:run_id/resume",
+                "/v1/proofs"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "store_method": {
+          "type": "string",
+          "enum": [
+            "begin_dispatch",
+            "claim_run_lease",
+            "commit_runtime_barrier",
+            "execute_operator_command",
+            "load_completed_replay",
+            "none",
+            "reclaim_run",
+            "reserve_aggregate_budget",
+            "settle_budget_reservation",
+            "settle_runtime_failure"
+          ]
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 121
+        },
+        "schedule": {
+          "type": "string",
+          "enum": [
+            "barrier_ordered",
+            "sequential"
+          ]
+        },
+        "input_source": {
+          "type": "string",
+          "enum": [
+            "internal_state",
+            "raw_http",
+            "raw_json",
+            "strict_fixture_document"
+          ]
+        },
+        "output_binding": {
+          "const": "exact_expected_recipe"
+        },
+        "barrier": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{1,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "surface": {
+                "const": "http_request"
+              }
+            },
+            "required": [
+              "surface"
+            ]
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "approval_decide",
+                  "attention_read",
+                  "audit_read",
+                  "command_read",
+                  "protected_fallback",
+                  "protected_read",
+                  "run_cancel",
+                  "run_detail",
+                  "run_resume",
+                  "session_challenge",
+                  "session_exchange",
+                  "session_revoke"
+                ]
+              },
+              "method": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "store_method": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "surface": {
+                "enum": [
+                  "runtime_call",
+                  "store_operation"
+                ]
+              }
+            },
+            "required": [
+              "surface"
+            ]
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "type": "null"
+              },
+              "path": {
+                "type": "null"
+              },
+              "store_method": {
+                "not": {
+                  "const": "none"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "surface": {
+                "enum": [
+                  "browser_assertion",
+                  "evaluator_assertion",
+                  "launch",
+                  "tty_ceremony"
+                ]
+              }
+            },
+            "required": [
+              "surface"
+            ]
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "type": "null"
+              },
+              "path": {
+                "type": "null"
+              },
+              "store_method": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "schedule": {
+                "const": "barrier_ordered"
+              }
+            },
+            "required": [
+              "schedule"
+            ]
+          },
+          "then": {
+            "properties": {
+              "barrier": {
+                "type": "string"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "barrier": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "surface": {
+                "not": {
+                  "const": "http_request"
+                }
+              }
+            },
+            "required": [
+              "surface"
+            ]
+          },
+          "then": {
+            "properties": {
+              "repeat": {
+                "const": 1
+              }
+            }
+          }
+        }
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "surface": {
+              "const": "http_request"
+            },
+            "operation": {
+              "enum": [
+                "approval_decide",
+                "attention_read",
+                "audit_read",
+                "command_read",
+                "protected_fallback",
+                "protected_read",
+                "run_cancel",
+                "run_detail",
+                "run_resume",
+                "session_challenge",
+                "session_exchange",
+                "session_revoke"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "surface": {
+              "const": "store_operation"
+            },
+            "operation": {
+              "enum": [
+                "approval_decide",
+                "begin_dispatch",
+                "claim_run_lease",
+                "commit_runtime_barrier",
+                "load_completed_replay",
+                "reclaim_run",
+                "reserve_aggregate_budget",
+                "run_cancel",
+                "run_resume",
+                "settle_budget_reservation",
+                "settle_runtime_failure"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "surface": {
+              "const": "runtime_call"
+            },
+            "operation": {
+              "enum": [
+                "begin_dispatch",
+                "claim_run_lease",
+                "commit_runtime_barrier",
+                "load_completed_replay",
+                "reclaim_run",
+                "reserve_aggregate_budget",
+                "settle_budget_reservation",
+                "settle_runtime_failure"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "surface": {
+              "const": "launch"
+            },
+            "operation": {
+              "enum": [
+                "control_serve",
+                "workspace_init"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "surface": {
+              "const": "browser_assertion"
+            },
+            "operation": {
+              "enum": [
+                "browser_accessibility",
+                "browser_sas_display",
+                "browser_secret_scan"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "surface": {
+              "const": "evaluator_assertion"
+            },
+            "operation": {
+              "enum": [
+                "evaluate_artifacts",
+                "evaluate_case",
+                "evaluate_cleanup",
+                "evaluate_evidence",
+                "evaluate_result",
+                "evaluate_route_inventory"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "operation"
+          ]
+        },
+        {
+          "properties": {
+            "surface": {
+              "const": "tty_ceremony"
+            },
+            "operation": {
+              "enum": [
+                "tty_authorize"
+              ]
+            }
+          },
+          "required": [
+            "surface",
+            "operation"
+          ]
+        }
+      ]
+    }
+  }
+}

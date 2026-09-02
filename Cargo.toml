@@ -4,6 +4,8 @@ members = [
     "conformance",
     "crates/proof-agent-runtime",
     "crates/proof-kernel",
+    "crates/proof-operator-auth",
+    "crates/proof-operator-control",
     "crates/proof-observability",
     "crates/proof-content",
     "crates/proof-commerce",
@@ -32,6 +34,10 @@ clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 jsonschema = "0.26"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+sha2 = "=0.10.9"
+subtle = "=2.6.1"
+zeroize = "=1.9.0"
+rustix = { version = "=1.1.4", features = ["fs", "process", "termios"] }
 
 [workspace.package]
 edition = "2021"

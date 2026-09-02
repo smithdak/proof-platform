@@ -4,7 +4,7 @@
 - Title: One Human Oversees Many Runs
 - Owner: product owner
 - Base revision: `b5646b50689d41837ed7fcdaca431b1421f693ab`
-- Status: `proposed — Gate A packet in review; no product writer authorized`
+- Status: `blocked — Gate-B consistency repair authorized; implementation closed`
 - Planning authority: D-E0006-025, E0002 Gate A scaffolding only
 - External dependency disposition: AXP-E0006 Gate C was deferred/no-go;
   E0006 is quiescent, unreleased, and supplies no authority to this edition
@@ -21,9 +21,11 @@ North-star journey:
 
 1. The Human starts one loopback-only operator control plane and establishes an
    independent volatile session through an E0002-owned signed challenge rooted
-   in an enrolled Human identity. The challenge and session bind the exact
-   Human, workspace, server instance, requested/granted capabilities, nonce,
-   and expiry; no E0006 bootstrap or session participates.
+   in a freshly enrolled Human identity inside a disposable trusted workspace.
+   The challenge and session bind the exact Human, workspace, server instance,
+   requested/granted capabilities, nonce, and expiry; no E0006 bootstrap,
+   session, repository-root `.proof` identity, or historically exposed key
+   participates.
 2. An attention inbox shows a bounded, filterable, keyset-paginated projection
    of at least four governed runs: awaiting decision, running, recoverable, and
    terminal. Authentication and scope checks occur before enumeration.
@@ -66,6 +68,10 @@ In scope:
 
 - An E0002-owned operator authentication design that is independent of E0006
   and binds exact `Human`, workspace, server instance, and capabilities.
+- A disposable trusted evaluation workspace with freshly generated and
+  enrolled Human and Agent identities. The repository-root `.proof` identity
+  is classified as compromised and MUST NOT authenticate, sign, seed, or
+  validate any E0002 fixture, browser journey, or acceptance run.
 - Fresh operator-session issuance rooted in an enrolled Human signature over an
   instance/workspace/nonce/capability/expiry challenge. Granted capabilities
   are the intersection of the signed request, workspace policy, and server
@@ -74,6 +80,13 @@ In scope:
   `approval.decide`, `run.cancel`, `run.resume`, and `audit.read`.
 - Loopback-only control-plane boundaries with exact Host, Origin, JSON media,
   no-CORS, no-cookie, no-Web-Storage, memory-only session behavior.
+- One Gate-B-frozen authoritative workspace database and trusted-open policy.
+  The control plane MUST NOT silently split native CLI/MCP runs from HTTP/WS
+  state or inherit an ephemeral transport signer.
+- A dedicated same-origin operator router that exposes only frozen protected
+  operator and static-app surfaces. Existing unauthenticated audit, proof,
+  domain-list, and generic operation routes are excluded unless Gate B binds
+  an explicit authenticated composition and rejection policy.
 - Auth-first, redacted attention/run/approval/audit projections with bounded
   keyset pagination and filter-bound cursors.
 - Append-only operator command receipts and audit chronology for decisions,
@@ -98,15 +111,28 @@ Non-goals:
   model/provider work.
 - Any public contract, schema, evaluator, migration, source, browser ceremony,
   product fixture, or root-manifest change during E0002-01 Gate A scaffolding.
+- Repairing general HTTP/MCP/WebSocket/CLI domain-handler parity, legacy
+  transport database layout, or unrelated public routes; those remain a
+  separate tracked outcome unless required to isolate the E0002 control plane.
 
 Budget (time, agent/model, tokens, live spend):
 
-- Current authorization: one bounded `gpt-5.6-sol` planning task, three
-  read-only reviews, no explicit token budget, zero provider use, zero live
-  spend, and no product runtime.
-- Proposed edition: thirteen tasks across W1-W11, one orchestrator plus at most
+- Current state: the bounded `gpt-5.6-sol` E0002-13 contract-freeze attempt and
+  read-only reviews completed within cap. D-E0002-013 accepted Gate B and
+  dispatched only the three dependency-ready W3 lanes, with zero provider use,
+  zero live spend, and no external effect.
+- Proposed edition: seventeen tasks across W1-W12, one orchestrator plus at most
   three concurrent workers, one retry maximum per failed task before
   task-local escalation, and no full-edition model upgrade.
+- Per-attempt ceilings are 45 minutes / 25,000 combined model tokens for Luna
+  mechanical work, 90 minutes / 50,000 for Terra bounded implementation,
+  120 minutes / 80,000 for Sol high-risk work, and 180 minutes / 120,000 for
+  the Sol xhigh integration task. The current primary ceiling is 1,230,000
+  combined model tokens and 31h30 agent time. Every task packet records its
+  exact ceiling.
+  The primary-plan ceiling is 1,125,000 combined model tokens and 28 hours 45
+  minutes of agent time; the task-local one-retry policy is a hard maximum of
+  twice those totals and requires preserved failure evidence.
 - Routing: `gpt-5.6-luna` for mechanical frozen fixtures,
   `gpt-5.6-terra` for bounded HTTP read/UI work, and `gpt-5.6-sol` for the
   contract, auth, kernel, migration/storage, runtime races, control-plane
@@ -121,20 +147,24 @@ Material-risk triggers requiring Gate B:
   changes, exact API/DTO/error policy, capability-grant policy, and separation
   of duties between authenticated operator and required approval Human.
 - Every SQLite migration, append-only command/audit record, fenced lease,
-  aggregate budget, and recovery rule.
+  aggregate budget, authoritative workspace database/path, trusted-open rule,
+  signer lifecycle, and recovery rule.
 - Approval/cancel/resume mutation ordering, signing-key access, provider/tool
   dispatch barriers, uncertain-response recovery, and any remote boundary.
+- Dedicated-router composition, exclusion or authentication of every legacy
+  route, forwarded-client metadata policy, and the decision to avoid new
+  global `ExecutionError` variants or map each one in HTTP in the same wave.
 - Any added dependency, persistent credential, public exposure, destructive or
   external effect, paid provider use, or material scope expansion.
 
 ## Approval
 
-- Gate A approver/date: pending product-owner decision; packet prepared
-  2026-09-01 in D-E0002-002
-- Gate B decision/date: pending; E0002-13 is non-dispatchable until Gate A and
-  no implementation task may start until Gate B records exact frozen artifacts
+- Gate A approver/date: product owner accepted 2026-09-01 in D-E0002-011
+- Gate B decision/date: product owner accepted 2026-09-01 in D-E0002-013,
+  binding D-E0002-012 packet digest
+  `sha256:eaff3d4d78ca3e6e4fe521f53b12b9598765db50ffd38fde0d6bf3aeb4c42dd4`
 - Gate C decision/date: pending; no candidate or release claim exists
 
-This charter is a proposal, not Gate A approval. D-E0006-025 authorizes only
-the tracked planning scaffold. All tasks after E0002-01 remain pending and
-non-dispatchable.
+Gate B completes E0002-13 and authorizes only E0002-05, E0002-08, and E0002-12
+under their exact W3 paths, barriers, budgets, and acceptance tests. Every
+later task remains pending and non-dispatchable.

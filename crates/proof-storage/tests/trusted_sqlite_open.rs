@@ -32,6 +32,22 @@ fn open_store(directory: &TempDir) -> Result<SqliteStore, proof_storage::Storage
 }
 
 #[test]
+fn ordinary_open_creates_a_private_database_for_trusted_reopen() {
+    let directory = TempDir::new().unwrap();
+    make_private(directory.path());
+    let database = directory.path().join("proof.db");
+
+    let store = SqliteStore::open(&database).unwrap();
+    assert_eq!(
+        fs::metadata(&database).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    drop(store);
+
+    open_store(&directory).unwrap();
+}
+
+#[test]
 fn existing_database_migrates_round_trips_checkpoints_and_reopens() {
     let directory = TempDir::new().unwrap();
     make_private(directory.path());

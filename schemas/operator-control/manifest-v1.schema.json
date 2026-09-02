@@ -1,0 +1,797 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof.local/schemas/operator-control/manifest/v1",
+  "title": "Proof operator control v1 schema manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "contract",
+    "dialect",
+    "validator",
+    "files",
+    "logical_shapes",
+    "routes",
+    "self_tests"
+  ],
+  "properties": {
+    "schema": {
+      "const": "proof.operator.schema-manifest/v1"
+    },
+    "contract": {
+      "const": "proof-operator-control/v1"
+    },
+    "dialect": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "validator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "meta_validator",
+        "runtime_decoder",
+        "duplicate_policy",
+        "unknown_field_policy",
+        "format_policy"
+      ],
+      "properties": {
+        "meta_validator": {
+          "const": "python-jsonschema Draft202012Validator.check_schema"
+        },
+        "runtime_decoder": {
+          "const": "typed serde visitor before serde_json::Value"
+        },
+        "duplicate_policy": {
+          "const": "reject recursively before value construction"
+        },
+        "unknown_field_policy": {
+          "const": "reject recursively"
+        },
+        "format_policy": {
+          "const": "schema plus runtime UUIDv7, RFC3339 UTC, canonical-order, and digest validation"
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/SchemaFile"
+      }
+    },
+    "logical_shapes": {
+      "type": "array",
+      "minItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/LogicalShape"
+      }
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "items": {
+        "$ref": "#/$defs/Route"
+      }
+    },
+    "self_tests": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "$ref": "#/$defs/SelfTest"
+      }
+    }
+  },
+  "$defs": {
+    "SchemaFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "id",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^schemas/operator-control/[a-z0-9-]+-v1\\.schema\\.json$"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^https://proof\\.local/schemas/operator-control/[a-z-]+/v1$"
+        },
+        "sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "LogicalShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "schema_path",
+        "json_pointer"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]{1,79}$"
+        },
+        "schema_path": {
+          "type": "string",
+          "pattern": "^schemas/operator-control/[a-z0-9-]+-v1\\.schema\\.json$"
+        },
+        "json_pointer": {
+          "type": "string",
+          "pattern": "^(#|#/\\$defs/[A-Za-z][A-Za-z0-9]*)$"
+        }
+      }
+    },
+
+    "Route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "method",
+        "path",
+        "public",
+        "capability_rule",
+        "capabilities",
+        "request_shape",
+        "response_shape",
+        "success_status"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 15
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "POST"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "public": {
+          "type": "boolean"
+        },
+        "capability_rule": {
+          "type": "string",
+          "enum": [
+            "all_listed",
+            "kind_dependent",
+            "public",
+            "valid_session"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Capability"
+          }
+        },
+        "request_shape": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z0-9]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "response_shape": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z0-9]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "success_status": {
+          "type": "integer",
+          "enum": [
+            200,
+            201
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "ordinal": {
+              "const": 1
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/"
+            },
+            "public": {
+              "const": true
+            },
+            "capability_rule": {
+              "const": "public"
+            },
+            "capabilities": {
+              "const": []
+            },
+            "request_shape": {
+              "const": null
+            },
+            "response_shape": {
+              "const": null
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 2
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/assets/:asset"
+            },
+            "public": {
+              "const": true
+            },
+            "capability_rule": {
+              "const": "public"
+            },
+            "capabilities": {
+              "const": []
+            },
+            "request_shape": {
+              "const": null
+            },
+            "response_shape": {
+              "const": null
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 3
+            },
+            "method": {
+              "const": "POST"
+            },
+            "path": {
+              "const": "/operator/v1/session/challenges"
+            },
+            "public": {
+              "const": true
+            },
+            "capability_rule": {
+              "const": "public"
+            },
+            "capabilities": {
+              "const": []
+            },
+            "request_shape": {
+              "const": "ChallengeIssueRequest"
+            },
+            "response_shape": {
+              "const": "ChallengeIssueResponse"
+            },
+            "success_status": {
+              "const": 201
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 4
+            },
+            "method": {
+              "const": "POST"
+            },
+            "path": {
+              "const": "/operator/v1/session/exchange"
+            },
+            "public": {
+              "const": true
+            },
+            "capability_rule": {
+              "const": "public"
+            },
+            "capabilities": {
+              "const": []
+            },
+            "request_shape": {
+              "const": "SessionExchangeRequest"
+            },
+            "response_shape": {
+              "const": "SessionExchangeResponse"
+            },
+            "success_status": {
+              "const": 201
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 5
+            },
+            "method": {
+              "const": "POST"
+            },
+            "path": {
+              "const": "/operator/v1/session/revoke"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "valid_session"
+            },
+            "capabilities": {
+              "const": []
+            },
+            "request_shape": {
+              "const": "SessionRevokeRequest"
+            },
+            "response_shape": {
+              "const": "CommandReceipt"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 6
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/operator/v1/attention"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "kind_dependent"
+            },
+            "capabilities": {
+              "const": [
+                "approval.read",
+                "run.read"
+              ]
+            },
+            "request_shape": {
+              "const": "AttentionQuery"
+            },
+            "response_shape": {
+              "const": "AttentionPage"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 7
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/operator/v1/runs/:run_id"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "run.read"
+              ]
+            },
+            "request_shape": {
+              "const": null
+            },
+            "response_shape": {
+              "const": "RunDetail"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 8
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/operator/v1/approvals"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "approval.read"
+              ]
+            },
+            "request_shape": {
+              "const": "ApprovalQuery"
+            },
+            "response_shape": {
+              "const": "ApprovalPage"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 9
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/operator/v1/approvals/:request_id"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "approval.read"
+              ]
+            },
+            "request_shape": {
+              "const": null
+            },
+            "response_shape": {
+              "const": "ApprovalDetail"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 10
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/operator/v1/commands"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "audit.read"
+              ]
+            },
+            "request_shape": {
+              "const": "CommandQuery"
+            },
+            "response_shape": {
+              "const": "CommandPage"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 11
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/operator/v1/commands/:command_id"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "audit.read"
+              ]
+            },
+            "request_shape": {
+              "const": null
+            },
+            "response_shape": {
+              "const": "CommandReceipt"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 12
+            },
+            "method": {
+              "const": "GET"
+            },
+            "path": {
+              "const": "/operator/v1/audit"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "audit.read"
+              ]
+            },
+            "request_shape": {
+              "const": "AuditQuery"
+            },
+            "response_shape": {
+              "const": "AuditPage"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 13
+            },
+            "method": {
+              "const": "POST"
+            },
+            "path": {
+              "const": "/operator/v1/approvals/:request_id/decisions"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "approval.decide",
+                "approval.read"
+              ]
+            },
+            "request_shape": {
+              "const": "ApprovalDecisionCommand"
+            },
+            "response_shape": {
+              "const": "CommandReceipt"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 14
+            },
+            "method": {
+              "const": "POST"
+            },
+            "path": {
+              "const": "/operator/v1/runs/:run_id/cancel"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "run.cancel",
+                "run.read"
+              ]
+            },
+            "request_shape": {
+              "const": "RunCancelCommand"
+            },
+            "response_shape": {
+              "const": "CommandReceipt"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        },
+        {
+          "properties": {
+            "ordinal": {
+              "const": 15
+            },
+            "method": {
+              "const": "POST"
+            },
+            "path": {
+              "const": "/operator/v1/runs/:run_id/resume"
+            },
+            "public": {
+              "const": false
+            },
+            "capability_rule": {
+              "const": "all_listed"
+            },
+            "capabilities": {
+              "const": [
+                "run.read",
+                "run.resume"
+              ]
+            },
+            "request_shape": {
+              "const": "RunResumeCommand"
+            },
+            "response_shape": {
+              "const": "CommandReceipt"
+            },
+            "success_status": {
+              "const": 200
+            }
+          }
+        }
+      ]
+    },
+    "SelfTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "path",
+        "schema_ref",
+        "expected",
+        "sha256"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^schemas/operator-control/self-tests/[a-z0-9-]+\\.json$"
+        },
+        "schema_ref": {
+          "type": "string",
+          "pattern": "^https://proof\\.local/schemas/operator-control/[a-z-]+/v1#/\\$defs/[A-Za-z][A-Za-z0-9]*$"
+        },
+        "expected": {
+          "type": "string",
+          "enum": [
+            "accept",
+            "reject_duplicate",
+            "reject_schema"
+          ]
+        },
+        "sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        }
+      }
+    },
+    "StaticBundleInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "index_sha256",
+        "assets"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.static-bundle-inventory/v1"
+        },
+        "index_sha256": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+        },
+        "assets": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "media_type",
+              "sha256",
+              "bytes"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^/assets/[a-z]+\\.[0-9a-f]{64}\\.(css|js)$"
+              },
+              "media_type": {
+                "type": "string",
+                "enum": [
+                  "application/javascript",
+                  "text/css"
+                ]
+              },
+              "sha256": {
+                "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ArtifactDigest"
+              },
+              "bytes": {
+                "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "proof.operator.command.run-cancel/v1",
+  "binding": {
+    "command_id": "018f0d80-7b9a-7c10-8a11-111111111111",
+    "idempotency_key": "018f0d80-7b9a-7c10-8a11-222222222222",
+    "workspace_id": "018f0d80-7b9a-7c10-8a11-333333333333",
+    "server_instance_id": "018f0d80-7b9a-7c10-8a11-444444444444",
+    "session_id": "018f0d80-7b9a-7c10-8a11-555555555555",
+    "human_id": "018f0d80-7b9a-7c10-8a11-666666666666",
+    "auth_epoch": 1,
+    "session_authority_digest": "blake3-256:9999999999999999999999999999999999999999999999999999999999999999",
+    "policy_revision": 1
+  },
+  "run_id": "018f0d80-7b9a-7c10-8a11-777777777777",
+  "expected_run_revision": 4,
+  "expected_control_revision": 8,
+  "expected_fence_epoch": 2
+}

@@ -112,7 +112,7 @@ fn wildcard(pattern: &str, value: &str) -> bool {
 /// A delegation grant can delegate only authority it received. Root principals
 /// implicitly hold unrestricted authority, so the first grant is measured
 /// against that authority and later grants against their parent grant.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DelegationChain {
     pub root: PrincipalId,
     pub grants: Vec<Delegation>,

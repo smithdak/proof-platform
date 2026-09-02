@@ -584,6 +584,13 @@ pub const MIGRATIONS: &[Migration] = &[
             DROP TABLE IF EXISTS live_run_start_claims;
             ",
     },
+    Migration {
+        version: 14,
+        description:
+            "create governed operator control, projection, fence, budget, command, and audit schema",
+        up: include_str!("migration_14_up.sql"),
+        down: include_str!("migration_14_down.sql"),
+    },
 ];
 
 /// A SQLite-backed store for Proof data.
@@ -599,11 +606,36 @@ pub fn schema_version(conn: &Connection) -> Result<u32, StorageError> {
 
 /// Applies every pending migration in ascending version order.
 pub fn run_migrations(conn: &Connection) -> Result<(), StorageError> {
+    run_migrations_through(conn, 13, TransactionBehavior::Immediate)
+}
+
+/// Applies pending migrations through `target_version` in one owned transaction.
+///
+/// Ordinary openers deliberately call [`run_migrations`], which stops at schema
+/// 13. The guarded operator upgrader is the only product path that requests 14.
+pub(super) fn run_migrations_through(
+    conn: &Connection,
+    target_version: u32,
+    behavior: TransactionBehavior,
+) -> Result<(), StorageError> {
+    if target_version > 14
+        || !MIGRATIONS
+            .iter()
+            .any(|migration| migration.version == target_version)
+    {
+        return Err(StorageError::Conflict(format!(
+            "unknown migration target version: {target_version}"
+        )));
+    }
     ensure_migration_table(conn)?;
-    let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
+    let transaction = Transaction::new_unchecked(conn, behavior)?;
     let applied = schema_version(&transaction)?;
+    if applied > target_version {
+        transaction.commit()?;
+        return Ok(());
+    }
     for migration in MIGRATIONS {
-        if migration.version <= applied {
+        if migration.version <= applied || migration.version > target_version {
             continue;
         }
         if migration.version == 10 {
@@ -655,6 +687,11 @@ pub fn rollback_to(conn: &Connection, target_version: u32) -> Result<(), Storage
         transaction.commit()?;
         return Ok(());
     }
+    if current_version >= 14 && target_version < 14 {
+        return Err(StorageError::Conflict(
+            "public rollback cannot cross below operator schema 14".into(),
+        ));
+    }
     if target_version != 0
         && !MIGRATIONS
             .iter()
@@ -689,4 +726,163 @@ fn ensure_migration_table(conn: &Connection) -> Result<(), StorageError> {
         ",
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::OptionalExtension;
+
+    #[test]
+    fn ordinary_migration_path_stops_before_operator_schema() {
+        let connection = Connection::open_in_memory().unwrap();
+
+        run_migrations(&connection).unwrap();
+
+        assert_eq!(schema_version(&connection).unwrap(), 13);
+        let operator_table: Option<String> = connection
+            .query_row(
+                "SELECT name FROM sqlite_master
+                 WHERE type='table' AND name='operator_workspaces'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(operator_table, None);
+    }
+
+    #[test]
+    fn guarded_migration_14_target_upgrades_once_and_reopens_exactly() {
+        let connection = Connection::open_in_memory().unwrap();
+        run_migrations(&connection).unwrap();
+
+        run_migrations_through(&connection, 14, TransactionBehavior::Exclusive).unwrap();
+        run_migrations_through(&connection, 14, TransactionBehavior::Exclusive).unwrap();
+
+        assert_eq!(schema_version(&connection).unwrap(), 14);
+        let history: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version=14",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(history, 1);
+        connection
+            .prepare("SELECT 1 FROM operator_workspaces")
+            .unwrap();
+    }
+
+    #[test]
+    fn public_rollback_rejects_crossing_operator_schema() {
+        let connection = Connection::open_in_memory().unwrap();
+        run_migrations_through(&connection, 14, TransactionBehavior::Exclusive).unwrap();
+
+        let error = rollback_to(&connection, 13).unwrap_err();
+
+        assert!(matches!(
+            error,
+            StorageError::Conflict(message)
+                if message == "public rollback cannot cross below operator schema 14"
+        ));
+        assert_eq!(schema_version(&connection).unwrap(), 14);
+    }
+
+    #[test]
+    fn disposable_operator_down_sql_drops_populated_recovery_graph_child_first() {
+        let connection = Connection::open_in_memory().unwrap();
+        run_migrations_through(&connection, 14, TransactionBehavior::Exclusive).unwrap();
+        let digest = format!("blake3-256:{}", "a".repeat(64));
+        connection
+            .execute_batch(
+                "PRAGMA foreign_keys=OFF;
+                 PRAGMA ignore_check_constraints=ON;",
+            )
+            .unwrap();
+        for (reservation_id, idempotency_key, recovery) in [
+            (
+                "00000000-0000-7000-8000-000000000001",
+                "00000000-0000-7000-8000-000000000002",
+                false,
+            ),
+            (
+                "00000000-0000-7000-8000-000000000003",
+                "00000000-0000-7000-8000-000000000004",
+                true,
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO operator_budget_reservations
+                     (reservation_id, budget_id, run_id, lease_id, fence_epoch,
+                      idempotency_key, request_digest, schema, kind, intent_digest,
+                      intent_json, recovery_directive_id, recovery_directive_digest,
+                      recovery_json, state, reserved_steps, reserved_tokens,
+                      reserved_duration_ms, reserved_cost_microusd,
+                      reserved_tool_dispatches, created_at, reservation_json)
+                     VALUES (?1, '00000000-0000-7000-8000-000000000005',
+                             '00000000-0000-7000-8000-000000000006',
+                             '00000000-0000-7000-8000-000000000007', 1, ?2, ?3,
+                             'proof-operator-budget-reservation/v1', 'tool', ?3, '{}',
+                             CASE WHEN ?4 THEN '00000000-0000-7000-8000-000000000008' END,
+                             CASE WHEN ?4 THEN ?3 END,
+                             CASE WHEN ?4 THEN '{}' END,
+                             'released', 1, 1, 1, 1, 1,
+                             '2026-09-02T12:00:00+00:00', '{}')",
+                    rusqlite::params![reservation_id, idempotency_key, digest, recovery],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO operator_recovery_directives
+                 (directive_id, workspace_id, run_id, source_lease_id,
+                  source_reservation_id, source_budget_id, source_idempotency_key,
+                  source_request_digest, schema, classification, checkpoint_id,
+                  checkpoint_sequence, checkpoint_digest, source_fence_epoch,
+                  source_control_revision, intent_digest, required_budget_disposition,
+                  created_at, directive_json, directive_digest)
+                 VALUES ('00000000-0000-7000-8000-000000000008',
+                         '00000000-0000-7000-8000-000000000009',
+                         '00000000-0000-7000-8000-000000000006',
+                         '00000000-0000-7000-8000-000000000007',
+                         '00000000-0000-7000-8000-000000000001',
+                         '00000000-0000-7000-8000-000000000005',
+                         '00000000-0000-7000-8000-000000000002', ?1,
+                         'proof.operator.recovery-directive/v1',
+                         'pre_dispatch_recoverable',
+                         '00000000-0000-7000-8000-000000000010', 0, ?2, 1, 0, ?1,
+                         'none', '2026-09-02T12:00:00+00:00', '{}', ?1)",
+                rusqlite::params![digest, "b".repeat(64)],
+            )
+            .unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA ignore_check_constraints=OFF;
+                 PRAGMA foreign_keys=ON;",
+            )
+            .unwrap();
+
+        connection
+            .execute_batch(MIGRATIONS.last().unwrap().down)
+            .unwrap();
+
+        for table in [
+            "operator_recovery_directives",
+            "operator_budget_reservations",
+            "operator_run_control",
+            "operator_workspaces",
+        ] {
+            let remaining: Option<String> = connection
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(remaining, None, "operator table {table} survived down SQL");
+        }
+    }
 }

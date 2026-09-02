@@ -1,0 +1,1307 @@
+{
+  "schema": "proof.operator.schema-manifest/v1",
+  "contract": "proof-operator-control/v1",
+  "dialect": "https://json-schema.org/draft/2020-12/schema",
+  "validator": {
+    "meta_validator": "python-jsonschema Draft202012Validator.check_schema",
+    "runtime_decoder": "typed serde visitor before serde_json::Value",
+    "duplicate_policy": "reject recursively before value construction",
+    "unknown_field_policy": "reject recursively",
+    "format_policy": "schema plus runtime UUIDv7, RFC3339 UTC, canonical-order, and digest validation"
+  },
+  "files": [
+    {
+      "path": "schemas/operator-control/common-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/common/v1",
+      "sha256": "sha256:e64b2278a81db61ccf333005274990366047e133c9a507915c4123e641c3412b"
+    },
+    {
+      "path": "schemas/operator-control/auth-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/auth/v1",
+      "sha256": "sha256:8ec5777fbb9c7a36484f3503a04f36dd297a880f6cf9c0ba7737384461c5c37d"
+    },
+    {
+      "path": "schemas/operator-control/reads-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/reads/v1",
+      "sha256": "sha256:acbf50d28c57129794e8becb92236706794468f3ace63afc0a80fcfed1ce29c5"
+    },
+    {
+      "path": "schemas/operator-control/mutations-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/mutations/v1",
+      "sha256": "sha256:0d0ea379971e673fc45cd47d38896b18ddf06712f872ca5a6363d6b07ecf940c"
+    },
+    {
+      "path": "schemas/operator-control/durable-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/durable/v1",
+      "sha256": "sha256:20c7380cad0692f7459bbb6b4d06d2a9b18810f99e45963fa1941d4f5733f719"
+    },
+    {
+      "path": "schemas/operator-control/store-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/store/v1",
+      "sha256": "sha256:afb321e63ae8884ace0be83c7cad08f1a22e60876a082cf092dc7081d66ef4ab"
+    },
+    {
+      "path": "schemas/operator-control/evaluator-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/evaluator/v1",
+      "sha256": "sha256:1fae78f5c452ae35a4ab536d1e6e12cf8ae9ec51de4915cd8ff4180a36c9d2c6"
+    },
+    {
+      "path": "schemas/operator-control/manifest-v1.schema.json",
+      "id": "https://proof.local/schemas/operator-control/manifest/v1",
+      "sha256": "sha256:685f683910f0956987db08a1646aa2aee5f5d884fc13634fb80fa4bbf08467d6"
+    }
+  ],
+  "logical_shapes": [
+    {
+      "name": "UuidV7",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/UuidV7"
+    },
+    {
+      "name": "Rfc3339Utc",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/Rfc3339Utc"
+    },
+    {
+      "name": "SafeInteger",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/SafeInteger"
+    },
+    {
+      "name": "KernelContentDigest",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/KernelContentDigest"
+    },
+    {
+      "name": "ControlDigest",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ControlDigest"
+    },
+    {
+      "name": "ArtifactDigest",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ArtifactDigest"
+    },
+    {
+      "name": "Capability",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/Capability"
+    },
+    {
+      "name": "CapabilitySet",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/CapabilitySet"
+    },
+    {
+      "name": "ErrorEnvelope",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ErrorEnvelope"
+    },
+    {
+      "name": "BudgetAmounts",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetAmounts"
+    },
+    {
+      "name": "ZeroEffectCounters",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ZeroEffectCounters"
+    },
+    {
+      "name": "ReviewField",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ReviewField"
+    },
+    {
+      "name": "ChallengeIssueRequest",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/ChallengeIssueRequest"
+    },
+    {
+      "name": "SessionChallenge",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/SessionChallenge"
+    },
+    {
+      "name": "ChallengeIssueResponse",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/ChallengeIssueResponse"
+    },
+    {
+      "name": "SessionAttestation",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/SessionAttestation"
+    },
+    {
+      "name": "SessionExchangeRequest",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/SessionExchangeRequest"
+    },
+    {
+      "name": "SessionExchangeResponse",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/SessionExchangeResponse"
+    },
+    {
+      "name": "SessionClaims",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/SessionClaims"
+    },
+    {
+      "name": "GrantedCapabilityIntersection",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/GrantedCapabilityIntersection"
+    },
+    {
+      "name": "AttentionQuery",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/AttentionQuery"
+    },
+    {
+      "name": "RunAttentionItem",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/RunAttentionItem"
+    },
+    {
+      "name": "ApprovalAttentionItem",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalAttentionItem"
+    },
+    {
+      "name": "AttentionPage",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/AttentionPage"
+    },
+    {
+      "name": "CheckpointTail",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/CheckpointTail"
+    },
+    {
+      "name": "BudgetSnapshot",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetSnapshot"
+    },
+    {
+      "name": "RunDetail",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/RunDetail"
+    },
+    {
+      "name": "ApprovalQuery",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalQuery"
+    },
+    {
+      "name": "ApprovalSummary",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalSummary"
+    },
+    {
+      "name": "ApprovalPage",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalPage"
+    },
+    {
+      "name": "ApprovalDetail",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalDetail"
+    },
+    {
+      "name": "CommandQuery",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/CommandQuery"
+    },
+    {
+      "name": "CommandPage",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/CommandPage"
+    },
+    {
+      "name": "AuditQuery",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/AuditQuery"
+    },
+    {
+      "name": "AuditEvent",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/AuditEvent"
+    },
+    {
+      "name": "AuditPage",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/AuditPage"
+    },
+    {
+      "name": "CursorClaims",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/CursorClaims"
+    },
+    {
+      "name": "CommandBinding",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/CommandBinding"
+    },
+    {
+      "name": "ApprovalDecisionCommand",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalDecisionCommand"
+    },
+    {
+      "name": "RunCancelCommand",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/RunCancelCommand"
+    },
+    {
+      "name": "RunResumeCommand",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/RunResumeCommand"
+    },
+    {
+      "name": "SessionRevokeRequest",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/SessionRevokeRequest"
+    },
+    {
+      "name": "CommandKind",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/CommandKind"
+    },
+    {
+      "name": "CommandOutcome",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/CommandOutcome"
+    },
+    {
+      "name": "CommandReceipt",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/CommandReceipt"
+    },
+    {
+      "name": "PrincipalBinding",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/PrincipalBinding"
+    },
+    {
+      "name": "OperatorWorkspace",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorWorkspace"
+    },
+    {
+      "name": "HumanEnrollment",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/HumanEnrollment"
+    },
+    {
+      "name": "BudgetPolicy",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetPolicy"
+    },
+    {
+      "name": "BudgetAccount",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetAccount"
+    },
+    {
+      "name": "RunControl",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/RunControl"
+    },
+    {
+      "name": "RunLease",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/RunLease"
+    },
+    {
+      "name": "DescriptorIdentity",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/DescriptorIdentity"
+    },
+    {
+      "name": "WorkspaceFingerprintInput",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/WorkspaceFingerprintInput"
+    },
+    {
+      "name": "BudgetReservation",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetReservation"
+    },
+    {
+      "name": "DispatchPermit",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/DispatchPermit"
+    },
+    {
+      "name": "RuntimeCommit",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeCommit"
+    },
+    {
+      "name": "ApprovalBinding",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalBinding"
+    },
+    {
+      "name": "RunProjection",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/RunProjection"
+    },
+    {
+      "name": "OperatorCommand",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorCommand"
+    },
+    {
+      "name": "CommandEnvelope",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/CommandEnvelope"
+    },
+    {
+      "name": "EvaluatorPolicy",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/EvaluatorPolicy"
+    },
+    {
+      "name": "Check",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/Check"
+    },
+    {
+      "name": "CheckResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/CheckResult"
+    },
+    {
+      "name": "EvidenceRecord",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/EvidenceRecord"
+    },
+    {
+      "name": "RejectionVector",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/RejectionVector"
+    },
+    {
+      "name": "FixtureRecipeDocument",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/FixtureRecipeDocument"
+    },
+    {
+      "name": "SchemaManifest",
+      "schema_path": "schemas/operator-control/manifest-v1.schema.json",
+      "json_pointer": "#"
+    },
+    {
+      "name": "StaticBundleInventory",
+      "schema_path": "schemas/operator-control/manifest-v1.schema.json",
+      "json_pointer": "#/$defs/StaticBundleInventory"
+    },
+    {
+      "name": "PositiveSafeInteger",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/PositiveSafeInteger"
+    },
+    {
+      "name": "PageSize",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/PageSize"
+    },
+    {
+      "name": "Hex32",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/Hex32"
+    },
+    {
+      "name": "Ed25519Signature",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/Ed25519Signature"
+    },
+    {
+      "name": "Ed25519PublicKey",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/Ed25519PublicKey"
+    },
+    {
+      "name": "Origin",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/Origin"
+    },
+    {
+      "name": "RunStatus",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/RunStatus"
+    },
+    {
+      "name": "AttentionKind",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/AttentionKind"
+    },
+    {
+      "name": "AttentionState",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/AttentionState"
+    },
+    {
+      "name": "Urgency",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/Urgency"
+    },
+    {
+      "name": "BoundedSummary",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/BoundedSummary"
+    },
+    {
+      "name": "OperationName",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/OperationName"
+    },
+    {
+      "name": "OperationVersion",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/OperationVersion"
+    },
+    {
+      "name": "CursorToken",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/CursorToken"
+    },
+    {
+      "name": "PageInfo",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/PageInfo"
+    },
+    {
+      "name": "ErrorCode",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ErrorCode"
+    },
+    {
+      "name": "ZeroBudgetAmounts",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ZeroBudgetAmounts"
+    },
+    {
+      "name": "EffectCounters",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/EffectCounters"
+    },
+    {
+      "name": "ProofReference",
+      "schema_path": "schemas/operator-control/common-v1.schema.json",
+      "json_pointer": "#/$defs/ProofReference"
+    },
+    {
+      "name": "RecoveryDirective",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/RecoveryDirective"
+    },
+    {
+      "name": "DurableCommandReceipt",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/CommandReceipt"
+    },
+    {
+      "name": "DurableAuditEvent",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/AuditEvent"
+    },
+    {
+      "name": "DurableBudgetSnapshot",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetSnapshot"
+    },
+    {
+      "name": "ArtifactPolicy",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ArtifactPolicy"
+    },
+    {
+      "name": "Artifact",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/Artifact"
+    },
+    {
+      "name": "ExecutionPolicy",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ExecutionPolicy"
+    },
+    {
+      "name": "FixtureProtocol",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/FixtureProtocol"
+    },
+    {
+      "name": "ValidScenario",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ValidScenario"
+    },
+    {
+      "name": "ValidFixture",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ValidFixture"
+    },
+    {
+      "name": "RejectionFixture",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/RejectionFixture"
+    },
+    {
+      "name": "FixtureIndex",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/FixtureIndex"
+    },
+    {
+      "name": "VectorResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/VectorResult"
+    },
+    {
+      "name": "EvaluationResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/EvaluationResult"
+    },
+    {
+      "name": "EvaluatorStaticBundleInventory",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StaticBundleInventory"
+    },
+    {
+      "name": "SchemaFile",
+      "schema_path": "schemas/operator-control/manifest-v1.schema.json",
+      "json_pointer": "#/$defs/SchemaFile"
+    },
+    {
+      "name": "LogicalShape",
+      "schema_path": "schemas/operator-control/manifest-v1.schema.json",
+      "json_pointer": "#/$defs/LogicalShape"
+    },
+    {
+      "name": "Route",
+      "schema_path": "schemas/operator-control/manifest-v1.schema.json",
+      "json_pointer": "#/$defs/Route"
+    },
+    {
+      "name": "SelfTest",
+      "schema_path": "schemas/operator-control/manifest-v1.schema.json",
+      "json_pointer": "#/$defs/SelfTest"
+    },
+    {
+      "name": "ControlTransitionOutcome",
+      "schema_path": "schemas/operator-control/mutations-v1.schema.json",
+      "json_pointer": "#/$defs/ControlTransitionOutcome"
+    },
+    {
+      "name": "PendingApprovalSummary",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/PendingApprovalSummary"
+    },
+    {
+      "name": "PendingConsequence",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/PendingConsequence"
+    },
+    {
+      "name": "PendingConsequenceBody",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/PendingConsequenceBody"
+    },
+    {
+      "name": "RecoverySummary",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/RecoverySummary"
+    },
+    {
+      "name": "AuthoritySummary",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/AuthoritySummary"
+    },
+    {
+      "name": "RunAttemptSummary",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/RunAttemptSummary"
+    },
+    {
+      "name": "ApprovalDecisionSummary",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalDecisionSummary"
+    },
+    {
+      "name": "AuditEventKind",
+      "schema_path": "schemas/operator-control/reads-v1.schema.json",
+      "json_pointer": "#/$defs/AuditEventKind"
+    },
+    {
+      "name": "OperatorStoreError",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorStoreError"
+    },
+    {
+      "name": "OperatorReadScope",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorReadScope"
+    },
+    {
+      "name": "VerifiedPageWindow",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/VerifiedPageWindow"
+    },
+    {
+      "name": "ControlAuditAppendRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ControlAuditAppendRequest"
+    },
+    {
+      "name": "ControlAuditAppendResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ControlAuditAppendResult"
+    },
+    {
+      "name": "LeaseAuthority",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/LeaseAuthority"
+    },
+    {
+      "name": "InitializeWorkspaceRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/InitializeWorkspaceRequest"
+    },
+    {
+      "name": "InitializeWorkspaceResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/InitializeWorkspaceResult"
+    },
+    {
+      "name": "RegisterGovernedRunRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/RegisterGovernedRunRequest"
+    },
+    {
+      "name": "RegisterGovernedRunResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/RegisterGovernedRunResult"
+    },
+    {
+      "name": "InitialRunProjectionInput",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/InitialRunProjectionInput"
+    },
+    {
+      "name": "ApprovalSigningRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ApprovalSigningRequest"
+    },
+    {
+      "name": "SignedDecisionResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/SignedDecisionResult"
+    },
+    {
+      "name": "OperatorProofSigningRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorProofSigningRequest"
+    },
+    {
+      "name": "CommandExecutionRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/CommandExecutionRequest"
+    },
+    {
+      "name": "CommandResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/CommandResult"
+    },
+    {
+      "name": "LeaseClaimRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/LeaseClaimRequest"
+    },
+    {
+      "name": "LeaseMutationResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/LeaseMutationResult"
+    },
+    {
+      "name": "LeaseRenewRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/LeaseRenewRequest"
+    },
+    {
+      "name": "LeaseReleaseRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/LeaseReleaseRequest"
+    },
+    {
+      "name": "BudgetReserveRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetReserveRequest"
+    },
+    {
+      "name": "BudgetReserveResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetReserveResult"
+    },
+    {
+      "name": "BudgetSettlementRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetSettlementRequest"
+    },
+    {
+      "name": "BudgetSettlementResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/BudgetSettlementResult"
+    },
+    {
+      "name": "DispatchIntent",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/DispatchIntent"
+    },
+    {
+      "name": "ReplayClaimBinding",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/ReplayClaimBinding"
+    },
+    {
+      "name": "BeginDispatchRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/BeginDispatchRequest"
+    },
+    {
+      "name": "DispatchResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/DispatchResult"
+    },
+    {
+      "name": "ReplayProofEnvelope",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ReplayProofEnvelope"
+    },
+    {
+      "name": "ReplayCompletionBinding",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ReplayCompletionBinding"
+    },
+    {
+      "name": "PreparedUsageBody",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/PreparedUsageBody"
+    },
+    {
+      "name": "PreparedRuntimeResultBody",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/PreparedRuntimeResultBody"
+    },
+    {
+      "name": "PreparedExecutionBinding",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/PreparedExecutionBinding"
+    },
+    {
+      "name": "RuntimeCommitRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeCommitRequest"
+    },
+    {
+      "name": "RuntimeCommitResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeCommitResult"
+    },
+    {
+      "name": "RuntimeFailureRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeFailureRequest"
+    },
+    {
+      "name": "RuntimeFailureBody",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeFailureBody"
+    },
+    {
+      "name": "RuntimeFailureResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeFailureResult"
+    },
+    {
+      "name": "ReclaimRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ReclaimRequest"
+    },
+    {
+      "name": "ReclaimResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ReclaimResult"
+    },
+    {
+      "name": "SessionAuthorityBinding",
+      "schema_path": "schemas/operator-control/auth-v1.schema.json",
+      "json_pointer": "#/$defs/SessionAuthorityBinding"
+    },
+    {
+      "name": "SchemaCatalogEntryBinding",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/SchemaCatalogEntryBinding"
+    },
+    {
+      "name": "SchemaCatalogBinding",
+      "schema_path": "schemas/operator-control/durable-v1.schema.json",
+      "json_pointer": "#/$defs/SchemaCatalogBinding"
+    },
+    {
+      "name": "OperatorProvisioningError",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorProvisioningError"
+    },
+    {
+      "name": "OperatorProvisioningDocument",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorProvisioningDocument"
+    },
+    {
+      "name": "ProvisionOperatorWorkspaceResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ProvisionOperatorWorkspaceResult"
+    },
+    {
+      "name": "OperatorMutationScope",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/OperatorMutationScope"
+    },
+    {
+      "name": "ReplayLookupRequest",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ReplayLookupRequest"
+    },
+    {
+      "name": "ReplayLookupResult",
+      "schema_path": "schemas/operator-control/store-v1.schema.json",
+      "json_pointer": "#/$defs/ReplayLookupResult"
+    },
+    {
+      "name": "TypedDocument",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/TypedDocument"
+    },
+    {
+      "name": "StepArgument",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StepArgument"
+    },
+    {
+      "name": "FixtureStep",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/FixtureStep"
+    },
+    {
+      "name": "SetupRecipe",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/SetupRecipe"
+    },
+    {
+      "name": "MutationRecipe",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/MutationRecipe"
+    },
+    {
+      "name": "ActionRecipe",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ActionRecipe"
+    },
+    {
+      "name": "SchemaBodyExpectation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/SchemaBodyExpectation"
+    },
+    {
+      "name": "HttpResponseObservation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/HttpResponseObservation"
+    },
+    {
+      "name": "StoreObservation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreObservation"
+    },
+    {
+      "name": "RuntimeObservation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeObservation"
+    },
+    {
+      "name": "HttpExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/HttpExpectedOutcome"
+    },
+    {
+      "name": "StoreExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreExpectedOutcome"
+    },
+    {
+      "name": "RuntimeExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/RuntimeExpectedOutcome"
+    },
+    {
+      "name": "LaunchExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/LaunchExpectedOutcome"
+    },
+    {
+      "name": "BrowserExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/BrowserExpectedOutcome"
+    },
+    {
+      "name": "EvaluatorExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/EvaluatorExpectedOutcome"
+    },
+    {
+      "name": "TtyExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/TtyExpectedOutcome"
+    },
+    {
+      "name": "ExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ExpectedOutcome"
+    },
+    {
+      "name": "DurableExpectation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/DurableExpectation"
+    },
+    {
+      "name": "AuditEventExpectation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/AuditEventExpectation"
+    },
+    {
+      "name": "AuditExpectation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/AuditExpectation"
+    },
+    {
+      "name": "ExpectedRecipe",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ExpectedRecipe"
+    },
+    {
+      "name": "ValidRecipeBlueprint",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ValidRecipeBlueprint"
+    },
+    {
+      "name": "RejectionRecipeBlueprint",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/RejectionRecipeBlueprint"
+    },
+    {
+      "name": "RealProductAssembly",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/RealProductAssembly"
+    },
+    {
+      "name": "RealProductAssemblyExpectation",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/RealProductAssemblyExpectation"
+    },
+    {
+      "name": "ReplayResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ReplayResult"
+    },
+    {
+      "name": "ScenarioResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/ScenarioResult"
+    },
+    {
+      "name": "BackendSubsetPolicy",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/BackendSubsetPolicy"
+    },
+    {
+      "name": "BackendSubsetResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/BackendSubsetResult"
+    },
+    {
+      "name": "EvaluatorSetupSpec",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/EvaluatorSetupSpec"
+    },
+    {
+      "name": "EvaluatorMutationSpec",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/EvaluatorMutationSpec"
+    },
+    {
+      "name": "EvaluatorActionSpec",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/EvaluatorActionSpec"
+    },
+    {
+      "name": "JourneyExpectedOutcome",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/JourneyExpectedOutcome"
+    },
+    {
+      "name": "StoreErrorDispositionCode",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreErrorDispositionCode"
+    },
+    {
+      "name": "StoreErrorVariantMap",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreErrorVariantMap"
+    },
+    {
+      "name": "StoreErrorBoundaryPolicy",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreErrorBoundaryPolicy"
+    },
+    {
+      "name": "StoreSpecialResultCase",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreSpecialResultCase"
+    },
+    {
+      "name": "StoreErrorMatrixPolicy",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreErrorMatrixPolicy"
+    },
+    {
+      "name": "StoreErrorMatrixCaseResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreErrorMatrixCaseResult"
+    },
+    {
+      "name": "StoreErrorMatrixResult",
+      "schema_path": "schemas/operator-control/evaluator-v1.schema.json",
+      "json_pointer": "#/$defs/StoreErrorMatrixResult"
+    }
+  ],
+  "routes": [
+    {
+      "ordinal": 1,
+      "method": "GET",
+      "path": "/",
+      "public": true,
+      "capability_rule": "public",
+      "capabilities": [],
+      "request_shape": null,
+      "response_shape": null,
+      "success_status": 200
+    },
+    {
+      "ordinal": 2,
+      "method": "GET",
+      "path": "/assets/:asset",
+      "public": true,
+      "capability_rule": "public",
+      "capabilities": [],
+      "request_shape": null,
+      "response_shape": null,
+      "success_status": 200
+    },
+    {
+      "ordinal": 3,
+      "method": "POST",
+      "path": "/operator/v1/session/challenges",
+      "public": true,
+      "capability_rule": "public",
+      "capabilities": [],
+      "request_shape": "ChallengeIssueRequest",
+      "response_shape": "ChallengeIssueResponse",
+      "success_status": 201
+    },
+    {
+      "ordinal": 4,
+      "method": "POST",
+      "path": "/operator/v1/session/exchange",
+      "public": true,
+      "capability_rule": "public",
+      "capabilities": [],
+      "request_shape": "SessionExchangeRequest",
+      "response_shape": "SessionExchangeResponse",
+      "success_status": 201
+    },
+    {
+      "ordinal": 5,
+      "method": "POST",
+      "path": "/operator/v1/session/revoke",
+      "public": false,
+      "capability_rule": "valid_session",
+      "capabilities": [],
+      "request_shape": "SessionRevokeRequest",
+      "response_shape": "CommandReceipt",
+      "success_status": 200
+    },
+    {
+      "ordinal": 6,
+      "method": "GET",
+      "path": "/operator/v1/attention",
+      "public": false,
+      "capability_rule": "kind_dependent",
+      "capabilities": [
+        "approval.read",
+        "run.read"
+      ],
+      "request_shape": "AttentionQuery",
+      "response_shape": "AttentionPage",
+      "success_status": 200
+    },
+    {
+      "ordinal": 7,
+      "method": "GET",
+      "path": "/operator/v1/runs/:run_id",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "run.read"
+      ],
+      "request_shape": null,
+      "response_shape": "RunDetail",
+      "success_status": 200
+    },
+    {
+      "ordinal": 8,
+      "method": "GET",
+      "path": "/operator/v1/approvals",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "approval.read"
+      ],
+      "request_shape": "ApprovalQuery",
+      "response_shape": "ApprovalPage",
+      "success_status": 200
+    },
+    {
+      "ordinal": 9,
+      "method": "GET",
+      "path": "/operator/v1/approvals/:request_id",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "approval.read"
+      ],
+      "request_shape": null,
+      "response_shape": "ApprovalDetail",
+      "success_status": 200
+    },
+    {
+      "ordinal": 10,
+      "method": "GET",
+      "path": "/operator/v1/commands",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "audit.read"
+      ],
+      "request_shape": "CommandQuery",
+      "response_shape": "CommandPage",
+      "success_status": 200
+    },
+    {
+      "ordinal": 11,
+      "method": "GET",
+      "path": "/operator/v1/commands/:command_id",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "audit.read"
+      ],
+      "request_shape": null,
+      "response_shape": "CommandReceipt",
+      "success_status": 200
+    },
+    {
+      "ordinal": 12,
+      "method": "GET",
+      "path": "/operator/v1/audit",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "audit.read"
+      ],
+      "request_shape": "AuditQuery",
+      "response_shape": "AuditPage",
+      "success_status": 200
+    },
+    {
+      "ordinal": 13,
+      "method": "POST",
+      "path": "/operator/v1/approvals/:request_id/decisions",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "approval.decide",
+        "approval.read"
+      ],
+      "request_shape": "ApprovalDecisionCommand",
+      "response_shape": "CommandReceipt",
+      "success_status": 200
+    },
+    {
+      "ordinal": 14,
+      "method": "POST",
+      "path": "/operator/v1/runs/:run_id/cancel",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "run.cancel",
+        "run.read"
+      ],
+      "request_shape": "RunCancelCommand",
+      "response_shape": "CommandReceipt",
+      "success_status": 200
+    },
+    {
+      "ordinal": 15,
+      "method": "POST",
+      "path": "/operator/v1/runs/:run_id/resume",
+      "public": false,
+      "capability_rule": "all_listed",
+      "capabilities": [
+        "run.read",
+        "run.resume"
+      ],
+      "request_shape": "RunResumeCommand",
+      "response_shape": "CommandReceipt",
+      "success_status": 200
+    }
+  ],
+  "self_tests": [
+    {
+      "ordinal": 1,
+      "path": "schemas/operator-control/self-tests/valid-challenge-request.json",
+      "schema_ref": "https://proof.local/schemas/operator-control/auth/v1#/$defs/ChallengeIssueRequest",
+      "expected": "accept",
+      "sha256": "sha256:16f0d3f1145e4bd702253c2858581b9c0e0f76cb660587dd1e9f768c2d898735"
+    },
+    {
+      "ordinal": 2,
+      "path": "schemas/operator-control/self-tests/valid-cancel-request.json",
+      "schema_ref": "https://proof.local/schemas/operator-control/mutations/v1#/$defs/RunCancelCommand",
+      "expected": "accept",
+      "sha256": "sha256:a4bc43b8190dc22fdf99ef0fb2df108848c2093be43967f575e4e0a41e7bea71"
+    },
+    {
+      "ordinal": 3,
+      "path": "schemas/operator-control/self-tests/invalid-unknown-field.json",
+      "schema_ref": "https://proof.local/schemas/operator-control/auth/v1#/$defs/ChallengeIssueRequest",
+      "expected": "reject_schema",
+      "sha256": "sha256:2ea24064d2b3e6ffb124c1159012c65bea91a0d6731ddbc4e2be0292be425070"
+    },
+    {
+      "ordinal": 4,
+      "path": "schemas/operator-control/self-tests/invalid-duplicate-field.json",
+      "schema_ref": "https://proof.local/schemas/operator-control/auth/v1#/$defs/ChallengeIssueRequest",
+      "expected": "reject_duplicate",
+      "sha256": "sha256:5df5ed5ad1f101c9afebf383ef4691fc13a2e321d76c6dddff03f958cfae2f60"
+    }
+  ]
+}

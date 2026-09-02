@@ -1,0 +1,5656 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof.local/schemas/operator-control/reads/v1",
+  "title": "Proof operator control v1 read shapes",
+  "type": "object",
+  "maxProperties": 0,
+  "additionalProperties": false,
+  "$defs": {
+    "AttentionQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kinds",
+        "states",
+        "page_size",
+        "cursor"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.attention-query/v1"
+        },
+        "kinds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/AttentionKind"
+          }
+        },
+        "states": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/AttentionState"
+          }
+        },
+        "page_size": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageSize"
+        },
+        "cursor": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "RunAttentionItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "projection_sequence",
+        "projection_id",
+        "run_id",
+        "run_status",
+        "attention",
+        "urgency",
+        "goal_summary",
+        "run_revision",
+        "control_revision",
+        "fence_epoch",
+        "projected_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.attention-item.run/v1"
+        },
+        "kind": {
+          "const": "run"
+        },
+        "projection_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        },
+        "projection_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "run_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "run_status": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/RunStatus"
+        },
+        "attention": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/AttentionState"
+        },
+        "urgency": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Urgency"
+        },
+        "goal_summary": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BoundedSummary"
+        },
+        "run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "control_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "fence_epoch": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "projected_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "attention": { "const": "awaiting_decision" },
+            "run_status": { "const": "waiting_for_input" }
+          }
+        },
+        {
+          "properties": {
+            "attention": { "const": "recoverable" },
+            "run_status": { "const": "failed" }
+          }
+        },
+        {
+          "properties": {
+            "attention": { "const": "running" },
+            "run_status": { "enum": ["queued", "running"] }
+          }
+        },
+        {
+          "properties": {
+            "attention": { "const": "terminal" },
+            "run_status": { "enum": ["cancelled", "failed", "succeeded"] }
+          }
+        }
+      ]
+    },
+    "ApprovalAttentionItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kind",
+        "projection_sequence",
+        "projection_id",
+        "run_id",
+        "approval_request_id",
+        "required_human_id",
+        "operation",
+        "version",
+        "input_digest",
+        "urgency",
+        "expires_at",
+        "run_revision",
+        "control_revision",
+        "fence_epoch",
+        "projected_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.attention-item.approval/v1"
+        },
+        "kind": {
+          "const": "approval"
+        },
+        "projection_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        },
+        "projection_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "run_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "approval_request_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "required_human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "operation": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationName"
+        },
+        "version": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationVersion"
+        },
+        "input_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "urgency": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Urgency"
+        },
+        "expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "control_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "fence_epoch": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "projected_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      }
+    },
+    "AttentionPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "items",
+        "page"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.attention-page/v1"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RunAttentionItem"
+              },
+              {
+                "$ref": "#/$defs/ApprovalAttentionItem"
+              }
+            ]
+          }
+        },
+        "page": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageInfo"
+        }
+      }
+    },
+    "CheckpointTail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpoint_id",
+        "sequence",
+        "state_digest"
+      ],
+      "properties": {
+        "checkpoint_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "state_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        }
+      }
+    },
+    "BudgetSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "budget_id",
+        "revision",
+        "state",
+        "limits",
+        "reserved",
+        "committed",
+        "remaining",
+        "deadline_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.budget-snapshot/v1"
+        },
+        "budget_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "active",
+            "closed",
+            "exhausted"
+          ]
+        },
+        "limits": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BudgetAmounts"
+        },
+        "reserved": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BudgetAmounts"
+        },
+        "committed": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BudgetAmounts"
+        },
+        "remaining": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BudgetAmounts"
+        },
+        "deadline_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      }
+    },
+    "PendingApprovalSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_request_id",
+        "required_human_id",
+        "operation",
+        "version",
+        "input_digest",
+        "pending_consequence",
+        "expires_at",
+        "decision"
+      ],
+      "properties": {
+        "approval_request_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "required_human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "operation": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationName"
+        },
+        "version": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationVersion"
+        },
+        "input_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "pending_consequence": {
+          "$ref": "#/$defs/PendingConsequence"
+        },
+        "expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "denied",
+            "none"
+          ]
+        }
+      }
+    },
+    "PendingConsequenceBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "summary"
+      ],
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": [
+            "external_effect",
+            "governed_write",
+            "provider_call",
+            "tool_call"
+          ]
+        },
+        "summary": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BoundedSummary"
+        }
+      }
+    },
+    "PendingConsequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "summary",
+        "consequence_digest"
+      ],
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": [
+            "external_effect",
+            "governed_write",
+            "provider_call",
+            "tool_call"
+          ]
+        },
+        "summary": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BoundedSummary"
+        },
+        "consequence_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        }
+      }
+    },
+    "AuthoritySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_id",
+        "human_id",
+        "operation",
+        "version",
+        "delegation_id",
+        "policy_revision"
+      ],
+      "properties": {
+        "agent_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "human_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "operation": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationName"
+        },
+        "version": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationVersion"
+        },
+        "delegation_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "policy_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        }
+      }
+    },
+    "RunAttemptSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "ordinal",
+        "attempt",
+        "retry_of",
+        "status",
+        "operation",
+        "version",
+        "input_digest",
+        "output_digest",
+        "proof",
+        "error_class",
+        "revision",
+        "started_at",
+        "finished_at"
+      ],
+      "properties": {
+        "step_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "ordinal": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "attempt": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+        "retry_of": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["cancelled", "failed", "pending", "running", "succeeded", "waiting_for_approval"]
+        },
+        "operation": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationName" },
+        "version": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationVersion" },
+        "input_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "output_digest": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+            { "type": "null" }
+          ]
+        },
+        "proof": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference" },
+            { "type": "null" }
+          ]
+        },
+        "error_class": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$" },
+            { "type": "null" }
+          ]
+        },
+        "revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "started_at": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+            { "type": "null" }
+          ]
+        },
+        "finished_at": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "pending" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "started_at": { "type": "null" },
+              "finished_at": { "type": "null" },
+              "output_digest": { "type": "null" },
+              "proof": { "type": "null" },
+              "error_class": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "enum": ["running", "waiting_for_approval"] } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "started_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+              "finished_at": { "type": "null" },
+              "output_digest": { "type": "null" },
+              "proof": { "type": "null" },
+              "error_class": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "succeeded" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "started_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+              "finished_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+              "output_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+              "proof": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference" },
+              "error_class": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "started_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+              "finished_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+              "error_class": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "cancelled" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "finished_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+              "output_digest": { "type": "null" },
+              "proof": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "RecoverySummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directive_id", "classification", "checkpoint_id", "checkpoint_sequence",
+        "checkpoint_digest", "source_lease_id", "source_fence_epoch",
+        "source_control_revision", "intent_digest", "required_budget_disposition",
+        "directive_digest"
+      ],
+      "properties": {
+        "directive_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "classification": { "const": "pre_dispatch_recoverable" },
+        "checkpoint_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "checkpoint_sequence": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "checkpoint_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "source_lease_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "source_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+        "source_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "intent_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "required_budget_disposition": { "const": "none" },
+        "directive_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" }
+      }
+    },
+    "RunDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "run_id",
+        "mode",
+        "status",
+        "attention",
+        "goal_summary",
+        "authority",
+        "attempts",
+        "evidence",
+        "run_revision",
+        "control_revision",
+        "fence_epoch",
+        "checkpoint_tail",
+        "pending_approval",
+        "recovery",
+        "budget",
+        "created_at",
+        "updated_at",
+        "completed_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.run-detail/v1"
+        },
+        "run_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "one_shot",
+            "session"
+          ]
+        },
+        "status": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/RunStatus"
+        },
+        "attention": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/AttentionState"
+        },
+        "goal_summary": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BoundedSummary"
+        },
+        "authority": {
+          "$ref": "#/$defs/AuthoritySummary"
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunAttemptSummary"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+          }
+        },
+        "run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "control_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "fence_epoch": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "checkpoint_tail": {
+          "$ref": "#/$defs/CheckpointTail"
+        },
+        "pending_approval": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PendingApprovalSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recovery": {
+          "oneOf": [
+            { "$ref": "#/$defs/RecoverySummary" },
+            { "type": "null" }
+          ]
+        },
+        "budget": {
+          "$ref": "#/$defs/BudgetSnapshot"
+        },
+        "created_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "updated_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "completed_at": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "attention": { "const": "awaiting_decision" },
+                "status": { "const": "waiting_for_input" },
+                "pending_approval": { "$ref": "#/$defs/PendingApprovalSummary" },
+                "recovery": { "type": "null" }
+              }
+            },
+            {
+              "properties": {
+                "attention": { "const": "recoverable" },
+                "status": { "const": "failed" },
+                "pending_approval": { "type": "null" },
+                "recovery": { "$ref": "#/$defs/RecoverySummary" }
+              }
+            },
+            {
+              "properties": {
+                "attention": { "const": "running" },
+                "status": { "enum": ["queued", "running"] },
+                "pending_approval": { "type": "null" },
+                "recovery": { "type": "null" }
+              }
+            },
+            {
+              "properties": {
+                "attention": { "const": "terminal" },
+                "status": { "enum": ["cancelled", "failed", "succeeded"] },
+                "pending_approval": { "type": "null" },
+                "recovery": { "type": "null" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "ApprovalQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "states",
+        "page_size",
+        "cursor"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.approval-query/v1"
+        },
+        "states": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "denied",
+              "expired",
+              "pending"
+            ]
+          }
+        },
+        "page_size": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageSize"
+        },
+        "cursor": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ApprovalSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_request_id",
+        "run_id",
+        "step_id",
+        "required_human_id",
+        "operation",
+        "version",
+        "input_digest",
+        "state",
+        "requested_at",
+        "expires_at"
+      ],
+      "properties": {
+        "approval_request_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "run_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "step_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "required_human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "operation": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationName"
+        },
+        "version": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationVersion"
+        },
+        "input_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "denied",
+            "expired",
+            "pending"
+          ]
+        },
+        "requested_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      }
+    },
+    "ApprovalPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "items",
+        "page"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.approval-page/v1"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/ApprovalSummary"
+          }
+        },
+        "page": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageInfo"
+        }
+      }
+    },
+    "ApprovalDecisionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "decided_by",
+        "outcome",
+        "decision_digest",
+        "decided_at"
+      ],
+      "properties": {
+        "decision_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "decided_by": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "denied"
+          ]
+        },
+        "decision_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "decided_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      }
+    },
+    "ApprovalDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "summary",
+        "request_digest",
+        "checkpoint",
+        "run_revision",
+        "step_revision",
+        "control_revision",
+        "fence_epoch",
+        "argument_digest",
+        "consequence_digest",
+        "binding_digest",
+        "pending_consequence",
+        "review_fields",
+        "decision"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.approval-detail/v1"
+        },
+        "summary": {
+          "$ref": "#/$defs/ApprovalSummary"
+        },
+        "request_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/CheckpointTail"
+        },
+        "run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "step_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "control_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "fence_epoch": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "argument_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "consequence_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "binding_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "pending_consequence": {
+          "$ref": "#/$defs/PendingConsequence"
+        },
+        "review_fields": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ReviewField"
+          }
+        },
+        "decision": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ApprovalDecisionSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "CommandQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kinds",
+        "outcomes",
+        "run_id",
+        "page_size",
+        "cursor"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.command-query/v1"
+        },
+        "kinds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/mutations/v1#/$defs/CommandKind"
+          }
+        },
+        "outcomes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/mutations/v1#/$defs/CommandOutcome"
+          }
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_size": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageSize"
+        },
+        "cursor": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "CommandPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "items",
+        "page"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.command-page/v1"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "https://proof.local/schemas/operator-control/mutations/v1#/$defs/CommandReceipt"
+          }
+        },
+        "page": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageInfo"
+        }
+      }
+    },
+    "AuditEventKind": {
+      "type": "string",
+      "enum": [
+        "approval_decided",
+        "approval_expired",
+        "budget_committed",
+        "budget_forfeited",
+        "budget_rejected",
+        "budget_released",
+        "budget_reserved",
+        "command_conflict",
+        "command_rejected",
+        "control_failure",
+        "control_shutdown",
+        "dispatch_authorized",
+        "lease_acquired",
+        "lease_reclaimed",
+        "lease_released",
+        "lease_renewed",
+        "recovery_completed",
+        "recovery_started",
+        "run_cancelled",
+        "run_resumed",
+        "runtime_result_committed",
+        "session_challenge_issued",
+        "session_expired",
+        "session_issued",
+        "session_replaced",
+        "session_revoked",
+        "stale_fence_rejected"
+      ]
+    },
+    "AuditQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "kinds",
+        "run_id",
+        "approval_request_id",
+        "page_size",
+        "cursor"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.audit-query/v1"
+        },
+        "kinds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 27,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/AuditEventKind"
+          }
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_request_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page_size": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageSize"
+        },
+        "cursor": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "AuditEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "workspace_id",
+        "event_id",
+        "sequence",
+        "kind",
+        "outcome",
+        "previous_digest",
+        "event_digest",
+        "human_id",
+        "session_id",
+        "challenge_id",
+        "challenge_digest",
+        "session_authority_digest",
+        "related_session_id",
+        "server_instance_id",
+        "run_id",
+        "approval_request_id",
+        "command_id",
+        "command_kind",
+        "budget_id",
+        "reservation_id",
+        "lease_id",
+        "source_lease_id",
+        "process_epoch_id",
+        "permit_id",
+        "recovery_directive_id",
+        "fence_epoch",
+        "auth_epoch",
+        "policy_revision",
+        "intent_digest",
+        "call_digest",
+        "decision_digest",
+        "recovery_directive_digest",
+        "failure_scope",
+        "proof",
+        "occurred_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.audit-event/v1"
+        },
+        "workspace_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "event_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        },
+        "kind": {
+          "$ref": "#/$defs/AuditEventKind"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "conflict",
+            "expired",
+            "failed",
+            "rejected"
+          ]
+        },
+        "previous_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "event_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "human_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "challenge_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "challenge_digest": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            { "type": "null" }
+          ]
+        },
+        "session_authority_digest": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            { "type": "null" }
+          ]
+        },
+        "related_session_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "server_instance_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_request_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command_kind": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/mutations/v1#/$defs/CommandKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "budget_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reservation_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lease_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_lease_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "process_epoch_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "permit_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recovery_directive_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fence_epoch": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "auth_epoch": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy_revision": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intent_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "call_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recovery_directive_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_scope": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "command",
+                "runtime",
+                "storage",
+                "workspace"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proof": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "occurred_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "sequence": {
+                  "const": 1
+                },
+                "previous_digest": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "sequence": {
+                  "minimum": 2
+                },
+                "previous_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "session_challenge_issued"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "policy_revision": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": { "const": "lease_reclaimed" },
+                "outcome": { "const": "accepted" },
+                "human_id": { "type": "null" },
+                "session_id": { "type": "null" },
+                "challenge_id": { "type": "null" },
+                "related_session_id": { "type": "null" },
+                "server_instance_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "approval_request_id": { "type": "null" },
+                "command_id": { "type": "null" },
+                "command_kind": { "type": "null" },
+                "budget_id": { "type": "null" },
+                "reservation_id": { "type": "null" },
+                "lease_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "source_lease_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "process_epoch_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "permit_id": { "type": "null" },
+                "recovery_directive_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "auth_epoch": { "type": "null" },
+                "policy_revision": { "type": "null" },
+                "intent_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+                "call_digest": { "type": "null" },
+                "decision_digest": { "type": "null" },
+                "recovery_directive_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+                "failure_scope": { "type": "null" },
+                "proof": { "type": "null" }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "session_issued"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "policy_revision": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "session_replaced"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "related_session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "policy_revision": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "session_revoked"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "session_revoke"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "policy_revision": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "allOf": [
+                    {
+                      "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+                    },
+                    {
+                      "properties": {
+                        "operation": {
+                          "const": "operator.session_revoke"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "session_expired"
+                },
+                "outcome": {
+                  "const": "expired"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "policy_revision": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "approval_decided"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "approval_decide"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "allOf": [
+                    {
+                      "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+                    },
+                    {
+                      "properties": {
+                        "operation": {
+                          "const": "operator.approval_decide"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "approval_expired"
+                },
+                "outcome": {
+                  "const": "expired"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "run_cancelled"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_cancel"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "allOf": [
+                    {
+                      "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+                    },
+                    {
+                      "properties": {
+                        "operation": {
+                          "const": "operator.run_cancel"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "run_resumed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "allOf": [
+                    {
+                      "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+                    },
+                    {
+                      "properties": {
+                        "operation": {
+                          "const": "operator.run_resume"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "run_resumed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "allOf": [
+                    {
+                      "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+                    },
+                    {
+                      "properties": {
+                        "operation": {
+                          "const": "operator.run_resume"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "lease_acquired"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "lease_renewed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "lease_reclaimed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "lease_reclaimed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "lease_released"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "stale_fence_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "approval_decide"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "stale_fence_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_cancel"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "stale_fence_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "stale_fence_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "budget_reserved"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "budget_committed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "budget_released"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "budget_forfeited"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "budget_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "dispatch_authorized"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "runtime_result_committed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "recovery_started"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "recovery_completed"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_shutdown"
+                },
+                "outcome": {
+                  "const": "accepted"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "approval_decide"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_cancel"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_rejected"
+                },
+                "outcome": {
+                  "const": "rejected"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "session_revoke"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_conflict"
+                },
+                "outcome": {
+                  "const": "conflict"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "approval_decide"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_conflict"
+                },
+                "outcome": {
+                  "const": "conflict"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_cancel"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_conflict"
+                },
+                "outcome": {
+                  "const": "conflict"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_conflict"
+                },
+                "outcome": {
+                  "const": "conflict"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "command_conflict"
+                },
+                "outcome": {
+                  "const": "conflict"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "type": "null"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "session_revoke"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "type": "null"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_failure"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "const": "workspace"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_failure"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "const": "storage"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_failure"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "approval_decide"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "const": "command"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_failure"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_cancel"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "const": "command"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_failure"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "run_resume"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "const": "command"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_failure"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "session_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "type": "null"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "command_kind": {
+                  "const": "session_revoke"
+                },
+                "budget_id": {
+                  "type": "null"
+                },
+                "reservation_id": {
+                  "type": "null"
+                },
+                "lease_id": {
+                  "type": "null"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "type": "null"
+                },
+                "permit_id": {
+                  "type": "null"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "type": "null"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "type": "null"
+                },
+                "call_digest": {
+                  "type": "null"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "const": "command"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control_failure"
+                },
+                "outcome": {
+                  "const": "failed"
+                },
+                "human_id": {
+                  "type": "null"
+                },
+                "session_id": {
+                  "type": "null"
+                },
+                "challenge_id": {
+                  "type": "null"
+                },
+                "related_session_id": {
+                  "type": "null"
+                },
+                "server_instance_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "run_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "approval_request_id": {
+                  "type": "null"
+                },
+                "command_id": {
+                  "type": "null"
+                },
+                "command_kind": {
+                  "type": "null"
+                },
+                "budget_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "reservation_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "lease_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "source_lease_id": {
+                  "type": "null"
+                },
+                "process_epoch_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "permit_id": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+                },
+                "recovery_directive_id": {
+                  "type": "null"
+                },
+                "fence_epoch": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                },
+                "auth_epoch": {
+                  "type": "null"
+                },
+                "policy_revision": {
+                  "type": "null"
+                },
+                "intent_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "call_digest": {
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+                },
+                "decision_digest": {
+                  "type": "null"
+                },
+                "recovery_directive_digest": {
+                  "type": "null"
+                },
+                "failure_scope": {
+                  "const": "runtime"
+                },
+                "proof": {
+                  "type": "null"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": ["session_challenge_issued", "session_issued", "session_replaced"]
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "challenge_digest": {
+                "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "challenge_digest": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "session_id": { "type": "null" } },
+            "required": ["session_id"]
+          },
+          "then": {
+            "properties": { "session_authority_digest": { "type": "null" } }
+          },
+          "else": {
+            "properties": {
+              "session_authority_digest": {
+                "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AuditPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "items",
+        "page"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.audit-page/v1"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/AuditEvent"
+          }
+        },
+        "page": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageInfo"
+        }
+      }
+    },
+    "CursorClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "route",
+        "workspace_id",
+        "server_instance_id",
+        "session_id",
+        "human_id",
+        "auth_epoch",
+        "required_capabilities",
+        "filter_digest",
+        "sort",
+        "page_size",
+        "high_water_sequence",
+        "last_sequence",
+        "last_id",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.cursor-claims/v1"
+        },
+        "route": {
+          "type": "string",
+          "enum": [
+            "approvals",
+            "attention",
+            "audit",
+            "commands"
+          ]
+        },
+        "workspace_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "server_instance_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "session_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "auth_epoch": {
+          "const": 1
+        },
+        "required_capabilities": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/CapabilitySet"
+        },
+        "filter_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "sort": {
+          "const": "sequence_desc_id_desc"
+        },
+        "page_size": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PageSize"
+        },
+        "high_water_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "last_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "last_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "issued_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "expires_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        }
+      }
+    }
+  }
+}

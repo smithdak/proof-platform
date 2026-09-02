@@ -1,0 +1,461 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof.local/schemas/operator-control/common/v1",
+  "title": "Proof operator control v1 common definitions",
+  "type": "object",
+  "maxProperties": 0,
+  "additionalProperties": false,
+  "$defs": {
+    "UuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "Rfc3339Utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{1,9})?Z$"
+    },
+    "SafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "PositiveSafeInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "PageSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "Hex32": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "KernelContentDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ControlDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "ArtifactDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Ed25519Signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{86}$"
+    },
+    "Ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "Origin": {
+      "type": "string",
+      "pattern": "^http://127\\.0\\.0\\.1:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",
+      "maxLength": 28
+    },
+    "Capability": {
+      "type": "string",
+      "enum": [
+        "approval.decide",
+        "approval.read",
+        "audit.read",
+        "run.cancel",
+        "run.read",
+        "run.resume"
+      ]
+    },
+    "CapabilitySet": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/Capability"
+      }
+    },
+    "RunStatus": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "waiting_for_input",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "AttentionKind": {
+      "type": "string",
+      "enum": [
+        "approval",
+        "run"
+      ]
+    },
+    "AttentionState": {
+      "type": "string",
+      "enum": [
+        "awaiting_decision",
+        "recoverable",
+        "running",
+        "terminal"
+      ]
+    },
+    "Urgency": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "normal"
+      ]
+    },
+    "BoundedSummary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "OperationName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+      "maxLength": 128
+    },
+    "OperationVersion": {
+      "type": "string",
+      "pattern": "^v[1-9][0-9]*$",
+      "maxLength": 16
+    },
+    "CursorToken": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{64,1536}$"
+    },
+    "ReviewField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "classification",
+        "display_value",
+        "input_digest"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{0,63}$"
+        },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "identifier",
+            "public",
+            "secret",
+            "sensitive"
+          ]
+        },
+        "display_value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "input_digest": {
+          "$ref": "#/$defs/KernelContentDigest"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "classification": {
+                "const": "secret"
+              }
+            },
+            "required": [
+              "classification"
+            ]
+          },
+          "then": {
+            "properties": {
+              "display_value": {
+                "const": "[redacted]"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "PageInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page_size",
+        "returned",
+        "high_water_sequence",
+        "next_cursor"
+      ],
+      "properties": {
+        "page_size": {
+          "$ref": "#/$defs/PageSize"
+        },
+        "returned": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "high_water_sequence": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "next_cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "authentication_required",
+        "capability_required",
+        "control_unavailable",
+        "cursor_stale",
+        "idempotency_conflict",
+        "invalid_request",
+        "not_actionable",
+        "not_found",
+        "rate_limited",
+        "request_too_large",
+        "stale_fence",
+        "stale_revision",
+        "unsupported_media_type"
+      ]
+    },
+    "ErrorEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.error/v1"
+        },
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "code": { "const": "authentication_required" },
+                "message": { "const": "Operator authentication is required." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "capability_required" },
+                "message": { "const": "The session lacks the required capability." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "control_unavailable" },
+                "message": { "const": "Operator control is unavailable." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "cursor_stale" },
+                "message": { "const": "The cursor is no longer valid." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "idempotency_conflict" },
+                "message": { "const": "The idempotency key is bound to another command." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "invalid_request" },
+                "message": { "const": "The request is invalid." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "not_actionable" },
+                "message": { "const": "The target is not actionable." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "not_found" },
+                "message": { "const": "The requested resource was not found." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "rate_limited" },
+                "message": { "const": "The request rate limit was exceeded." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "request_too_large" },
+                "message": { "const": "The request is too large." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "stale_fence" },
+                "message": { "const": "The run ownership fence changed." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "stale_revision" },
+                "message": { "const": "The target revision changed." }
+              }
+            },
+            {
+              "properties": {
+                "code": { "const": "unsupported_media_type" },
+                "message": { "const": "Content-Type must be application/json." }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "BudgetAmounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "tokens",
+        "duration_ms",
+        "cost_microusd",
+        "tool_dispatches"
+      ],
+      "properties": {
+        "steps": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "tokens": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "duration_ms": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "cost_microusd": {
+          "$ref": "#/$defs/SafeInteger"
+        },
+        "tool_dispatches": {
+          "$ref": "#/$defs/SafeInteger"
+        }
+      }
+    },
+    "ZeroBudgetAmounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "tokens",
+        "duration_ms",
+        "cost_microusd",
+        "tool_dispatches"
+      ],
+      "properties": {
+        "steps": { "const": 0 },
+        "tokens": { "const": 0 },
+        "duration_ms": { "const": 0 },
+        "cost_microusd": { "const": 0 },
+        "tool_dispatches": { "const": 0 }
+      }
+    },
+    "ZeroEffectCounters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_calls",
+        "tool_calls",
+        "governed_writes",
+        "human_key_loads",
+        "signatures",
+        "external_effects"
+      ],
+      "properties": {
+        "provider_calls": {
+          "const": 0
+        },
+        "tool_calls": {
+          "const": 0
+        },
+        "governed_writes": {
+          "const": 0
+        },
+        "human_key_loads": {
+          "const": 0
+        },
+        "signatures": {
+          "const": 0
+        },
+        "external_effects": {
+          "const": 0
+        }
+      }
+    },
+    "EffectCounters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_calls",
+        "tool_calls",
+        "governed_writes",
+        "human_key_loads",
+        "signatures",
+        "external_effects"
+      ],
+      "properties": {
+        "provider_calls": { "$ref": "#/$defs/SafeInteger" },
+        "tool_calls": { "$ref": "#/$defs/SafeInteger" },
+        "governed_writes": { "$ref": "#/$defs/SafeInteger" },
+        "human_key_loads": { "$ref": "#/$defs/SafeInteger" },
+        "signatures": { "$ref": "#/$defs/SafeInteger" },
+        "external_effects": { "$ref": "#/$defs/SafeInteger" }
+      }
+    },
+    "ProofReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proof_id",
+        "actor_id",
+        "operation",
+        "proof_digest"
+      ],
+      "properties": {
+        "proof_id": { "$ref": "#/$defs/UuidV7" },
+        "actor_id": { "$ref": "#/$defs/UuidV7" },
+        "operation": { "$ref": "#/$defs/OperationName" },
+        "proof_digest": { "$ref": "#/$defs/KernelContentDigest" }
+      }
+    }
+  }
+}

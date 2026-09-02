@@ -1,0 +1,1300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof.local/schemas/operator-control/store/v1",
+  "title": "Proof operator control v1 atomic store boundary",
+  "type": "object",
+  "maxProperties": 0,
+  "additionalProperties": false,
+  "$defs": {
+    "OperatorStoreError": {
+      "type": "string",
+      "enum": [
+        "conflict",
+        "corrupt",
+        "invalid",
+        "not_actionable",
+        "not_found",
+        "signer_failed",
+        "stale_fence",
+        "stale_revision",
+        "unavailable"
+      ]
+    },
+    "OperatorProvisioningError": {
+      "type": "string",
+      "enum": [
+        "catalog_mismatch", "close_failed", "environment_unavailable",
+        "invalid_arguments", "lock_unavailable", "migration_failed",
+        "movement_detected", "policy_mismatch", "schema_mismatch",
+        "storage_unavailable", "unsafe_provision", "unsafe_workspace",
+        "unsupported_platform"
+      ]
+    },
+    "LeaseAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "workspace_id",
+        "run_id",
+        "lease_id",
+        "owner_instance_id",
+        "process_epoch_id",
+        "fence_epoch",
+        "expected_control_revision",
+        "lease_token"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.lease-authority/v1" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "lease_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "owner_instance_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "process_epoch_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+        "expected_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "lease_token": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32" }
+      }
+    },
+    "OperatorReadScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "server_instance_id", "session_id",
+        "human_id", "auth_epoch", "policy_revision", "session_absolute_expires_at",
+        "route", "filter_digest",
+        "granted_capabilities", "required_capabilities"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.read-scope/v1" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "server_instance_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "session_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "auth_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+        "policy_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+        "session_absolute_expires_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+        "route": {
+          "type": "string",
+          "enum": [
+            "approval_detail", "approvals", "attention", "audit",
+            "command_detail", "commands", "run_detail"
+          ]
+        },
+        "filter_digest": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            { "type": "null" }
+          ]
+        },
+        "granted_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Capability" }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Capability" }
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "route": { "enum": ["approvals", "attention", "audit", "commands"] },
+            "filter_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" }
+          }
+        },
+        {
+          "properties": {
+            "route": { "enum": ["approval_detail", "command_detail", "run_detail"] },
+            "filter_digest": { "type": "null" }
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "route": { "const": "attention" },
+                "required_capabilities": {
+                  "enum": [
+                    ["approval.read"],
+                    ["run.read"],
+                    ["approval.read", "run.read"]
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "route": { "enum": ["approval_detail", "approvals"] },
+                "required_capabilities": { "const": ["approval.read"] }
+              }
+            },
+            {
+              "properties": {
+                "route": { "const": "run_detail" },
+                "required_capabilities": { "const": ["run.read"] }
+              }
+            },
+            {
+              "properties": {
+                "route": { "enum": ["audit", "command_detail", "commands"] },
+                "required_capabilities": { "const": ["audit.read"] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "VerifiedPageWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "kind", "high_water_sequence", "last_sequence", "last_id"],
+      "properties": {
+        "schema": { "const": "proof.operator.verified-page-window/v1" },
+        "kind": { "type": "string", "enum": ["continuation", "first"] },
+        "high_water_sequence": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "last_sequence": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "last_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "first" },
+            "high_water_sequence": { "type": "null" },
+            "last_sequence": { "type": "null" },
+            "last_id": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "kind": { "const": "continuation" },
+            "high_water_sequence": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            "last_sequence": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            "last_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" }
+          }
+        }
+      ]
+    },
+    "ControlAuditAppendRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "server_instance_id", "kind", "human_id",
+        "session_id", "challenge_id", "challenge_digest",
+        "session_authority_digest", "related_session_id", "auth_epoch",
+        "policy_revision"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.control-audit-append-request/v1" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "server_instance_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "control_shutdown", "session_challenge_issued", "session_expired",
+            "session_issued", "session_replaced"
+          ]
+        },
+        "human_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "session_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "challenge_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "challenge_digest": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            { "type": "null" }
+          ]
+        },
+        "session_authority_digest": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            { "type": "null" }
+          ]
+        },
+        "related_session_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "auth_epoch": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "policy_revision": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "const": "session_challenge_issued" },
+            "human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "session_id": { "type": "null" },
+            "challenge_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "challenge_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            "session_authority_digest": { "type": "null" },
+            "related_session_id": { "type": "null" },
+            "auth_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+            "policy_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" }
+          }
+        },
+        {
+          "properties": {
+            "kind": { "const": "session_issued" },
+            "human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "session_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "challenge_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "challenge_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            "session_authority_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            "related_session_id": { "type": "null" },
+            "auth_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+            "policy_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" }
+          }
+        },
+        {
+          "properties": {
+            "kind": { "const": "session_replaced" },
+            "human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "session_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "challenge_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "challenge_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            "session_authority_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            "related_session_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "auth_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+            "policy_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" }
+          }
+        },
+        {
+          "properties": {
+            "kind": { "const": "session_expired" },
+            "human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "session_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            "challenge_id": { "type": "null" },
+            "challenge_digest": { "type": "null" },
+            "session_authority_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+            "related_session_id": { "type": "null" },
+            "auth_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+            "policy_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" }
+          }
+        },
+        {
+          "properties": {
+            "kind": { "const": "control_shutdown" },
+            "human_id": { "type": "null" },
+            "session_id": { "type": "null" },
+            "challenge_id": { "type": "null" },
+            "challenge_digest": { "type": "null" },
+            "session_authority_digest": { "type": "null" },
+            "related_session_id": { "type": "null" },
+            "auth_epoch": { "type": "null" },
+            "policy_revision": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "ControlAuditAppendResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "event"],
+      "properties": {
+        "schema": { "const": "proof.operator.control-audit-append-result/v1" },
+        "event": { "$ref": "https://proof.local/schemas/operator-control/reads/v1#/$defs/AuditEvent" }
+      }
+    },
+    "OperatorProvisioningDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "agent_id", "agent_public_key_fingerprint", "human_id",
+        "human_public_key_fingerprint", "capabilities", "budget_limits",
+        "budget_deadline_at"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.provisioning-document/v1" },
+        "agent_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "agent_public_key_fingerprint": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "human_public_key_fingerprint": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "capabilities": {
+          "const": [
+            "approval.decide", "approval.read", "audit.read", "run.cancel",
+            "run.read", "run.resume"
+          ]
+        },
+        "budget_limits": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BudgetAmounts" },
+        "budget_deadline_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" }
+      }
+    },
+    "ProvisionOperatorWorkspaceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "outcome", "workspace_id", "schema_version",
+        "workspace_binding_digest", "schema_catalog_digest"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.provision-workspace-result/v1" },
+        "outcome": { "type": "string", "enum": ["created", "exact_existing"] },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "schema_version": { "const": 14 },
+        "workspace_binding_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "schema_catalog_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" }
+      }
+    },
+    "InitializeWorkspaceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "provision", "schema_catalog"],
+      "properties": {
+        "schema": { "const": "proof.operator.initialize-workspace-request/v1" },
+        "provision": { "$ref": "#/$defs/OperatorProvisioningDocument" },
+        "schema_catalog": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/SchemaCatalogBinding" }
+      }
+    },
+    "InitializeWorkspaceResult": {
+      "$ref": "#/$defs/ProvisionOperatorWorkspaceResult"
+    },
+    "InitialRunProjectionInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "run_id", "source_run_revision",
+        "checkpoint_id", "checkpoint_sequence", "checkpoint_digest",
+        "run_status"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.initial-run-projection-input/v1" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "source_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "checkpoint_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "checkpoint_sequence": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "checkpoint_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "run_status": { "type": "string", "enum": ["queued", "running"] }
+      }
+    },
+    "RegisterGovernedRunRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "run_id", "budget_id", "initial_projection"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.register-governed-run-request/v1" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "budget_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "initial_projection": { "$ref": "#/$defs/InitialRunProjectionInput" }
+      }
+    },
+    "RegisterGovernedRunResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "run_id", "control_revision", "run_control", "initial_projection"],
+      "properties": {
+        "schema": { "const": "proof.operator.register-governed-run-result/v1" },
+        "outcome": { "type": "string", "enum": ["created", "exact_existing"] },
+        "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "run_control": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RunControl" },
+        "initial_projection": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RunProjection" }
+      }
+    },
+    "ApprovalSigningRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "command_id", "decision_id", "authenticated_human_id", "approval_binding",
+        "signed_request_digest", "outcome", "validated_at"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.approval-signing-request/v1" },
+        "command_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "decision_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "authenticated_human_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "approval_binding": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/ApprovalBinding" },
+        "signed_request_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "outcome": { "type": "string", "enum": ["approved", "denied"] },
+        "validated_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" }
+      }
+    },
+    "SignedDecisionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "decision_digest", "signature"],
+      "properties": {
+        "schema": { "const": "proof.operator.signed-decision-result/v1" },
+        "decision_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "signature": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Ed25519Signature" }
+      }
+    },
+    "OperatorProofSigningRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "agent_id", "command", "command_digest", "input_digest",
+        "output_digest", "proof_id", "timestamp", "outcome"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.proof-signing-request/v1" },
+        "agent_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "command": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/CommandEnvelope" },
+        "command_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "input_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "output_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "proof_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "timestamp": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+        "outcome": { "$ref": "https://proof.local/schemas/operator-control/mutations/v1#/$defs/ControlTransitionOutcome" }
+      },
+      "allOf": [
+        {
+          "properties": {
+            "outcome": {
+              "properties": {
+                "outcome": { "const": "applied" }
+              }
+            }
+          }
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "command": {
+                  "properties": {
+                    "command": {
+                      "properties": {
+                        "schema": { "const": "proof.operator.command.approval-decision/v1" }
+                      }
+                    }
+                  }
+                },
+                "outcome": {
+                  "properties": {
+                    "kind": { "const": "approval_decide" },
+                    "proof_operation": { "const": "operator.approval_decide" }
+                  }
+                }
+              }
+            },
+            {
+              "properties": {
+                "command": {
+                  "properties": {
+                    "command": {
+                      "properties": {
+                        "schema": { "const": "proof.operator.command.run-cancel/v1" }
+                      }
+                    }
+                  }
+                },
+                "outcome": {
+                  "properties": {
+                    "kind": { "const": "run_cancel" },
+                    "proof_operation": { "const": "operator.run_cancel" }
+                  }
+                }
+              }
+            },
+            {
+              "properties": {
+                "command": {
+                  "properties": {
+                    "command": {
+                      "properties": {
+                        "schema": { "const": "proof.operator.command.run-resume/v1" }
+                      }
+                    }
+                  }
+                },
+                "outcome": {
+                  "properties": {
+                    "kind": { "const": "run_resume" },
+                    "proof_operation": { "const": "operator.run_resume" }
+                  }
+                }
+              }
+            },
+            {
+              "properties": {
+                "command": {
+                  "properties": {
+                    "command": {
+                      "properties": {
+                        "schema": { "const": "proof.operator.command.session-revoke/v1" }
+                      }
+                    }
+                  }
+                },
+                "outcome": {
+                  "properties": {
+                    "kind": { "const": "session_revoke" },
+                    "proof_operation": { "const": "operator.session_revoke" }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "OperatorMutationScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "route", "session_authority", "session_authority_digest",
+        "policy_revision", "required_capabilities"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.mutation-scope/v1" },
+        "route": {
+          "type": "string",
+          "enum": ["approval_decide", "run_cancel", "run_resume", "session_revoke"]
+        },
+        "session_authority": { "$ref": "https://proof.local/schemas/operator-control/auth/v1#/$defs/SessionAuthorityBinding" },
+        "session_authority_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "policy_revision": { "const": 1 },
+        "required_capabilities": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Capability" }
+        }
+      },
+      "oneOf": [
+        { "properties": { "route": { "const": "approval_decide" }, "required_capabilities": { "const": ["approval.decide", "approval.read"] } } },
+        { "properties": { "route": { "const": "run_cancel" }, "required_capabilities": { "const": ["run.cancel", "run.read"] } } },
+        { "properties": { "route": { "const": "run_resume" }, "required_capabilities": { "const": ["run.read", "run.resume"] } } },
+        { "properties": { "route": { "const": "session_revoke" }, "required_capabilities": { "maxItems": 0 } } }
+      ]
+    },
+    "CommandExecutionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "scope", "command"],
+      "properties": {
+        "schema": { "const": "proof.operator.command-execution-request/v1" },
+        "scope": { "$ref": "#/$defs/OperatorMutationScope" },
+        "command": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/OperatorCommand" }
+      }
+    },
+    "CommandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "receipt"],
+      "properties": {
+        "schema": { "const": "proof.operator.command-result/v1" },
+        "outcome": { "type": "string", "enum": ["already_terminal", "applied", "exact_replay"] },
+        "receipt": { "$ref": "https://proof.local/schemas/operator-control/mutations/v1#/$defs/CommandReceipt" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "outcome": { "const": "applied" } }, "required": ["outcome"] },
+          "then": { "properties": { "receipt": { "properties": { "outcome": { "const": "applied" } } } } }
+        },
+        {
+          "if": { "properties": { "outcome": { "const": "already_terminal" } }, "required": ["outcome"] },
+          "then": { "properties": { "receipt": { "properties": { "kind": { "const": "run_cancel" }, "outcome": { "const": "already_terminal" } } } } }
+        }
+      ]
+    },
+    "LeaseClaimRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "run_id", "lease_id",
+        "owner_instance_id", "process_epoch_id", "lease_token",
+        "expected_fence_epoch", "expected_control_revision"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.lease-claim-request/v1" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "lease_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "owner_instance_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "process_epoch_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "lease_token": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32" },
+        "expected_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "expected_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+      }
+    },
+    "LeaseMutationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "lease", "control_revision"],
+      "properties": {
+        "schema": { "const": "proof.operator.lease-mutation-result/v1" },
+        "outcome": { "type": "string", "enum": ["acquired", "released", "renewed"] },
+        "lease": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RunLease" },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+      }
+    },
+    "LeaseRenewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "authority"],
+      "properties": {
+        "schema": { "const": "proof.operator.lease-renew-request/v1" },
+        "authority": { "$ref": "#/$defs/LeaseAuthority" }
+      }
+    },
+    "LeaseReleaseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "authority"],
+      "properties": {
+        "schema": { "const": "proof.operator.lease-release-request/v1" },
+        "authority": { "$ref": "#/$defs/LeaseAuthority" }
+      }
+    },
+    "BudgetReserveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "authority", "reservation_id", "idempotency_key",
+        "intent", "intent_digest", "replay", "recovery"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.budget-reserve-request/v1" },
+        "authority": { "$ref": "#/$defs/LeaseAuthority" },
+        "reservation_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "idempotency_key": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "intent": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/DispatchIntent" },
+        "intent_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "replay": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/ReplayClaimBinding" },
+            { "type": "null" }
+          ]
+        },
+        "recovery": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RecoveryDirective" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "oneOf": [
+        { "properties": { "intent": { "properties": { "kind": { "const": "provider" } } }, "replay": { "type": "null" } } },
+        { "properties": { "intent": { "properties": { "kind": { "const": "tool" } } } } }
+      ]
+    },
+    "BudgetReserveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "reservation", "budget_revision", "control_revision"],
+      "properties": {
+        "schema": { "const": "proof.operator.budget-reserve-result/v1" },
+        "outcome": { "type": "string", "enum": ["exact_existing", "reserved"] },
+        "reservation": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/BudgetReservation" },
+        "budget_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+      }
+    },
+    "BudgetSettlementRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "authority", "reservation_id", "disposition"],
+      "properties": {
+        "schema": { "const": "proof.operator.budget-settlement-request/v1" },
+        "authority": { "$ref": "#/$defs/LeaseAuthority" },
+        "reservation_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "disposition": { "const": "release_pre_dispatch" }
+      }
+    },
+    "BudgetSettlementResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "reservation", "budget_revision", "control_revision"],
+      "properties": {
+        "schema": { "const": "proof.operator.budget-settlement-result/v1" },
+        "outcome": { "const": "released" },
+        "reservation": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/BudgetReservation" },
+        "budget_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+      }
+    },
+    "BeginDispatchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "authority", "reservation_id", "dispatch_token",
+        "intent", "intent_digest", "replay", "replay_claim_token",
+        "call_digest"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.begin-dispatch-request/v1" },
+        "authority": { "$ref": "#/$defs/LeaseAuthority" },
+        "reservation_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "dispatch_token": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32" },
+        "intent": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/DispatchIntent" },
+        "intent_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "replay": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/ReplayClaimBinding" },
+            { "type": "null" }
+          ]
+        },
+        "replay_claim_token": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "call_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "intent": { "properties": { "kind": { "const": "provider" } } },
+            "replay": { "type": "null" },
+            "replay_claim_token": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "intent": { "properties": { "kind": { "const": "tool" } } },
+            "replay": { "type": "null" },
+            "replay_claim_token": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "intent": { "properties": { "kind": { "const": "tool" } } },
+            "replay": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/ReplayClaimBinding" },
+            "replay_claim_token": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" }
+          }
+        }
+      ]
+    },
+    "ReplayProofEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "proof_id", "actor_id", "delegation_id", "operation",
+        "version", "input_digest", "output_digest", "timestamp", "expires_at",
+        "signature"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.replay-proof-envelope/v1" },
+        "proof_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "actor_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "delegation_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "operation": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationName" },
+        "version": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/OperationVersion" },
+        "input_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "output_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "timestamp": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+        "expires_at": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" },
+            { "type": "null" }
+          ]
+        },
+        "signature": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Ed25519Signature" }
+      }
+    },
+    "ReplayCompletionBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "replay_binding_digest", "workspace_id", "run_id",
+        "step_id", "checkpoint_id", "checkpoint_sequence",
+        "checkpoint_digest", "existing_run_revision",
+        "existing_step_revision", "existing_control_revision",
+        "canonical_output_json", "input_digest", "output_digest", "proof"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.replay-completion-binding/v1" },
+        "replay_binding_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "step_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "checkpoint_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "checkpoint_sequence": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "checkpoint_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "existing_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "existing_step_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "existing_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "canonical_output_json": { "type": "string", "minLength": 2, "maxLength": 1048576 },
+        "input_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "output_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "proof": { "$ref": "#/$defs/ReplayProofEnvelope" }
+      }
+    },
+    "ReplayLookupRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "binding"],
+      "properties": {
+        "schema": { "const": "proof.operator.replay-lookup-request/v1" },
+        "binding": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/ReplayClaimBinding" }
+      }
+    },
+    "ReplayLookupResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "completion"],
+      "properties": {
+        "schema": { "const": "proof.operator.replay-lookup-result/v1" },
+        "outcome": { "type": "string", "enum": ["completed", "not_found"] },
+        "completion": {
+          "oneOf": [
+            { "$ref": "#/$defs/ReplayCompletionBinding" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "outcome": { "const": "completed" },
+            "completion": { "$ref": "#/$defs/ReplayCompletionBinding" }
+          }
+        },
+        {
+          "properties": {
+            "outcome": { "const": "not_found" },
+            "completion": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "DispatchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "permit", "replay_completion", "control_revision"],
+      "properties": {
+        "schema": { "const": "proof.operator.dispatch-result/v1" },
+        "outcome": {
+          "type": "string",
+          "enum": ["dispatch_authorized", "exact_replay", "replay_conflict", "replay_failed", "replay_in_progress", "replay_unsupported"]
+        },
+        "permit": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/DispatchPermit" },
+            { "type": "null" }
+          ]
+        },
+        "replay_completion": {
+          "oneOf": [
+            { "$ref": "#/$defs/ReplayCompletionBinding" },
+            { "type": "null" }
+          ]
+        },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "outcome": { "const": "dispatch_authorized" },
+            "permit": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/DispatchPermit" },
+            "replay_completion": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "outcome": { "const": "exact_replay" },
+            "permit": { "type": "null" },
+            "replay_completion": { "$ref": "#/$defs/ReplayCompletionBinding" }
+          }
+        },
+        {
+          "properties": {
+            "outcome": { "enum": ["replay_conflict", "replay_failed", "replay_in_progress", "replay_unsupported"] },
+            "permit": { "type": "null" },
+            "replay_completion": { "type": "null" }
+          }
+        }
+      ]
+    },
+    "PreparedUsageBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "boundary_kind", "boundary_calls", "adapter", "model",
+        "steps", "tokens", "cost_microusd", "tool_dispatches",
+        "input_digest", "output_digest"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.prepared-usage-body/v1" },
+        "boundary_kind": { "type": "string", "enum": ["provider", "tool"] },
+        "boundary_calls": { "const": 1 },
+        "adapter": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "model": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,128}$" },
+            { "type": "null" }
+          ]
+        },
+        "steps": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "tokens": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "cost_microusd": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "tool_dispatches": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "input_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+        "output_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "boundary_kind": { "const": "provider" },
+            "model": { "type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,128}$" },
+            "tool_dispatches": { "const": 0 }
+          }
+        },
+        {
+          "properties": {
+            "boundary_kind": { "const": "tool" },
+            "model": { "type": "null" },
+            "tokens": { "const": 0 },
+            "cost_microusd": { "const": 0 },
+            "tool_dispatches": { "const": 1 }
+          }
+        }
+      ]
+    },
+    "PreparedRuntimeResultBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "usage",
+        "output_digest",
+        "proof",
+        "run_revision",
+        "step_revision",
+        "checkpoint_id",
+        "checkpoint_sequence",
+        "checkpoint_digest",
+        "first_event_sequence",
+        "last_event_sequence"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.prepared-runtime-result-body/v1"
+        },
+        "usage": { "$ref": "#/$defs/PreparedUsageBody" },
+        "output_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "proof": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+        },
+        "run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "step_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "checkpoint_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkpoint_sequence": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkpoint_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_event_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "last_event_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "checkpoint_id": {
+              "type": "null"
+            },
+            "checkpoint_sequence": {
+              "type": "null"
+            },
+            "checkpoint_digest": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "checkpoint_id": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            "checkpoint_sequence": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            "checkpoint_digest": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+            }
+          }
+        }
+      ]
+    },
+    "PreparedExecutionBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "payload_digest",
+        "replay_binding_digest",
+        "execution_context_id",
+        "handler_mutation",
+        "result",
+        "result_digest"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.prepared-execution-binding/v1"
+        },
+        "payload_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "replay_binding_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "execution_context_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "handler_mutation": {
+          "const": "no_effect"
+        },
+        "result": {
+          "$ref": "#/$defs/PreparedRuntimeResultBody"
+        },
+        "result_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        }
+      }
+    },
+    "RuntimeCommitRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "authority", "permit", "dispatch_token", "prepared"],
+      "properties": {
+        "schema": { "const": "proof.operator.runtime-commit-request/v1" },
+        "authority": { "$ref": "#/$defs/LeaseAuthority" },
+        "permit": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/DispatchPermit" },
+        "dispatch_token": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32" },
+        "prepared": { "$ref": "#/$defs/PreparedExecutionBinding" }
+      }
+    },
+    "RuntimeCommitResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "run_revision", "step_revision", "control_revision", "budget_revision", "charged", "proof"],
+      "properties": {
+        "schema": { "const": "proof.operator.runtime-commit-result/v1" },
+        "run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "step_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "budget_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "charged": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/BudgetAmounts" },
+        "proof": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference" }
+      }
+    },
+    "RuntimeFailureBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "reservation_id", "permit_id", "classification",
+        "failure_code", "intent_digest", "call_digest"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.runtime-failure-body/v1" },
+        "reservation_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "permit_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "classification": { "const": "ambiguous_forfeit_required" },
+        "failure_code": {
+          "type": "string",
+          "enum": ["dispatch_ambiguous", "handler_failed", "process_shutdown", "result_invalid"]
+        },
+        "intent_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" },
+        "call_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" }
+      }
+    },
+    "RuntimeFailureRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "authority", "permit", "dispatch_token", "failure", "error_digest"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.runtime-failure-request/v1" },
+        "authority": { "$ref": "#/$defs/LeaseAuthority" },
+        "permit": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/DispatchPermit" },
+        "dispatch_token": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32" },
+        "failure": { "$ref": "#/$defs/RuntimeFailureBody" },
+        "error_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest" }
+      }
+    },
+    "RuntimeFailureResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "run_revision", "control_revision", "budget_revision", "directive"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.runtime-failure-result/v1" },
+        "run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "budget_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "directive": { "type": "null" }
+      }
+    },
+    "ReclaimRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "workspace_id", "run_id", "expired_lease_id",
+        "expected_fence_epoch", "expected_control_revision", "new_lease_id",
+        "owner_instance_id", "new_process_epoch_id", "new_lease_token",
+        "checkpoint_id", "checkpoint_sequence", "checkpoint_digest"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.reclaim-request/v1" },
+        "workspace_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "expired_lease_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "expected_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger" },
+        "expected_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "new_lease_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "owner_instance_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "new_process_epoch_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "new_lease_token": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Hex32" },
+        "checkpoint_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "checkpoint_sequence": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+        "checkpoint_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" }
+      }
+    },
+    "ReclaimResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "outcome", "lease", "directive", "control_revision"],
+      "properties": {
+        "schema": { "const": "proof.operator.reclaim-result/v1" },
+        "outcome": { "type": "string", "enum": ["ambiguous_forfeited", "idle_reclaimed", "pre_dispatch_recovered", "recoverable_reclaimed"] },
+        "lease": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RunLease" },
+            { "type": "null" }
+          ]
+        },
+        "directive": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RecoveryDirective" },
+            { "type": "null" }
+          ]
+        },
+        "control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "outcome": { "const": "pre_dispatch_recovered" },
+            "lease": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RunLease" },
+            "directive": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RecoveryDirective" }
+          }
+        },
+        {
+          "properties": {
+            "outcome": { "const": "idle_reclaimed" },
+            "lease": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RunLease" },
+            "directive": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "outcome": { "const": "recoverable_reclaimed" },
+            "lease": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RunLease" },
+            "directive": { "$ref": "https://proof.local/schemas/operator-control/durable/v1#/$defs/RecoveryDirective" }
+          }
+        },
+        {
+          "properties": {
+            "outcome": { "const": "ambiguous_forfeited" },
+            "lease": { "type": "null" },
+            "directive": { "type": "null" }
+          }
+        }
+      ]
+    }
+  }
+}

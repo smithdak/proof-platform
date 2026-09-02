@@ -9,7 +9,10 @@ use proof_kernel::{
 use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
 use uuid::Uuid;
 
-use super::{agent::reject_if_agent_trace_sealed, store::SqliteStore};
+use super::{
+    agent::{reject_if_agent_trace_sealed, reject_if_operator_governed_run},
+    store::SqliteStore,
+};
 use crate::StorageError;
 
 impl SqliteStore {
@@ -157,6 +160,7 @@ impl SqliteStore {
             transaction.commit()?;
             return Ok(());
         }
+        reject_if_operator_governed_run(&transaction, &run.id, "modify the run")?;
         reject_if_agent_trace_sealed(&transaction, &run.id, "modify the run")?;
         match existing {
             Some((revision, _)) if revision.checked_add(1) != Some(revision_i64(run.revision)?) => {
@@ -277,6 +281,7 @@ impl SqliteStore {
                 )));
             }
         }
+        reject_if_operator_governed_run(&transaction, &step.run_id, "modify a run step")?;
         reject_if_agent_trace_sealed(&transaction, &step.run_id, "modify a run step")?;
         if let Some(approval_request_id) = step.approval_request_id {
             let conflicting_step_id = transaction
@@ -465,6 +470,7 @@ impl SqliteStore {
         }
         reject_checkpoint_identity_conflicts(&transaction, checkpoint)?;
 
+        reject_if_operator_governed_run(&transaction, &checkpoint.run_id, "append a checkpoint")?;
         reject_if_agent_trace_sealed(&transaction, &checkpoint.run_id, "append a checkpoint")?;
         transaction.execute(
             "INSERT INTO agent_checkpoints (
@@ -511,6 +517,7 @@ impl SqliteStore {
             transaction.commit()?;
             return Ok(());
         }
+        reject_if_operator_governed_run(&transaction, &checkpoint.run_id, "append a checkpoint")?;
         reject_if_agent_trace_sealed(&transaction, &checkpoint.run_id, "append a checkpoint")?;
         transaction.execute(
             "INSERT INTO agent_checkpoints (
@@ -553,7 +560,30 @@ impl SqliteStore {
             AgentEvaluationOutcome::Failed => "failed",
         };
         let connection = self.conn.lock().unwrap();
-        connection.execute(
+        let transaction = Transaction::new_unchecked(&connection, TransactionBehavior::Immediate)?;
+        let existing = transaction
+            .query_row(
+                "SELECT evaluation_json FROM agent_run_evaluations WHERE id = ?1",
+                [evaluation.id.to_string()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if let Some(existing) = existing {
+            if existing != serialized {
+                return Err(StorageError::Conflict(format!(
+                    "conflicting agent run evaluation: {}",
+                    evaluation.id
+                )));
+            }
+            transaction.commit()?;
+            return Ok(());
+        }
+        reject_if_operator_governed_run(
+            &transaction,
+            &evaluation.run_id,
+            "append a run evaluation",
+        )?;
+        transaction.execute(
             "INSERT OR IGNORE INTO agent_run_evaluations (
                 id, run_id, evaluator, outcome, score_bps, created_at, evaluation_json
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -567,7 +597,7 @@ impl SqliteStore {
                 serialized,
             ],
         )?;
-        let existing: String = connection.query_row(
+        let existing: String = transaction.query_row(
             "SELECT evaluation_json FROM agent_run_evaluations WHERE id = ?1",
             [evaluation.id.to_string()],
             |row| row.get(0),
@@ -578,6 +608,7 @@ impl SqliteStore {
                 evaluation.id
             )));
         }
+        transaction.commit()?;
         Ok(())
     }
 

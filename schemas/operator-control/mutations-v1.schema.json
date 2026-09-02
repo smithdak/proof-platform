@@ -1,0 +1,765 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://proof.local/schemas/operator-control/mutations/v1",
+  "title": "Proof operator control v1 mutation shapes",
+  "type": "object",
+  "maxProperties": 0,
+  "additionalProperties": false,
+  "$defs": {
+    "CommandBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_id",
+        "idempotency_key",
+        "workspace_id",
+        "server_instance_id",
+        "session_id",
+        "human_id",
+        "auth_epoch",
+        "session_authority_digest",
+        "policy_revision"
+      ],
+      "properties": {
+        "command_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "idempotency_key": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "workspace_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "server_instance_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "session_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "auth_epoch": {
+          "const": 1
+        },
+        "session_authority_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "policy_revision": {
+          "const": 1
+        }
+      }
+    },
+    "ApprovalDecisionCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "binding",
+        "approval_request_id",
+        "run_id",
+        "step_id",
+        "outcome",
+        "expected_request_digest",
+        "expected_run_revision",
+        "expected_step_revision",
+        "expected_control_revision",
+        "expected_checkpoint_id",
+        "expected_checkpoint_sequence",
+        "expected_checkpoint_digest",
+        "expected_fence_epoch"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.command.approval-decision/v1"
+        },
+        "binding": {
+          "$ref": "#/$defs/CommandBinding"
+        },
+        "approval_request_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "run_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "step_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "denied"
+          ]
+        },
+        "expected_request_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "expected_run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_step_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_control_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_checkpoint_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "expected_checkpoint_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_checkpoint_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "expected_fence_epoch": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        }
+      }
+    },
+    "RunCancelCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "binding",
+        "run_id",
+        "expected_run_revision",
+        "expected_control_revision",
+        "expected_fence_epoch"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.command.run-cancel/v1"
+        },
+        "binding": {
+          "$ref": "#/$defs/CommandBinding"
+        },
+        "run_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "expected_run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_control_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_fence_epoch": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        }
+      }
+    },
+    "RunResumeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "binding",
+        "run_id",
+        "step_id",
+        "approval_request_id",
+        "decision_digest",
+        "recovery_directive_id",
+        "recovery_directive_digest",
+        "expected_run_revision",
+        "expected_step_revision",
+        "expected_control_revision",
+        "expected_checkpoint_id",
+        "expected_checkpoint_sequence",
+        "expected_checkpoint_digest",
+        "expected_fence_epoch"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.command.run-resume/v1"
+        },
+        "binding": {
+          "$ref": "#/$defs/CommandBinding"
+        },
+        "run_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "step_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "approval_request_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recovery_directive_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recovery_directive_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_run_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_step_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_control_revision": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_checkpoint_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "expected_checkpoint_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+        },
+        "expected_checkpoint_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+        },
+        "expected_fence_epoch": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "approval_request_id": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            "decision_digest": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+            },
+            "recovery_directive_id": { "type": "null" },
+            "recovery_directive_digest": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "approval_request_id": { "type": "null" },
+            "decision_digest": { "type": "null" },
+            "recovery_directive_id": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            "recovery_directive_digest": {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+            }
+          }
+        }
+      ]
+    },
+    "SessionRevokeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "binding"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.command.session-revoke/v1"
+        },
+        "binding": {
+          "$ref": "#/$defs/CommandBinding"
+        }
+      }
+    },
+    "CommandKind": {
+      "type": "string",
+      "enum": [
+        "approval_decide",
+        "run_cancel",
+        "run_resume",
+        "session_revoke"
+      ]
+    },
+    "CommandOutcome": {
+      "type": "string",
+      "enum": [
+        "already_terminal",
+        "applied"
+      ]
+    },
+    "CommandReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "receipt_id",
+        "command_id",
+        "idempotency_key",
+        "kind",
+        "outcome",
+        "request_digest",
+        "workspace_id",
+        "human_id",
+        "target_run_id",
+        "approval_request_id",
+        "observed_run_revision",
+        "resulting_run_revision",
+        "resulting_step_revision",
+        "resulting_control_revision",
+        "resulting_fence_epoch",
+        "decision_id",
+        "decision_digest",
+        "proof",
+        "audit_event_id",
+        "audit_sequence",
+        "audit_digest",
+        "completed_at",
+        "receipt_digest"
+      ],
+      "properties": {
+        "schema": {
+          "const": "proof.operator.command-receipt/v1"
+        },
+        "receipt_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "command_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "idempotency_key": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "kind": {
+          "$ref": "#/$defs/CommandKind"
+        },
+        "outcome": {
+          "$ref": "#/$defs/CommandOutcome"
+        },
+        "request_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "workspace_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "human_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "target_run_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval_request_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_run_revision": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resulting_run_revision": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resulting_step_revision": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resulting_control_revision": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resulting_fence_epoch": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_id": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decision_digest": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proof": {
+          "oneOf": [
+            {
+              "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "audit_event_id": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
+        },
+        "audit_sequence": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
+        },
+        "audit_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        },
+        "completed_at": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc"
+        },
+        "receipt_digest": {
+          "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ControlDigest"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "const": "applied" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "proof": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/ProofReference" }
+            }
+          },
+          "else": {
+            "properties": {
+              "proof": { "type": "null" }
+            }
+          }
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "kind": { "const": "approval_decide" },
+                "outcome": { "const": "applied" },
+                "target_run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "approval_request_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "observed_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_step_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "decision_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "decision_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" }
+              }
+            },
+            {
+              "properties": {
+                "kind": { "const": "run_cancel" },
+                "target_run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "approval_request_id": { "type": "null" },
+                "observed_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_step_revision": { "type": "null" },
+                "resulting_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "decision_id": { "type": "null" },
+                "decision_digest": { "type": "null" }
+              }
+            },
+            {
+              "properties": {
+                "kind": { "const": "run_resume" },
+                "outcome": { "const": "applied" },
+                "target_run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "observed_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_step_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "approval_request_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                    "decision_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                    "decision_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" }
+                  }
+                },
+                {
+                  "properties": {
+                    "approval_request_id": { "type": "null" },
+                    "decision_id": { "type": "null" },
+                    "decision_digest": { "type": "null" }
+                  }
+                }
+              ]
+            },
+            {
+              "properties": {
+                "kind": { "const": "session_revoke" },
+                "outcome": { "const": "applied" },
+                "target_run_id": { "type": "null" },
+                "approval_request_id": { "type": "null" },
+                "observed_run_revision": { "type": "null" },
+                "resulting_run_revision": { "type": "null" },
+                "resulting_step_revision": { "type": "null" },
+                "resulting_control_revision": { "type": "null" },
+                "resulting_fence_epoch": { "type": "null" },
+                "decision_id": { "type": "null" },
+                "decision_digest": { "type": "null" }
+              }
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "applied" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": { "const": "approval_decide" },
+                  "proof": {
+                    "properties": { "operation": { "const": "operator.approval_decide" } }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": { "const": "run_cancel" },
+                  "proof": {
+                    "properties": { "operation": { "const": "operator.run_cancel" } }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": { "const": "run_resume" },
+                  "proof": {
+                    "properties": { "operation": { "const": "operator.run_resume" } }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "kind": { "const": "session_revoke" },
+                  "proof": {
+                    "properties": { "operation": { "const": "operator.session_revoke" } }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "ControlTransitionOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "command_id",
+        "kind",
+        "outcome",
+        "proof_operation",
+        "target_run_id",
+        "approval_request_id",
+        "resulting_run_revision",
+        "resulting_step_revision",
+        "resulting_control_revision",
+        "resulting_fence_epoch",
+        "decision_digest",
+        "completed_at"
+      ],
+      "properties": {
+        "schema": { "const": "proof.operator.control-transition-outcome/v1" },
+        "command_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+        "kind": { "$ref": "#/$defs/CommandKind" },
+        "outcome": { "const": "applied" },
+        "proof_operation": {
+          "type": "string",
+          "enum": [
+            "operator.approval_decide",
+            "operator.run_cancel",
+            "operator.run_resume",
+            "operator.session_revoke"
+          ]
+        },
+        "target_run_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "approval_request_id": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+            { "type": "null" }
+          ]
+        },
+        "resulting_run_revision": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "resulting_step_revision": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "resulting_control_revision": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "resulting_fence_epoch": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+            { "type": "null" }
+          ]
+        },
+        "decision_digest": {
+          "oneOf": [
+            { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" },
+            { "type": "null" }
+          ]
+        },
+        "completed_at": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/Rfc3339Utc" }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "kind": { "const": "approval_decide" },
+                "proof_operation": { "const": "operator.approval_decide" },
+                "target_run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "approval_request_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "resulting_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_step_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "decision_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" }
+              }
+            },
+            {
+              "properties": {
+                "kind": { "const": "run_cancel" },
+                "proof_operation": { "const": "operator.run_cancel" },
+                "target_run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "approval_request_id": { "type": "null" },
+                "resulting_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_step_revision": { "type": "null" },
+                "resulting_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "decision_digest": { "type": "null" }
+              }
+            },
+            {
+              "properties": {
+                "kind": { "const": "run_resume" },
+                "proof_operation": { "const": "operator.run_resume" },
+                "target_run_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                "resulting_run_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_step_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_control_revision": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" },
+                "resulting_fence_epoch": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger" }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "approval_request_id": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7" },
+                    "decision_digest": { "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/KernelContentDigest" }
+                  }
+                },
+                {
+                  "properties": {
+                    "approval_request_id": { "type": "null" },
+                    "decision_digest": { "type": "null" }
+                  }
+                }
+              ]
+            },
+            {
+              "properties": {
+                "kind": { "const": "session_revoke" },
+                "proof_operation": { "const": "operator.session_revoke" },
+                "target_run_id": { "type": "null" },
+                "approval_request_id": { "type": "null" },
+                "resulting_run_revision": { "type": "null" },
+                "resulting_step_revision": { "type": "null" },
+                "resulting_control_revision": { "type": "null" },
+                "resulting_fence_epoch": { "type": "null" },
+                "decision_digest": { "type": "null" }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -37,6 +37,8 @@ fn seed_sqlite(path: &Path, marker: &str) {
     connection
         .execute(&format!("INSERT INTO {marker} VALUES (7)"), [])
         .unwrap();
+    drop(connection);
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
 }
 
 #[test]

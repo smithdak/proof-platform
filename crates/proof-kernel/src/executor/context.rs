@@ -3,10 +3,12 @@
 use crate::delegation::DelegationChain;
 use crate::identity::{PrincipalId, PrincipalKind};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExecutionContext {
     /// The Principal executing the operation.
     pub actor: PrincipalId,

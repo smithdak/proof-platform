@@ -9,6 +9,7 @@ pub mod delegation;
 pub mod evidence;
 pub mod executor;
 pub mod identity;
+pub mod operator;
 pub mod registry;
 
 pub use agent::{
@@ -42,4 +43,5 @@ pub use identity::{
     generate_keypair, generate_keypair_for, principal_from_keypair, sign, verify, IdentityError,
     Keypair, Principal, PrincipalId, PrincipalKind,
 };
+pub use operator::*;
 pub use registry::{Governance, Registry, RegistryEntry, RegistryError, VersionStatus};
