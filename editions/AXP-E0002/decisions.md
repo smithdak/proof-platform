@@ -2497,3 +2497,1389 @@ and superseding packet digest
 E0002-17 enters review and is not done. No independent review is claimed by
 this repair, the superseding Gate B remains unaccepted, and shifted W6 and all
 later implementation/release work remain closed.
+
+## D-E0002-066 — Product owner authorizes exact wrapper/index byte-custody repair
+
+Status: adopted / bounded E0002-17 repair and re-review · Date: 2026-09-02 ·
+Decision owner: product owner
+
+The first quiescent review sequence stopped when the independent evaluator/
+fixture reviewer found that the propagation helper had appended one terminal
+LF to all 121 fixture wrappers. The orchestrator reproduced `121/121` wrapper
+LFs and additionally found one terminal LF on `index-v1.json`. Historical
+E0002-12 custody requires compact UTF-8 JSON with no trailing newline. The
+five runtime stale-fence wrapper cases are especially dispositive because
+D-E0002-037 permits only their wrapper `policy_sha256` field to change. The
+schema/manifest/packet review passed, but it is not sufficient to advance the
+three-review gate; the command/audit review was stopped after the failure.
+
+The product owner authorizes exactly this repair:
+
+> Reopen E0002-17 only to remove exactly one final `0x0a` byte from each of
+> the 16 valid wrappers, 105 rejection wrappers, and
+> `evals/fixtures/operator-control/index-v1.json`. Require current evaluator
+> SHA-256 `4e74345485f576a271bf05bae762bee8a11ae821267cdd7573c5d9cd9fc2e36d`,
+> current index SHA-256
+> `a71a42ffb0ac2e11ef5f68ea65863fba6a7492eba2759faab9033a662339cb60`,
+> and validator SHA-256
+> `9437ad3a615d0fc302fd0b2d3e3717ed29d46451292349aa867453ecc0b9f156`
+> before the first fixture edit. Preserve every JSON value and every byte
+> preceding those 122 final LF bytes. In particular, preserve the 28 setup
+> documents and their D-E0002-064-authorized terminal LFs, all other recipe
+> documents, all seeds, IDs, ordinals, counts, paths, hashes, semantics, frozen
+> Gate-B artifacts, packet, schemas, manifests, Cargo files, and implementation
+> source. Require resulting index SHA-256
+> `fde90bde1b2983a4efe8b4eb224da4ce461ccf69037a77ba6a9c4bb58882740d`,
+> strict fixture validation, an independent exact no-final-newline scan of all
+> wrappers and the index, evaluator/validator custody, edition validation, and
+> `rtk git diff --check`. Stop on any failure. On PASS, return E0002-17 to
+> review and run three fresh independent read-only reviews of command/audit
+> semantics, schema/manifest/packet closure, and evaluator/fixture propagation.
+> Do not accept Gate B or dispatch implementation.
+
+This decision authorizes no JSON-semantic change, recipe-document change,
+validator edit, Cargo command, provider/browser/external effect, E0006 reuse,
+commit, push, Gate B acceptance, Gate C, release, or shifted W6-and-later work.
+
+## D-E0002-067 — Exact wrapper/index byte-custody repair passes locally
+
+Status: recorded / local PASS / three fresh reviews required · Date:
+2026-09-02 · Decision owner: orchestrator under D-E0002-066
+
+Every D-E0002-066 precondition matched before the first fixture edit. The
+bounded mechanical rewrite removed exactly one final `0x0a` byte from each of
+the 16 valid wrappers, 105 rejection wrappers, and `index-v1.json`. An exact
+post-edit comparison proved that every current target plus one LF equals its
+`HEAD` predecessor byte-for-byte, all parsed JSON values are identical, and no
+other fixture path changed. The 28 D-E0002-064 setup documents retain their
+authorized terminal LFs and all recipe documents remain byte-identical to
+`HEAD`.
+
+The repaired index SHA-256 is
+`fde90bde1b2983a4efe8b4eb224da4ce461ccf69037a77ba6a9c4bb58882740d`.
+Evaluator SHA-256 remains
+`4e74345485f576a271bf05bae762bee8a11ae821267cdd7573c5d9cd9fc2e36d`
+and validator SHA-256 remains
+`9437ad3a615d0fc302fd0b2d3e3717ed29d46451292349aa867453ecc0b9f156`.
+The strict fixture validator passes 16 valid scenarios, 105 rejection
+envelopes, and 468 recipe documents with exact order, blueprints, seeds, and
+digests. Edition validation and `rtk git diff --check` also pass.
+
+E0002-17 returns to review and is not done. The prior partial review set is not
+reused. Only three fresh independent read-only reviews may now cover
+command/audit semantics, schema/manifest/packet closure, and evaluator/fixture
+propagation. The superseding Gate B remains unaccepted, and shifted W6 plus all
+later implementation/release work remains closed.
+
+## D-E0002-068 — Fresh review sequence stops on command/audit semantics
+
+Status: recorded / owner decision required / non-dispatchable · Date:
+2026-09-02 · Decision owner: orchestrator
+
+All three D-E0002-067 reviewers were fresh, independent, read-only, and
+non-authoring. The schema/manifest/packet reviewer passed all eleven artifact
+hashes, five semantic digests, the exact eight-path packet delta, canonical
+superseding digest
+`sha256:c1772ffb53a13f66e796b6399f1b70994ac8e80710e6c46fc0a8e434df4ceca8`,
+and its `pending_owner` / `implementation_dispatch: false` state. The
+evaluator/fixture reviewer passed the exact 16 valid, 105 rejection, and 468
+recipe-document corpus; 28 whole-phase setup correspondences; all hashes,
+seeds, links, and secret/filesystem custody; the 122-byte terminal-LF repair;
+and index SHA-256
+`fde90bde1b2983a4efe8b4eb224da4ce461ccf69037a77ba6a9c4bb58882740d`.
+
+The command/audit reviewer failed the sequence on three pre-existing semantic
+inconsistencies:
+
+1. Each of the four D-E0002-037 `stale_fence_rejected` reads-schema branches
+   references `SafeInteger` for `fence_epoch`, accepting zero, while every
+   originating command references `PositiveSafeInteger` for submitted
+   `expected_fence_epoch` and kernel command validation rejects zero.
+2. `AuditEvent::validate_profile` and its profile test still accept only the
+   obsolete runtime-shaped mask `0x16c30`; all four newly frozen command masks
+   are rejected. Storage validates through that kernel method, but E0002-05 is
+   done and the current post-Gate-B graph assigns no kernel writer before W6.
+3. Runtime rejection ordinals 067, 103, and 105 call `claim_run_lease` with a
+   `LeaseClaimRequest` but expect observation stage `reclaim`. Ordinal 103 also
+   describes possession of an existing raw lease token even though claim and
+   reclaim use fresh unbound custody, so the current action cannot exercise the
+   declared failure.
+
+The same reviewer confirmed the four intended presence masks, rejection of
+`0x16c30` by the reads schema, runtime no-audit semantics and empty
+`new_events`, the proposed-command referential exception, exact D-E0002-066
+byte-only change, strict fixture validation, edition validation, and diff
+check. No reviewer edited a file or ran Cargo.
+
+The required stop is now in force. E0002-17 is blocked and not done; neither
+passing review may substitute for the failed complete set. The superseding
+Gate B remains unaccepted, and all shifted W6-and-later work remains closed.
+No semantic diagnosis, contract/schema/evaluator/fixture/kernel/workgraph
+repair, Cargo command, review retry, provider/browser/external effect, E0006
+reuse, commit, push, Gate B acceptance, Gate C, or release is authorized.
+Continuing requires a new explicit product-owner decision.
+
+## D-E0002-069 — Product owner authorizes planning-only semantic diagnostic
+
+Status: adopted / bounded read-only diagnostic · Date: 2026-09-02 · Decision
+owner: product owner
+
+After receiving D-E0002-068, the product owner directed the orchestrator to
+proceed with the proposed planning-only diagnostic. Authority is limited to:
+
+1. identify every exact reads-schema path that admits zero for a submitted
+   command fence and the complete derived manifest/evaluator/fixture/digest
+   closure needed to make those fields positive-safe-integer exact;
+2. resolve the intended action, subject schema, observation stage, mutation,
+   and expected result for runtime rejection ordinals 067, 103, and 105 against
+   the frozen lease/fence contract and actual candidate APIs;
+3. identify the exact kernel validation/test delta required to replace obsolete
+   audit mask `0x16c30` with the four command-attributed profiles; and
+4. design a validator-safe additive task/wave/ownership graph that performs the
+   product-artifact repair before a new superseding Gate-B packet and performs
+   kernel source alignment only after explicit Gate-B acceptance and separate
+   implementation dispatch.
+
+The diagnostic may read repository artifacts and exact named `/tmp` validators,
+run read-only parsing/hash/schema/diff/edition commands, and update only
+orchestrator-owned edition decision/status/evidence records with its findings.
+It must return an exact bounded repair proposal and predicted digest closure
+for a new product-owner decision. It may not edit any contract, schema,
+manifest, evaluator, fixture, kernel, migration, Cargo file, implementation
+source, task/assignment/workgraph, or temporary validator; run Cargo; retry a
+review; accept Gate B; dispatch any task; invoke a provider/browser/external
+effect; reuse E0006 authority; commit; push; approve Gate C; or claim release.
+Any ambiguity that requires a product choice stops the diagnostic and is
+returned explicitly rather than silently resolved.
+
+## D-E0002-070 — Semantic diagnostic closes with an additive repair proposal
+
+Status: proposed / product-owner decision required / non-dispatchable · Date:
+2026-09-02 · Decision owner: orchestrator proposal
+
+The D-E0002-069 read-only diagnostic reproduced all three D-E0002-068 review
+findings against the frozen contract and current candidate APIs. It also found
+one additional operation/stage mismatch, rejection ordinal 078, while checking
+the complete bounded set of single-step runtime rejections. No product,
+fixture, kernel, task, assignment, workgraph, validator, Cargo, migration, or
+implementation file was changed.
+
+### Exact planning-artifact correction
+
+The only submitted-command zero-fence paths are these four reads-schema JSON
+pointers:
+
+- `#/$defs/AuditEvent/allOf/1/oneOf/16/properties/fence_epoch` — approval
+  decision;
+- `#/$defs/AuditEvent/allOf/1/oneOf/17/properties/fence_epoch` — run cancel;
+- `#/$defs/AuditEvent/allOf/1/oneOf/18/properties/fence_epoch` —
+  approval-branch run resume; and
+- `#/$defs/AuditEvent/allOf/1/oneOf/19/properties/fence_epoch` —
+  recovery-branch run resume.
+
+Each must change only from `SafeInteger` to `PositiveSafeInteger`. The contract
+already requires the submitted positive fence and needs no edit. The manifest
+then refreshes only the reads-schema hash, and the evaluator refreshes only the
+reads and manifest artifact entries, the existing 28 assembly-bound manifest
+links and derived case/baseline hashes, the four runtime cases below, and the
+two affected semantic digests.
+
+| Ordinal | Exact corrected action and subject | Exact mutation | Exact observation | Audit |
+|---:|---|---|---|---|
+| 067 | `claim_run_lease` / `LeaseClaimRequest` | retain the active-second-claim barrier | `claim_lease`, `not_actionable` | retain `new_events: []` |
+| 078 | `settle_budget_reservation` / `BudgetReservation` | retain `ReleasePreDispatch` against the dispatching row | `settle_budget`, `not_actionable` | retain the contract-required `budget_rejected` |
+| 103 | `begin_dispatch` / `BeginDispatchRequest` | target `BeginDispatchRequest` at `/authority/lease_token`, replacing it with the symbolic different raw token | `begin_dispatch`, `stale_fence` | retain `new_events: []` |
+| 105 | `begin_dispatch` / `BeginDispatchRequest` | target `BeginDispatchRequest` at `/authority/owner_instance_id`, replacing it with the symbolic revoked instance | `begin_dispatch`, `stale_fence` | retain `new_events: []` |
+
+Ordinal 067's setup already contains an active lease and a current-revision
+second claim; production storage checks that singleton and returns
+`NotActionable`. Ordinals 103 and 105 must use a later authority-bearing call:
+claim and reclaim deliberately establish fresh unbound token custody and
+cannot prove possession of an existing token. Their existing live lease plus
+reserved-pre-dispatch setup makes `begin_dispatch` the exact no-effect
+boundary; `validate_authority` checks the token and then the owner instance
+before any reservation mutation. The full single-step runtime-rejection audit
+found no other operation/stage mismatch. Ordinal 078 was not named in
+D-E0002-069 but cannot remain at `reclaim`: the runtime reports
+`SettleBudget`. Its existing audit expectation follows the contract's
+authority-proven settlement-rejection row; E0002-06 must later make the current
+early `NotActionable` candidate path append that event atomically rather than
+weakening the evaluator.
+
+### Exact post-Gate-B kernel correction
+
+A new kernel task must change `AuditEvent::validate_chain_link` so
+`StaleFenceRejected` accepts only a rejected event with a nonzero
+`fence_epoch` and one of these correlated `(command_kind, presence_mask)`
+pairs:
+
+- `(approval_decide, 0x101e3)`;
+- `(run_cancel, 0x101a3)`;
+- `(run_resume, 0x2101e3)`; or
+- `(run_resume, 0x4181a3)`.
+
+It must reject `0x16c30`, a zero fence, a mismatched command kind, and every
+other mask. The existing frozen-profile test replaces its obsolete tuple with
+the four accepted tuples and adds explicit obsolete-mask, zero-fence, and
+wrong-command-kind rejection assertions. No public type, event kind, error,
+Cargo file, or downstream source changes in that task. Kernel formatting,
+scoped tests, quiescent reverse-impact tests, and independent review are
+required, but only after a new Gate-B acceptance and separate dispatch.
+
+### Predicted digest and fixture closure
+
+An exact in-memory projection using the repository's canonical digest rules
+produced:
+
+| Value | Current | Predicted after the exact correction |
+|---|---|---|
+| reads schema raw SHA-256 | `sha256:acbf50d28c57129794e8becb92236706794468f3ace63afc0a80fcfed1ce29c5` | `sha256:1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542` |
+| schema manifest raw SHA-256 | `sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8` | `sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c` |
+| valid-scenarios semantic SHA-256 | `sha256:f8b623b06f84d6f2e2b8f018865b662daf0dee5a59c7e3bbb40d4bd520bce95d` | `sha256:240d33818aaeb9fe6bf89bba0ba7393bca71cb0ec41174a95040fe73916982fd` |
+| rejection-vectors semantic SHA-256 | `sha256:094d2bc6109752e44bd6ee2a1c3f8f7f6c1cc97f3fa92fbbdeeb6170dc17afe1` | `sha256:388ddb7eefa13f831fbf149e77438e73715a8e00aa4f1ddf297b4486a694d55a` |
+| evaluator raw SHA-256 | `sha256:4e74345485f576a271bf05bae762bee8a11ae821267cdd7573c5d9cd9fc2e36d` | `sha256:fec4fa13f723ee47a2a28d6048ac1e8d1a80dab1f0f599040da08348d4b3830e` |
+| fixture index raw SHA-256 | `sha256:fde90bde1b2983a4efe8b4eb224da4ce461ccf69037a77ba6a9c4bb58882740d` | `sha256:0380cbb60d84b44765b19ee86e4559bc2b56b84494d1f23bd8b5661b2d09b991` |
+| Gate-B packet canonical SHA-256 | `sha256:c1772ffb53a13f66e796b6399f1b70994ac8e80710e6c46fc0a8e434df4ceca8` | `sha256:25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2` |
+
+The four directly corrected case-semantic hashes are predicted as ordinal 067
+`sha256:cfe7cb112ec6a0dcf078e1b58f7ded2662a3e7b1a986faf6bfe0411a896cd1f7`,
+078 `sha256:40a43f4ba59ce201b24a61098b26af16f7b4c9b4f6c862d27a90e5dfb19b7136`,
+103 `sha256:0bbdb382be855c671e9d76dc50e29edf8527892e4626db8bf8fe9e0d3265cf0e`,
+and 105
+`sha256:b898ef56937c4a0733da8f81740cd524d4c1fef602ac0b2747f384757778dd95`.
+The evaluator projection changes 107 exact JSON leaves: 28 existing
+assembly-bound cases plus the four direct runtime cases produce 32 changed case
+hashes. The mechanical fixture closure is exactly 36 recipe documents (the 28
+existing assembly setup documents plus eight direct mutation/action/expected
+documents), all 121 wrappers, and the index: 158 fixture files total. It
+preserves every seed, ID, ordinal, count, baseline, unrelated recipe, and the
+current terminal-byte profile: the 28 already-authorized setup LFs remain;
+the eight direct documents, all wrappers, and the index remain without a final
+LF.
+
+The projected Gate-B v3 packet names E0002-18, stays `pending_owner`, keeps
+`implementation_dispatch: false`, and differs from v2 at exactly six JSON
+paths: task; artifact ordinals 4, 10, and 11; and the valid/rejection semantic
+digests. Checks, backend subset, store-error matrix, evaluation counts,
+migration 14, material choices, contract, all other schemas, Cargo files, and
+implementation bytes remain unchanged. The in-memory projection validates all
+eight Draft 2020-12 schemas, the manifest, evaluator, 121 envelopes, and 468
+recipe documents. These hashes are predictions, not a freeze or acceptance;
+the authorized writers must reproduce them from actual bytes and stop on any
+disagreement.
+
+### Validator-safe additive graph proposal
+
+Preserve E0002-16 as done and E0002-17 as blocked historical evidence. Add:
+
+1. E0002-18 in W6, one Sol/high orchestrator planning writer for only the reads
+   schema, manifest, evaluator, v3 packet, and bounded edition records;
+2. E0002-19 in W7, one Luna/medium fixture writer for only the exact 158-file
+   derived closure, followed by three fresh independent read-only reviews and
+   an explicit digest-bound owner Gate-B decision; and
+3. E0002-20 in W8, one Sol/high kernel writer, pending and non-dispatchable
+   until Gate B is accepted and the owner separately dispatches it.
+
+Move the currently blocked storage/runtime/control lanes together to W9, the
+two current W7 lanes to W10, and the remaining waves successively through W15.
+Replace downstream E0002-17 dependencies with E0002-19/E0002-20 as applicable;
+the final integration task depends on E0002-18/19/20 and excludes the blocked,
+superseded E0002-17. E0002-06 retains the ordinal-078 audit obligation, and
+E0002-07 plus the evaluator harness must align active-second-claim evidence to
+`ClaimLease`/`NotActionable` without exposing a raw token. A read-only
+projection passes the assignment validator's task-ID, earlier-wave dependency,
+three-worker, status/dependency, and same-wave ownership rules with 20 tasks,
+only E0002-18 active, and wave cardinalities
+`1,1,3,1,1,1,1,1,3,2,1,1,1,1,1` for W1 through W15. Actual task/handoff and
+graph files do not yet exist and no projected status is dispatch authority.
+
+This proposal grants no edit or dispatch authority. E0002-17 and all
+implementation remain blocked; the current v2 packet is unaccepted. The
+product owner may authorize exactly:
+
+> Authorize D-E0002-070's additive E0002-18/E0002-19/E0002-20 graph. Activate
+> E0002-18 only for the exact four positive-fence refs, runtime ordinals
+> 067/078/103/105, derived manifest/evaluator hashes, and pending Gate-B v3
+> packet; then activate E0002-19 only for the exact derived fixture closure.
+> Require exact validations and three fresh independent read-only reviews and
+> stop for explicit Gate-B acceptance. Keep E0002-20, kernel/source work, the
+> shifted implementation lanes, Cargo, external effects, Gate C, commit, push,
+> and release closed pending later explicit decisions.
+
+## D-E0002-071 — Product owner authorizes D-E0002-070 additive repair graph
+
+Status: adopted / administrative graph and serialized planning repair · Date:
+2026-09-02 · Decision owner: product owner
+
+After receiving D-E0002-070, the product owner directed:
+
+> i authorize D-E0002-070
+
+This adopts D-E0002-070 exactly as written. The orchestrator may install the
+validator-safe 20-task W1-W15 graph with E0002-18 ready, E0002-19 and E0002-20
+pending, E0002-17 preserved as blocked historical evidence, and every existing
+implementation task shifted without changing its candidate source or scope.
+
+Before any product-artifact edit, the complete administrative graph and diff
+must validate. PASS permits E0002-18 alone to become active for exactly the
+four positive-fence schema references, runtime ordinals 067/078/103/105, the
+derived manifest/evaluator hashes, and the pending-owner Gate-B v3 packet.
+After its exact freeze signal, E0002-19 alone may activate for the exact
+158-file mechanical fixture closure. Its locally passing candidate must then
+stop for three fresh independent read-only reviews and an explicit
+digest-bound product-owner Gate-B decision.
+
+This decision does not accept Gate B or dispatch E0002-20. Kernel or other
+source work, migration/Cargo commands, the shifted implementation lanes,
+provider/browser/external effects, E0006 reuse, Gate C, commit, push, and
+release remain closed. Any validation, custody, semantic, or predicted-digest
+mismatch stops without automatic retry.
+
+## D-E0002-072 — Additive graph gate passes; E0002-18 alone is dispatched
+
+Status: adopted / planning-only artifact dispatch · Date: 2026-09-02 ·
+Decision owner: orchestrator under D-E0002-071
+
+The complete D-E0002-070 administrative graph was staged with twenty tasks
+across W1-W15, E0002-18 ready, E0002-19/E0002-20 pending, E0002-17 preserved
+blocked, the three unfinished implementation lanes shifted together to W9,
+and every later dependency updated. Before any artifact edit:
+
+- `rtk scripts/swarm.sh validate AXP-E0002` passed;
+- `rtk scripts/swarm.sh validate-assignments
+  editions/AXP-E0002/assignments.tsv` passed;
+- `rtk git diff --check` passed; and
+- an exact assertion passed for all twenty tasks, the sole ready task, shifted
+  W9 cardinality, and W15 integration placement.
+
+The administrative gate therefore passes and E0002-18 alone becomes active
+for D-E0002-070's exact four schema references, runtime ordinals
+067/078/103/105, derived manifest/evaluator hashes, and pending-owner Gate-B v3
+packet. E0002-19 remains pending until the exact artifact-freeze signal.
+E0002-20, kernel and all other source, fixtures, migrations, Cargo, provider/
+browser/external effects, Gate B acceptance, Gate C, commit, push, and release
+remain closed.
+
+## D-E0002-073 — E0002-18 stops on reads-schema render-assumption failure
+
+Status: recorded / owner decision required / non-dispatchable · Date:
+2026-09-02 · Decision owner: orchestrator
+
+Under D-E0002-072, the additive graph and diff gates passed and E0002-18 began
+with exact input custody. Reads, manifest, evaluator, and fixture-index raw
+SHA-256 values reproduced respectively at `acbf50d2...29c5`,
+`a6015dae...2ad8`, `4e743454...e36d`, and `fde90bde...2740d`. Parsed reads
+AuditEvent branches 16 through 19 contain exactly the four expected
+`SafeInteger` references.
+
+The first candidate command, `rtk python3 -B
+/tmp/e0002_e18_transform.py`, stopped before writing any candidate or
+repository artifact with:
+
+`noncanonical tracked formatting: .../reads-v1.schema.json`
+
+Read-only diagnosis proved that the schema is valid mixed-format JSON: its
+first intentional compact inline object begins at byte 3602, so generic
+`json.dumps(indent=2)` expands unrelated bytes. The manifest and evaluator do
+round-trip byte-for-byte through that renderer. The reads schema contains 43
+total `SafeInteger` references, so a global textual replacement is also
+invalid. No schema, manifest, evaluator, packet, fixture, kernel, source,
+migration, or Cargo byte changed.
+
+D-E0002-071 requires a stop without automatic retry. E0002-18 is blocked;
+E0002-19 was not dispatched; Gate B and all source remain closed. A safe
+continuation is bounded to replacing only the rejected whole-file-render
+assumption with a surgical edit of the four already identified parsed JSON
+paths, verifying that the semantic diff is exactly those four paths and the
+raw reads hash is exactly
+`sha256:1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542`,
+then resuming the otherwise unchanged E0002-18 candidate, custody, validation,
+packet, and freeze sequence. Any mismatch still stops. E0002-19 remains closed
+until the exact freeze and then only D-E0002-071's existing mechanical authority
+applies. No Gate-B acceptance, E0002-20, Cargo, source, external effect, commit,
+push, Gate C, or release authority follows automatically.
+
+## D-E0002-074 — Product owner authorizes surgical reads-render continuation
+
+Status: adopted / bounded E0002-18 continuation · Date: 2026-09-02 · Decision
+owner: product owner
+
+After receiving D-E0002-073, the product owner directed:
+
+> i authorize. proceed
+
+This reactivates only E0002-18 at the recorded candidate-render blocker. The
+temporary candidate helper may replace its rejected generic whole-file reads
+render with an exact line-preserving transformation of only AuditEvent oneOf
+branches 16 through 19 from `SafeInteger` to `PositiveSafeInteger`. It must
+prove every other tracked byte is preserved, the parsed semantic diff contains
+exactly those four paths, and reads raw SHA-256 equals
+`sha256:1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542`
+before resuming the otherwise unchanged E0002-18 manifest/evaluator/v3 packet,
+custody, validation, and freeze sequence.
+
+Any mismatch stops without retry. E0002-19 remains closed until the exact
+freeze, after which D-E0002-071's existing mechanical-fixture authority
+applies. Gate-B acceptance, E0002-20, kernel or other source, migrations,
+Cargo, provider/browser/external effects, E0006 reuse, commit, push, Gate C,
+and release remain closed.
+
+## D-E0002-075 — E0002-18 stops on reads-candidate promotion mismatch
+
+Status: recorded / owner decision required / non-dispatchable · Date:
+2026-09-02 · Decision owner: orchestrator
+
+Under D-E0002-074, the revised repository-external candidate transformation
+replaced only the four certified physical lines and passed every predicted
+pre-promotion assertion:
+
+- reads: four parsed paths, raw SHA-256
+  `1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542`;
+- manifest: one parsed path, raw SHA-256
+  `1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c`;
+- evaluator: 107 parsed leaves, 28 assembly cases, 32 changed case hashes,
+  raw SHA-256
+  `fec4fa13f723ee47a2a28d6048ac1e8d1a80dab1f0f599040da08348d4b3830e`;
+  and
+- Gate-B v3: six paths from v2 and canonical SHA-256
+  `25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`.
+
+The reads/manifest promotion patch was then applied. Its split context chunks
+allowed the first changed hunk to match the earlier structurally similar
+branch 11 `lease_acquired` fence instead of branch 16 `approval_decide`. The
+first required post-write comparison caught the mismatch and stopped before
+evaluator promotion. Current reads raw SHA-256 is
+`35bb9a16b1f29dcbec8b7ef592d3e1e548a560c9ec055fa90f34c60065cb7bbf`;
+its positive AuditEvent branches are exactly 11, 17, 18, and 19. The pinned
+candidate differs from current bytes at exactly two lines: restore branch 11
+to `SafeInteger` and change branch 16 to `PositiveSafeInteger`. The manifest
+already equals its certified candidate at raw SHA-256
+`1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c`.
+The evaluator remains at `4e743454...e36d`; no packet, fixture, kernel, source,
+migration, or Cargo byte changed.
+
+D-E0002-074 requires a stop on mismatch, so E0002-18 is blocked and no writer
+is active. A safe continuation is limited to re-verifying the pinned
+`/tmp/e0002_e18_reads.json` hash and its exact four-path delta from the
+pre-E0002-18 value, proving its current-file delta is exactly the two lines
+above, promoting those pinned bytes without a context-search patch, and
+requiring exact byte equality before resuming the otherwise unchanged
+E0002-18 evaluator, packet, validation, and freeze sequence. E0002-19 remains
+closed until the freeze. Gate-B acceptance, E0002-20, Cargo, source, external
+effects, commit, push, Gate C, and release remain closed.
+
+## D-E0002-076 — Product owner authorizes pinned reads-candidate promotion
+
+Status: adopted / bounded E0002-18 continuation · Date: 2026-09-02 · Decision
+owner: product owner
+
+After receiving D-E0002-075, the product owner directed:
+
+> i authorize
+
+This reactivates only E0002-18 at the recorded promotion mismatch. Before any
+write, the orchestrator must reproduce the pinned reads candidate raw SHA-256
+`1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542`,
+reconstruct and hash the pre-E0002-18 reads bytes at
+`acbf50d28c57129794e8becb92236706794468f3ace63afc0a80fcfed1ce29c5`,
+confirm their parsed delta is exactly AuditEvent branches 16-19, and confirm
+the current schema differs from the candidate only by restoring branch 11 and
+changing branch 16. It may then promote the pinned candidate bytes without a
+context-search patch and must prove exact byte equality immediately.
+
+Only after that PASS may the otherwise unchanged E0002-18 evaluator, v3 packet,
+validation, and freeze sequence resume. Any mismatch stops without retry.
+E0002-19 remains closed until the exact freeze and then only D-E0002-071's
+mechanical authority applies. Gate-B acceptance, E0002-20, Cargo, source,
+external effects, commit, push, Gate C, and release remain closed.
+
+## D-E0002-077 — E0002-18 Gate-B v3 candidate is staged
+
+Status: recorded / pending-owner packet candidate / no dispatch · Date:
+2026-09-02 · Decision owner: E0002-18 orchestrator
+
+The D-E0002-076 pinned reads promotion and immediate byte comparison passed.
+The reads, manifest, and evaluator artifacts now reproduce D-E0002-070's
+predicted raw SHA-256 values, and the evaluator passes its schema and semantic
+closure audits. The E0002-19 fixture projection independently closes at 36
+recipe documents, 121 wrappers, 158 changed fixture files, 16 valid plus 105
+rejection envelopes, 468 recipe documents, and predicted index SHA-256
+`0380cbb60d84b44765b19ee86e4559bc2b56b84494d1f23bd8b5661b2d09b991`.
+
+The exact pending-owner v3 packet candidate is:
+
+<!-- gate-b-packet-v3:start -->
+```json
+{
+  "schema": "proof.operator.gate-b-packet/v1",
+  "edition": "AXP-E0002",
+  "task": "E0002-18",
+  "date": "2026-09-02",
+  "status": "pending_owner",
+  "implementation_dispatch": false,
+  "artifacts": [
+    {
+      "ordinal": 1,
+      "role": "contract",
+      "path": "contracts/operator-control-plane.md",
+      "sha256": "sha256:83aa0eec2e1ae7d063776b9febf29009f92316c910728248db5bd40b74e405f0"
+    },
+    {
+      "ordinal": 2,
+      "role": "schema",
+      "path": "schemas/operator-control/common-v1.schema.json",
+      "sha256": "sha256:e64b2278a81db61ccf333005274990366047e133c9a507915c4123e641c3412b"
+    },
+    {
+      "ordinal": 3,
+      "role": "schema",
+      "path": "schemas/operator-control/auth-v1.schema.json",
+      "sha256": "sha256:8ec5777fbb9c7a36484f3503a04f36dd297a880f6cf9c0ba7737384461c5c37d"
+    },
+    {
+      "ordinal": 4,
+      "role": "schema",
+      "path": "schemas/operator-control/reads-v1.schema.json",
+      "sha256": "sha256:1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542"
+    },
+    {
+      "ordinal": 5,
+      "role": "schema",
+      "path": "schemas/operator-control/mutations-v1.schema.json",
+      "sha256": "sha256:0d0ea379971e673fc45cd47d38896b18ddf06712f872ca5a6363d6b07ecf940c"
+    },
+    {
+      "ordinal": 6,
+      "role": "schema",
+      "path": "schemas/operator-control/durable-v1.schema.json",
+      "sha256": "sha256:20c7380cad0692f7459bbb6b4d06d2a9b18810f99e45963fa1941d4f5733f719"
+    },
+    {
+      "ordinal": 7,
+      "role": "schema",
+      "path": "schemas/operator-control/store-v1.schema.json",
+      "sha256": "sha256:afb321e63ae8884ace0be83c7cad08f1a22e60876a082cf092dc7081d66ef4ab"
+    },
+    {
+      "ordinal": 8,
+      "role": "schema",
+      "path": "schemas/operator-control/evaluator-v1.schema.json",
+      "sha256": "sha256:1fae78f5c452ae35a4ab536d1e6e12cf8ae9ec51de4915cd8ff4180a36c9d2c6"
+    },
+    {
+      "ordinal": 9,
+      "role": "schema",
+      "path": "schemas/operator-control/manifest-v1.schema.json",
+      "sha256": "sha256:685f683910f0956987db08a1646aa2aee5f5d884fc13634fb80fa4bbf08467d6"
+    },
+    {
+      "ordinal": 10,
+      "role": "schema_manifest",
+      "path": "schemas/operator-control/manifest-v1.json",
+      "sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c"
+    },
+    {
+      "ordinal": 11,
+      "role": "evaluator",
+      "path": "evals/operator-control-v1.json",
+      "sha256": "sha256:fec4fa13f723ee47a2a28d6048ac1e8d1a80dab1f0f599040da08348d4b3830e"
+    }
+  ],
+  "semantic_digests": {
+    "valid_scenarios": "sha256:240d33818aaeb9fe6bf89bba0ba7393bca71cb0ec41174a95040fe73916982fd",
+    "checks": "sha256:43b5e0daa4fd2f810c04a8ecaf61b295e6069bf8b43a92d111accc4201ac958d",
+    "rejection_vectors": "sha256:388ddb7eefa13f831fbf149e77438e73715a8e00aa4f1ddf297b4486a694d55a",
+    "backend_subset": "sha256:5298e900fec2d3314cde366a2ec90ca11ea6dd812459bf8e6af0ffb6dd980c3b",
+    "store_error_matrix": "sha256:cd99bd03809a467a9478b77ebe2e73fd2959db98cafa038f98744d7491beaa6c"
+  },
+  "evaluation": {
+    "required_score_basis_points": 10000,
+    "replay_count": 2,
+    "valid_scenarios": 16,
+    "ordered_checks": 20,
+    "rejection_vectors": 105,
+    "backend_subset_scenarios": 4,
+    "backend_subset_vectors": 16,
+    "store_boundaries": 21,
+    "store_error_variants": 9,
+    "store_matrix_cells": 189,
+    "typed_absence_cases": 4,
+    "manifest_logical_shapes": 206,
+    "protected_and_public_routes": 15,
+    "schema_self_tests": 4
+  },
+  "migration_14": {
+    "contract_section": 14,
+    "description": "create governed operator control, projection, fence, budget, command, and audit schema",
+    "prior_versions_unchanged": "1-13",
+    "validated_up_down": true,
+    "operator_tables": 14,
+    "immutable_triggers": 20,
+    "indexes": 19,
+    "pre_14_objects_preserved": true
+  },
+  "material_choices": [
+    {
+      "ordinal": 1,
+      "id": "independent_terminal_signed_human_challenge_and_volatile_session"
+    },
+    {
+      "ordinal": 2,
+      "id": "six_capability_intersection_exact_human_no_delegation"
+    },
+    {
+      "ordinal": 3,
+      "id": "loopback_request_error_secret_boundary_with_same_uid_root_limits"
+    },
+    {
+      "ordinal": 4,
+      "id": "disposable_workspace_forbidden_repository_root_identity_single_schema14_database_trusted_open_persisted_signers"
+    },
+    {
+      "ordinal": 5,
+      "id": "dedicated_router_exact_inventory_and_legacy_route_exclusion"
+    },
+    {
+      "ordinal": 6,
+      "id": "migration14_immutable_provisioning_atomic_store_and_legacy_write_rejection"
+    },
+    {
+      "ordinal": 7,
+      "id": "approval_explicit_resume_cancel_dispatch_idempotency_revoke_and_signer_order"
+    },
+    {
+      "ordinal": 8,
+      "id": "lease30s_renew10s_fenced_recovery_and_distinct_restart_semantics"
+    },
+    {
+      "ordinal": 9,
+      "id": "five_dimension_aggregate_reservation_and_forfeit_rules"
+    },
+    {
+      "ordinal": 10,
+      "id": "append_only_projection_cursor_mac_audit_redaction_and_static_constraints"
+    },
+    {
+      "ordinal": 11,
+      "id": "exact_root_member_dependency_and_lock_deltas"
+    },
+    {
+      "ordinal": 12,
+      "id": "no_new_global_execution_error_and_all_required_zero_effect_evaluation"
+    }
+  ]
+}
+```
+<!-- gate-b-packet-v3:end -->
+
+Packet SHA-256:
+`sha256:25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`
+
+This is a staged candidate, not Gate-B acceptance or an implementation
+dispatch. E0002-18 remains active only for exact packet reproduction, custody,
+validation, and its freeze transition. E0002-19, E0002-20, and all source
+remain closed.
+
+## D-E0002-078 — E0002-18 stops on temporary root-pointer assertion
+
+Status: recorded / owner decision required / non-dispatchable · Date:
+2026-09-02 · Decision owner: orchestrator
+
+After the D-E0002-076 pinned reads promotion passed byte equality, the
+manifest and evaluator were promoted from their certified candidates. Their
+focused validations passed, and the live raw SHA-256 values reproduce
+D-E0002-070 exactly: reads
+`1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542`,
+manifest
+`1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c`,
+and evaluator
+`fec4fa13f723ee47a2a28d6048ac1e8d1a80dab1f0f599040da08348d4b3830e`.
+D-E0002-077 stages the exact pending-owner v3 packet at canonical digest
+`25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`.
+
+The next mandated comprehensive command,
+`rtk python3 -B /tmp/validate_e0002_e18.py`, exited with
+`manifest logical shape mismatch: SchemaManifest`. Read-only diagnosis shows
+that the temporary validator accepts only logical-shape pointers beginning
+`#/$defs/`. The frozen manifest intentionally maps `SchemaManifest` to the
+whole `manifest-v1.schema.json` document with pointer `#`, and that schema's
+`LogicalShape.json_pointer` pattern explicitly permits both root `#` and
+`#/$defs/...`. The manifest remains byte-identical to its pinned candidate;
+the failed check made no repository write. Unchanged pre-E0002-19 fixture-index
+custody remains
+`fde90bde1b2983a4efe8b4eb224da4ce461ccf69037a77ba6a9c4bb58882740d`,
+and `rtk git diff --check` passes.
+
+E0002-18 requires a stop on any reference-check mismatch without retry. It is
+therefore `blocked`; no freeze signal was emitted and E0002-19 remains
+`pending`. No harness correction, validation retry, fixture propagation,
+review, Gate-B acceptance, E0002-20 dispatch, Cargo command, source edit,
+external effect, commit, push, Gate C, or release is authorized by this record.
+
+A bounded continuation would change only the temporary validator assertion so
+root pointer `#` resolves to the complete schema document while existing
+`#/$defs/...` resolution remains exact, then rerun the otherwise unchanged
+E0002-18 validation sequence. Any actual parse, schema, reference, semantic,
+digest, custody, projection, edition, or diff-check mismatch would stop again
+without repair or retry.
+
+## D-E0002-079 — Product owner authorizes root-pointer harness continuation
+
+Status: adopted / bounded E0002-18 continuation · Date: 2026-09-02 · Decision
+owner: product owner
+
+After receiving D-E0002-078, the product owner directed:
+
+> i authorize a D-E0002-078 continuation
+
+This reactivates only E0002-18. The orchestrator may correct only the temporary
+comprehensive validator's logical-shape assertion so pointer `#` resolves to
+the complete referenced schema document while `#/$defs/...` resolution remains
+exact. It must then rerun the otherwise unchanged complete E0002-18 validation
+sequence.
+
+Only an exact PASS permits the `Gate B semantic repair artifacts frozen`
+signal, completion of E0002-18, and activation of E0002-19 under the already
+adopted D-E0002-071 authority. Any actual parse, schema, reference, semantic,
+digest, custody, fixture-projection, edition, or diff-check mismatch stops the
+sequence again without repair or retry.
+
+This decision authorizes no artifact or fixture rewrite, Gate-B acceptance,
+E0002-20 dispatch, Cargo command, product-source edit, migration, provider or
+browser effect, commit, push, Gate C, or release.
+
+## D-E0002-080 — Gate B semantic repair artifacts frozen
+
+Status: adopted / E0002-18 done / E0002-19 mechanical dispatch · Date:
+2026-09-02 · Decision owner: orchestrator under D-E0002-071 and D-E0002-079
+
+The D-E0002-079 correction changed only the temporary comprehensive
+validator's handling of logical-shape root pointer `#`. The complete rerun
+then passed: all eight schemas, exact reads/manifest/evaluator raw hashes, 107
+evaluator JSON leaves, 32 changed case hashes, ordinals 067/078/103/105, 28
+assembly-bound links, five semantic digests, the exact six-path v2-to-v3 packet
+delta, and canonical packet digest
+`25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`.
+
+Independent JSON/schema and semantic audits passed. The pinned E0002-19
+projection passed strict validation at 36 changed recipe documents, 121
+wrappers, 158 changed fixture files, 16 valid plus 105 rejection envelopes,
+and 468 recipe documents, with predicted index SHA-256
+`0380cbb60d84b44765b19ee86e4559bc2b56b84494d1f23bd8b5661b2d09b991`.
+Live artifacts compare byte-for-byte with their certified candidates; the
+unchanged pre-E0002-19 index remains
+`fde90bde1b2983a4efe8b4eb224da4ce461ccf69037a77ba6a9c4bb58882740d`.
+Edition validation and `rtk git diff --check` pass without Cargo.
+
+The orchestrator emits the exact required signal:
+
+`Gate B semantic repair artifacts frozen`
+
+E0002-18 is `done`. Under D-E0002-071, only E0002-19 now becomes `active` for
+byte-exact promotion and validation of the already-certified 158-file fixture
+projection. It must enter review after local PASS, and three fresh independent
+read-only reviews must pass before the product owner receives the exact v3
+Gate-B acceptance request.
+
+This freeze is not Gate-B acceptance and is not an implementation dispatch.
+E0002-20, shifted W9, Cargo, product source, migrations, provider/browser or
+external effects, commit, push, Gate C, and release remain closed.
+
+## D-E0002-081 — E0002-19 fixture closure passes locally and enters review
+
+Status: recorded / local PASS / three-review hold · Date: 2026-09-02 ·
+Decision owner: orchestrator under D-E0002-071 and D-E0002-080
+
+E0002-19 preflighted and promoted only the certified projection delta: 36
+recipe documents, all 121 wrappers, and `index-v1.json`, exactly 158 files.
+The 28 assembly-bound setup documents retain terminal LF; the eight direct
+documents, all wrappers, and the index retain no final LF. The full 590-file
+live corpus is byte-identical to the pinned projection, and the durable handoff
+enumerates the exact changed recipe set plus the complete wrapper/index rule.
+
+Strict live validation passes 16 valid and 105 rejection envelopes, 468 recipe
+documents, exact schema/order/cardinality/blueprints, all deterministic seeds,
+every document/envelope/index digest link, four directly corrected case hashes,
+the terminal-byte profile, and the secret-sentinel scan. JSON/schema, evaluator
+semantic, and independent projection validators pass. Final raw SHA-256 values
+remain reads `1d02cf88...7542`, manifest `1ffc871f...176c`, evaluator
+`fec4fa13...3830e`, and fixture index `0380cbb6...b991`. Edition validation
+and `rtk git diff --check` pass without Cargo.
+
+The fixture writer is stopped and E0002-19 enters `review`. Three fresh
+independent read-only reviewers must separately cover:
+
+1. schema, manifest, and exact pending-owner v3 packet closure;
+2. evaluator, fixture, terminal-byte, and changed-file custody; and
+3. command/audit semantics and the planned kernel/source alignment, including
+   ordinal 078's storage audit obligation.
+
+Any review failure blocks E0002-19. Three PASS results still do not accept Gate
+B or mark the task done; they permit only presentation of exact packet digest
+`25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`
+for an explicit product-owner decision. E0002-20 requires a separate later
+dispatch even after Gate B.
+
+This record authorizes no writer, repair, Gate-B acceptance, E0002-20 dispatch,
+Cargo command, product-source edit, migration, provider/browser or external
+effect, commit, push, Gate C, or release.
+
+## D-E0002-082 — E0002-19 review stops on missing downstream ownership
+
+Status: recorded / owner decision required / non-dispatchable · Date:
+2026-09-02 · Decision owner: orchestrator
+
+After D-E0002-081, three fresh independent read-only reviews began. The
+schema/manifest/packet reviewer returned PASS. It independently reproduced all
+11 live artifact hashes, eight meta-valid schemas and 1,326 resolved
+references, the manifest's 8 files/206 logical shapes/15 routes/4 self-tests,
+the exact four-branch reads delta, all five semantic digests, and the exact
+six-path v2-to-v3 packet delta. Packet digest
+`25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`
+remains `pending_owner` with `implementation_dispatch: false`.
+
+The command/audit/source-alignment reviewer returned FAIL despite confirming
+that the repaired schema/evaluator/fixture semantics themselves are coherent
+and that pending E0002-20 exactly owns the later four-profile kernel alignment:
+
+1. D-E0002-070 requires the ordinal-078 `settle_budget_reservation` rejection
+   to append `budget_rejected` atomically before returning `NotActionable`.
+   Current storage returns at that state check without the audit append, while
+   E0002-06's task and handoff contain no reference to ordinal 078,
+   settlement, or this audit obligation.
+2. D-E0002-070 requires ordinal-067 runtime evidence to align the active second
+   lease claim with `ClaimLease` / `NotActionable`. The current runtime
+   contention responder returns `Conflict`, while E0002-07's task and handoff
+   do not bind the correction. Their only matching `not_actionable` handoff
+   text concerns a different reserve-replay path.
+
+E0002-14 may detect these evaluator vectors later but cannot repair shifted-W9
+storage or runtime source. The assignment graph therefore does not durably
+close both obligations before implementation completion. Read-only
+orchestrator inspection reproduced both omissions. The third, fixture-custody
+reviewer was interrupted without a verdict after the required stop; its work
+is not counted or reusable.
+
+E0002-19 is `blocked`. All locally validated schema, evaluator, packet, and
+fixture bytes remain preserved but unaccepted. No review edited a file or ran
+Cargo, and this record authorizes no packet/task repair, artifact or fixture
+rewrite, Gate-B acceptance, E0002-20 dispatch, source/Cargo/migration work,
+provider/browser or external effect, commit, push, Gate C, or release.
+
+A bounded planning-only continuation would add the exact ordinal-078 atomic
+audit obligation to E0002-06's task/handoff and the exact ordinal-067
+`ClaimLease`/`NotActionable` alignment obligation to E0002-07's task/handoff,
+without changing any source, artifact, fixture, packet digest, dependency, or
+other task scope. Edition validation and diff hygiene must pass, followed by a
+wholly fresh three-review set. Any mismatch or review failure stops again.
+
+## D-E0002-083 — Product owner authorizes exact ownership-packet repair
+
+Status: adopted / planning-only continuation · Date: 2026-09-02 · Decision
+owner: product owner
+
+After receiving D-E0002-082, the product owner directed:
+
+> proceed
+
+This authorizes only the bounded continuation proposed in D-E0002-082. The
+orchestrator may add evaluator ordinal 078's authority-proven, atomic
+`budget_rejected` settlement-rejection obligation to the E0002-06 task and
+handoff, and evaluator ordinal 067's active-second-claim
+`ClaimLease`/`NotActionable` recording-store obligation to the E0002-07 task
+and handoff. Each addition must bind its exact durable/audit/effect outcome and
+future focused test without changing source now.
+
+The orchestrator must then reproduce artifact and fixture hashes, validate the
+edition and diff, and confirm no other task scope or dependency changed. Exact
+PASS permits E0002-19 to return to `review` for three wholly fresh independent
+read-only reviews. No result from the D-E0002-081 review set may be reused. Any
+validation or review failure stops again without repair or retry.
+
+This decision authorizes no source, artifact, fixture, packet-digest,
+dependency, migration, Cargo, provider/browser or external-effect change; no
+Gate-B acceptance, E0002-20 dispatch, implementation activation, commit, push,
+Gate C, or release.
+
+## D-E0002-084 — Ownership repair validates; wholly fresh reviews begin
+
+Status: adopted / E0002-19 review-only dispatch · Date: 2026-09-02 · Decision
+owner: orchestrator under D-E0002-083
+
+The planning-only continuation added exactly two acceptance obligations to
+their existing task packets and handoffs. E0002-06 now owns evaluator ordinal
+078: after authority is proven, a `ReleasePreDispatch` settlement against a
+`dispatching` reservation must preserve reservation/budget/control state,
+commit exactly one chained `budget_rejected` audit event atomically, then
+return `NotActionable` at runtime stage `settle_budget`, with an exact future
+round-trip test. E0002-07 now owns evaluator ordinal 067: its active-second-
+claim recording-store test must inject `NotActionable`, surface
+`ClaimLease`/`NotActionable`, preserve state and audit, produce zero effects,
+and retain digest-only custody without raw token exposure.
+
+No source or test implementation changed and no Cargo command ran. The four
+task/handoff additions preserve every dependency and other task scope. Exact
+artifact SHA-256 values remain reads `1d02cf88...7542`, manifest
+`1ffc871f...176c`, evaluator `fec4fa13...3830e`, and fixture index
+`0380cbb6...b991`. Strict 16-valid/105-rejection/468-recipe validation and the
+exact 590-file live/projection, 158-file promotion, terminal-byte, direct-case,
+and secret-sentinel custody validation pass. Edition validation and
+`rtk git diff --check` pass.
+
+E0002-19 therefore returns to `review` for three wholly fresh independent
+read-only verdicts covering schema/manifest/packet closure, evaluator/fixture/
+byte custody, and command/audit/planned-source alignment. No D-E0002-081 review
+result may be reused. Any failure stops E0002-19 again.
+
+This record is not Gate-B acceptance and authorizes no E0002-20 dispatch,
+source, fixture, artifact, migration, Cargo, provider/browser or external
+effect, commit, push, Gate C, or release.
+
+## D-E0002-085 — Three wholly fresh reviews pass; Gate B awaits owner
+
+Status: recorded / product-owner Gate-B decision required / non-dispatchable ·
+Date: 2026-09-02 · Decision owner: orchestrator
+
+The three reviewers created after D-E0002-084 each returned an independent
+PASS without editing a file or running Cargo:
+
+1. Schema/manifest/packet review reproduced all 11 artifact hashes, eight
+   meta-valid schemas and 1,326 references, manifest closure at 8 files/206
+   logical shapes/15 routes/4 self-tests, the exact reads branches 16-19
+   delta, all five semantic digests, v2 digest `c1772ffb...eca8`, v3 digest
+   `25f64ff5...6eb2`, and exactly the six documented packet paths. V3 remains
+   `pending_owner` with `implementation_dispatch: false`.
+2. Evaluator/fixture/byte review reproduced evaluator `fec4fa13...3830e`, 107
+   changed JSON leaves, 32 changed case hashes, exact ordinals 067/078/103/105,
+   the strict 16-valid/105-rejection/468-recipe/590-file corpus, all seeds and
+   links, the exact 36-document/121-wrapper/index 158-file delta and every
+   before/after hash, 432 unchanged files, exactly 28 assembly setup terminal
+   LFs, index `0380cbb6...b991`, and no private-key/JWT/provider-token match.
+3. Command/audit/planned-source review confirmed the four positive-fence
+   profiles and all four corrected runtime cases; current kernel/storage/
+   runtime gaps remain intentionally frozen for later work; E0002-20 exactly
+   owns the kernel alignment; E0002-06 and E0002-07 now exactly own ordinals
+   078 and 067; E0002-14 remains verification-only; and dependencies keep all
+   implementation closed.
+
+Post-review edition validation, `rtk git diff --check`, strict fixture
+validation, full live/projection byte custody, and exact reads/manifest/
+evaluator/index hashes pass again. E0002-19 remains `review`, not `done`.
+
+The exact pending-owner Gate-B v3 packet is the D-E0002-077 JSON at canonical
+SHA-256
+`sha256:25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`.
+The product owner may now accept, revise, or reject that exact digest. An
+acceptance may complete E0002-19 but does not dispatch E0002-20; that kernel
+task requires a separate later product-owner decision.
+
+This record grants no Gate-B acceptance, E0002-20 dispatch, source, fixture,
+artifact, migration, Cargo, provider/browser or external effect, commit, push,
+Gate C, or release.
+
+## D-E0002-086 — Product owner accepts repaired Gate B; no source dispatch
+
+Status: adopted / Gate B v3 accepted / E0002-19 done · Date: 2026-09-02 ·
+Decision owner: product owner
+
+After receiving D-E0002-085 and the immediately presented exact packet digest,
+with the explicit statement that acceptance completes E0002-19 only and does
+not dispatch E0002-20, the product owner directed:
+
+> proceed
+
+In that immediate decision context, this accepts AXP-E0002 repaired Gate B
+exactly as staged in D-E0002-077 at canonical packet SHA-256
+`sha256:25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`,
+including all 11 constituent artifact hashes, all five semantic digests, the
+evaluation and migration-14 values, and material choices 1-12. The immutable
+packet object retains its recorded `pending_owner` proposal state; this dated
+digest-bound decision supplies the acceptance.
+
+E0002-19 becomes `done`. This acceptance does not dispatch E0002-20: that task
+remains `pending` and non-dispatchable until a separate explicit product-owner
+decision. Shifted W9 and every later implementation task remain blocked or
+pending. No source, Cargo, migration execution, provider/browser or external
+effect, commit, push, Gate C, or release is authorized.
+
+## D-E0002-087 — Product owner dispatches exact E0002-20 kernel alignment
+
+Status: adopted / E0002-20-only source dispatch · Date: 2026-09-02 · Decision
+owner: product owner
+
+After receiving D-E0002-086 and reading the exact E0002-20 task packet, the
+product owner directed:
+
+> i authorize
+
+All prerequisites are satisfied: E0002-05/E0002-18/E0002-19 are done, repaired
+Gate B v3 is accepted at packet digest `25f64ff5...6eb2`, no writer is active,
+and `crates/proof-kernel` has no pre-dispatch worktree delta. This separately
+dispatches only E0002-20.
+
+E0002-20 may change `AuditEvent::validate_chain_link` so
+`StaleFenceRejected` accepts only a rejected event with nonzero `fence_epoch`
+and one correlated `(command_kind, presence_mask)` tuple:
+`(approval_decide, 0x101e3)`, `(run_cancel, 0x101a3)`,
+`(run_resume, 0x2101e3)`, or `(run_resume, 0x4181a3)`. Its existing focused
+test must replace the obsolete tuple with all four accepted tuples and
+explicitly reject `0x16c30`, zero fence, and wrong command kind. Every other
+mask remains rejected. No public type, event kind, error, serialized shape,
+Cargo file, artifact, fixture, or downstream source may change.
+
+The owner must run `rtk cargo fmt --check -p proof-kernel`, then
+`rtk cargo test -p proof-kernel`. After the writer stops and all affected
+writers are quiescent, it must inspect the reverse-impact set and run
+`rtk scripts/test-scoped.sh proof-kernel`, followed by exact custody/edition/
+diff checks and one fresh independent read-only review. Any failure stops the
+task without automatic retry or repair.
+
+This decision does not dispatch shifted W9 or any later task and authorizes no
+storage/runtime/control/transport/UI source, migration, dependency, provider/
+browser or external effect, commit, push, Gate C, or release.
+
+## D-E0002-088 — E0002-20 exact kernel alignment passes acceptance
+
+Status: recorded / E0002-20 done / shifted W9 still closed · Date: 2026-09-02 ·
+Decision owner: orchestrator
+
+The D-E0002-087 writer changed only
+`crates/proof-kernel/src/operator/durable.rs`, from raw SHA-256
+`e31b7112d32700e6c9a7acd621901dab0fd604f07206dc6a910b3859e55099ce` to
+`24c5245df008545b8d3aa709451ac3aee3cc493c550fc4a1b7a7db16732f972a`.
+`StaleFenceRejected` now requires `Rejected`, a present nonzero fence, and
+exactly the four accepted command/mask correlations. The existing focused
+profile test covers all four positives and explicitly rejects the obsolete
+mask, zero fence, and a wrong command correlation. No public type, event,
+error, serialized shape, Cargo file, artifact, fixture, or downstream source
+changed.
+
+`rtk cargo fmt --check -p proof-kernel` passes, and
+`rtk cargo test -p proof-kernel` passes 153 tests across six suites. The
+reverse-impact list contains `proof-kernel` and 13 workspace dependents. Its
+restricted-sandbox run could not bind loopback listeners in two
+`proof-operator-control` tests (`EPERM` / `ListenerUnavailable`); the identical
+command, repeated with explicit loopback-socket permission and no intervening
+source edit, passes 762 tests across 55 suites.
+
+Final kernel custody, `rtk scripts/swarm.sh validate AXP-E0002`, global
+`rtk git diff --check`, and the frozen reads `1d02cf88...7542`, manifest
+`1ffc871f...176c`, evaluator `fec4fa13...3830e`, and fixture-index
+`0380cbb6...b991` hashes all pass. One fresh independent read-only reviewer
+reproduced the source transition, exact positive and negative validation,
+unchanged public/serialized surface, test evidence, edition/diff checks, the
+four frozen hashes, and accepted contract hash `83aa0eec...05f0`; it found no
+issue, edited no file, and ran no Cargo.
+
+E0002-20 is therefore `done`. This acceptance does not dispatch E0002-06,
+E0002-07, E0002-11, or any later task. Shifted W9 remains blocked pending a
+separate explicit product-owner decision. No migration, provider/browser or
+external effect, commit, push, Gate C, or release is authorized.
+
+## D-E0002-089 — Product owner dispatches shifted W9 continuation
+
+Status: adopted / E0002-06, E0002-07, and E0002-11 active / W10 closed · Date:
+2026-09-02 · Decision owner: product owner
+
+After receiving D-E0002-088 and the exact next-wave boundary, the product owner
+directed:
+
+> I authorize shifted W9 continuation for E0002-06, E0002-07, and E0002-11.
+
+This activates only the three named, disjoint task packets. All prerequisites
+are satisfied: repaired Gate B v3 is accepted at `25f64ff5...6eb2`;
+E0002-05/E0002-08/E0002-19/E0002-20 are done as applicable; all writers are
+quiescent; the three writable source scopes plus root manifest/lock have no
+pre-dispatch worktree delta; edition validation and global diff hygiene pass;
+and the accepted kernel, reads, manifest, evaluator, and fixture-index hashes
+remain exact.
+
+E0002-06 owns only its storage scope and exact evaluator ordinal-078 repair:
+after authority proof, an invalid pre-dispatch release against a dispatching
+reservation must atomically append one chained `budget_rejected` / `rejected`
+audit while preserving reservation, budget, and control state, then return
+`NotActionable`; invalid authority appends nothing. E0002-07 owns only its
+runtime scope and exact ordinal-067 recording-store repair: active second lease
+claim must surface `ClaimLease` / `NotActionable` with unchanged state/audit,
+zero effects, digest-only custody, and no raw token exposure. E0002-11 owns the
+root manifest/lock and control crate, but must first verify the current clean
+candidate and must not introduce a speculative source or dependency change if
+it already satisfies the frozen contract.
+
+Each owner runs only its local format and scoped crate tests while writers are
+active, records durable evidence, and stops. Reverse-impact commands wait until
+all three writers are quiescent, then run per changed/accepted crate. Each lane
+requires exact custody and a fresh independent non-author review before it can
+be marked done. Historical `W4 root ready`, `W4 storage manifest frozen`, and
+`W4 lock stable` signals remain immutable evidence and are not rerun or
+reinterpreted.
+
+Any cross-owner need, frozen-contract mismatch, unapproved dependency, secret
+exposure, real provider/tool/external effect, or exhausted task-local retry
+stops only the affected lane with its evidence preserved. This decision does
+not dispatch E0002-14, E0002-02, W10, or any later task and authorizes no live
+provider/browser work, product database migration, destructive action, commit,
+push, Gate C, or release.
+
+## D-E0002-090 — E0002-06 stops at the task-local retry ceiling
+
+Status: recorded / E0002-06 blocked / E0002-07 and E0002-11 continue · Date:
+2026-09-02 · Decision owner: orchestrator
+
+The E0002-06 writer implemented the bounded ordinal-078 storage path in only
+`crates/proof-storage/src/sqlite/operator_store.rs` and a new focused
+`operator_store_tests.rs`. The candidate validates authority first; for an
+exact dispatching reservation it commits one chained `budget_rejected` /
+`rejected` audit event while preserving reservation, budget, and control
+state, then returns `NotActionable`. Invalid authority still appends nothing.
+
+The first combined format/scoped gate passed formatting but failed the storage
+suite at 103 passed / one failed because schema-14 indexed `occurred_at` used
+`+00:00` while strict event JSON used canonical `Z`. The bounded focused retry
+failed on the same unavailable result. Before the orchestrator's stop reached
+the worker, additional focused diagnostics exposed that timestamp mismatch and
+then a legacy-versus-strict test-baseline JSON mismatch; the worker corrected
+both in its owned scope, and its last focused observation passed one test with
+103 filtered. Those additional commands and corrections are retained in the
+handoff but do not reset or extend the packet's one-retry ceiling.
+
+The source is frozen at `operator_store.rs` raw SHA-256
+`5fc1dc130c2f7e0dbbaa3653d846e2d7b84929638964fc20c14a991471c20093`
+and `operator_store_tests.rs` raw SHA-256
+`c113d8b68dc71ec60e59b031c85b0bded7d92bac3b63502dd0b8e5bede90fcd2`.
+There is no known remaining ordinal-078 behavioral failure, but no authorized
+post-correction full format/scoped-test result exists. E0002-06 is therefore
+blocked and may run no further command or edit without a new product-owner
+decision.
+
+This is lane-local under D-E0002-089. E0002-07 and E0002-11 writers are
+stopped and locally green, so their quiescent impact, custody, and independent
+review gates may continue. E0002-06 reverse impact and review remain closed.
+W10 and every later task remain closed. No live provider/tool/browser effect,
+real product database, destructive action, commit, push, Gate C, or release
+occurred.
+
+## D-E0002-091 — E0002-11 passes; E0002-07 stops on review gap
+
+Status: recorded / E0002-11 done / E0002-07 blocked / W10 closed · Date:
+2026-09-02 · Decision owner: orchestrator
+
+After all shifted-W9 source writers stopped, the E0002-07 reverse-impact list
+contained only `proof-agent-runtime` and `proof-transport-cli`. The restricted
+run passed all 143 runtime tests but blocked 15 CLI tests on sandbox-only
+`EPERM` and synthetic unsafe-root ownership. The identical command with host
+UID/filesystem/process permission and no intervening source edit passed 267
+tests across five suites. Runtime source custody is one test-only delta in
+`src/operator.rs`, raw SHA-256 `027a17c6...ab4b`; no public or production
+runtime behavior changed.
+
+The fresh runtime reviewer confirmed that ordinal 067 itself is exact:
+`ClaimLease` / `NotActionable`, unchanged first lease and durable audit/
+mutation state, no added event, zero provider/tool/governed-write/external
+effect, digest-only request custody, and no raw-token diagnostic exposure.
+It also found one acceptance regression: the change replaced the sole
+barrier-synchronized two-thread E0002 lease-claim race and exactly-one-success
+assertion with the sequential ordinal-067 test. Repository-wide inspection
+found no equivalent concurrent `OperatorRuntime::claim_lease` one-winner
+coverage. Because E0002-07 consumed its single bounded retry on a test-only
+compile assertion, the reviewer made no repair and E0002-07 is blocked. A safe
+later continuation is test-only: preserve the ordinal-067 test exactly and add
+separate barrier-synchronized concurrent claim one-winner coverage, then rerun
+the full local/impact/custody/review sequence.
+
+E0002-11 required no source, dependency, root-manifest, or lockfile change.
+Its local format check passed; the restricted local test reported 15 passes
+and two loopback-only environment failures, while the identical permitted run
+passed 17 tests across two suites. Its quiescent reverse-impact set was only
+`proof-operator-control` and passed the same 17 tests. A fresh independent
+security reviewer then passed the complete frozen synthetic-shell boundary:
+exact loopback and clean URL, nonconfigurable OS environment, build-anchored
+authoritative opener, one-use signed Human challenge/session, same-origin and
+security headers, closed 15-route/static surface, volatile restart/revoke,
+ordered shutdown, secret custody, exact approved dependencies/rustix, no
+legacy route, and no E0006 reuse. Root manifest `f739ab46...f382`, lockfile
+`b85b5d84...8aed`, and control `lib.rs` `e9c8e559...f646` remain exact.
+E0002-11 is therefore done; real SQLite/runtime/router/static composition
+remains assigned to E0002-14/E0002-15.
+
+The accepted kernel/contract/artifact/semantic/packet/fixture hashes, edition
+validation, and diff hygiene remain exact. No file changed during either fresh
+review. E0002-06 remains blocked under D-E0002-090, E0002-07 is blocked under
+this decision, no task is active, and W10 remains closed. No provider/tool/
+browser effect, real product database, commit, push, Gate C, or release is
+authorized or claimed.
+
+## D-E0002-092 — Product owner authorizes exact storage/runtime continuations
+
+Status: adopted / E0002-06 verification-only and E0002-07 test-only active /
+no automatic retry / W10 closed · Date: 2026-09-02 · Decision owner: product
+owner
+
+After receiving the exact D-E0002-090 and D-E0002-091 continuation boundary,
+the product owner directed:
+
+> i authorize
+
+In that immediate context, this reactivates only E0002-06 and E0002-07 for the
+two remedies presented. E0002-11 remains done. Pre-dispatch custody reproduces
+storage `operator_store.rs` `5fc1dc13...0093`, storage
+`operator_store_tests.rs` `c113d8b6...fcd2`, runtime `operator.rs`
+`027a17c6...ab4b`, unchanged control/root/lock hashes, all accepted frozen
+hashes, edition validation, and tracked diff hygiene.
+
+E0002-06 is verification-only. It may make no source or test edit. It runs
+`rtk cargo fmt --check -p proof-storage` and, only on PASS,
+`rtk cargo test -p proof-storage` against the exact pinned corrected bytes.
+Any failure stops without retry. On both passes the writer stops; only then may
+the orchestrator run the quiescent storage reverse-impact, exact custody, and a
+fresh independent non-author review.
+
+E0002-07 is test-only. It must preserve the accepted ordinal-067 sequential
+test and every production/API byte, and add one separate barrier-synchronized
+two-thread lease-claim test that proves exactly one owner/success,
+deterministic losing actionability, and zero boundary effect. It may
+mechanically format only its owned test edit, then runs the local format check
+and full scoped runtime suite once. Any failure stops without retry. On PASS
+the writer stops before quiescent reverse impact, custody, and a wholly fresh
+independent non-author review.
+
+The two lanes remain disjoint. Neither may edit kernel, control, transport,
+contract, schema, evaluator, fixture, root Cargo files, or another handoff.
+This decision does not dispatch E0002-14, E0002-02, W10, or later work and
+authorizes no live provider/tool/browser effect, product database operation,
+destructive action, commit, push, Gate C, or release.
+
+## D-E0002-093 — Exact no-retry continuations stop at local gates
+
+Status: recorded / E0002-06 and E0002-07 blocked / owner decisions required ·
+Date: 2026-09-02 · Decision owner: orchestrator
+
+E0002-06 first reproduced its pinned `operator_store.rs` and
+`operator_store_tests.rs` hashes exactly. Its authorized
+`rtk cargo fmt --check -p proof-storage` then failed only on three mechanical
+layouts in the new test file: the kernel import group and two long equality
+assertions. Per D-E0002-092, it ran no scoped test, made no edit, and did not
+retry. Storage remains at `5fc1dc13...0093` / `c113d8b6...fcd2`; ordinal 078's
+last focused observation remains green but is not full-suite acceptance.
+
+E0002-07 preserved ordinal 067 and every production/API byte, and added only
+the separate barrier-synchronized two-thread test
+`concurrent_lease_claim_has_one_owner_and_not_actionable_loser`. The new test
+proves exactly one live owner, one `ClaimLease` / `NotActionable` loser, two
+distinct claim identities, and zero boundary effects. Its format check passed.
+The single authorized full suite then stopped at 143 passed / one failed. The
+new test was among the passes; the sole failure was the pre-existing
+`live_resume_accepts_authority_valid_through_original_deadline` setup, which
+rejected its delegation before execution. Runtime source is frozen at
+`operator.rs` `26ad1547...6048`; unchanged `runtime.rs` is
+`99437aee...5f1`.
+
+Read-only inspection shows that positive live-resume test samples
+`Utc::now() + 301 seconds`, while runtime separately samples a 300-second
+required deadline. Under scheduling delay the one-second margin can expire;
+the distinct negative boundary test remains at 299 seconds. This is an
+inference from the exact source and generic validation branch, not a rerun.
+No runtime impact or new independent review ran after the failed local gate.
+
+Both lanes are blocked and no task is active. The smallest safe next authority
+is: (1) storage mechanical-format-only at exactly the three reported test-file
+locations, followed once by format/full scoped gates; and (2) runtime
+test-only stabilization of only the positive live-resume validity margin from
+301 to 360 seconds while retaining the 299-second negative case, ordinal 067,
+and the new concurrent test, followed once by format/full scoped gates. Any
+failure would stop without retry. Only after both local passes may quiescent
+impact, custody, and wholly fresh independent reviews resume.
+
+E0002-11 remains done. W10 and all later work remain closed. No provider/tool/
+browser effect, product database operation, destructive action, commit, push,
+Gate C, or release occurred or is authorized.
+
+## D-E0002-094 — Product owner authorizes exact mechanical/test continuations
+
+Status: adopted / E0002-06 mechanical-only and E0002-07 positive-test-only
+active / no retry / W10 closed · Date: 2026-09-02 · Decision owner: product
+owner
+
+The product owner repeated the exact proposed D-E0002-093 authority:
+
+> I authorize the exact D-E0002-093 storage mechanical-format-only and runtime
+> positive-deadline test-stabilization continuations.
+
+E0002-06 may apply only rustfmt's three already reported layout changes in
+`operator_store_tests.rs`: the kernel import group and two long equality
+assertions. No behavior, migration, production storage, or other test change is
+authorized. Starting hashes are `operator_store.rs` `5fc1dc13...0093` and test
+file `c113d8b6...fcd2`. It must inspect the mechanical delta, run one storage
+format check and, only on PASS, one full scoped storage suite. Any mismatch or
+failure stops without retry.
+
+E0002-07 may change only the positive test
+`live_resume_accepts_authority_valid_through_original_deadline` margin from
+301 to 360 seconds. The separate 299-second rejection test, ordinal-067 test,
+new synchronized concurrent-claim test, and every production/API byte must
+remain exact. Starting hashes are `operator.rs` `26ad1547...6048` and
+`runtime.rs` `99437aee...5f1`. It runs one runtime format check and one full
+scoped runtime suite. Any mismatch or failure stops without retry.
+
+The two lanes remain disjoint and stop before reverse impact. Only after both
+writers quiesce on local PASS may the orchestrator run their scoped impact,
+exact custody, and wholly fresh independent reviews. E0002-11 remains done.
+This decision does not dispatch W10 or later work and authorizes no provider/
+tool/browser effect, product database operation, destructive action, commit,
+push, Gate C, or release.
+
+## D-E0002-095 — Shifted W9 passes final acceptance
+
+Status: recorded / E0002-06, E0002-07, and E0002-11 done / no active task /
+W10 dependency-ready but not dispatched · Date: 2026-09-02 · Decision owner:
+orchestrator
+
+Both D-E0002-094 writers stopped after their exact local sequences passed.
+Storage applied only the three authorized rustfmt layouts, then passed
+`rtk cargo fmt --check -p proof-storage` and 141 tests across 8 suites. Runtime
+changed only the positive live-resume test margin from 301 to 360 seconds,
+preserved both 299-second negatives plus the ordinal-067 and synchronized
+concurrent-claim tests, then passed its format check and 144 tests across 2
+suites. No production runtime/API byte changed.
+
+After both writers quiesced, `rtk scripts/test-scoped.sh proof-storage` passed
+332 tests across 23 suites for the five-crate storage impact set, and
+`rtk scripts/test-scoped.sh proof-agent-runtime` passed 268 tests across 5
+suites for runtime plus CLI. No source edit occurred between local and impact
+gates. Global diff hygiene and `rtk scripts/swarm.sh validate AXP-E0002`
+passed.
+
+Post-impact storage custody is `operator_store.rs`
+`5fc1dc130c2f7e0dbbaa3653d846e2d7b84929638964fc20c14a991471c20093`
+and `operator_store_tests.rs`
+`31ec8f21cdb2846f5cf76d4b80ea0e16136e48b72ede7e2d70698a22139e180b`.
+Migration custody remains `migrations.rs`
+`69b219a3dc6a0a757af68685de055221f2a5a62b64b84c5b70244f5edb83c800`,
+up SQL `f4f4fcd6c0a15702e1bf8cc04f64d86b237a7f95e36d48f351fc6e606e06e1ef`,
+and down SQL
+`e4dd549e5a160840f6c2b70b4cb7d534f5c799984ed79ea8eb47736a21c9b10b`.
+Runtime custody is `operator.rs`
+`26ad1547f548fb71a68b3d474474f82f22d1c93b0155527169de03310b696048`
+and `runtime.rs`
+`c650e9e539fe6313ec33edb26fedb2a7acb4727f79625061b45ae076563a4064`.
+Root/control custody remains `Cargo.toml` `f739ab46...f382`, `Cargo.lock`
+`b85b5d84...8aed`, and control `lib.rs` `e9c8e559...f646`.
+
+Two wholly fresh independent read-only reviewers returned PASS. Storage review
+confirmed authority-first ordering, canonical audit timestamp encoding, exact
+dispatch-pointer validation, one committed `BudgetRejected` / `Rejected`
+event followed by `NotActionable`, unchanged reservation/budget/control/effect
+rows across schema-14 reopen, and later explicit full forfeiture. Runtime
+review confirmed ordinal 067's preserved durable/audit state and digest-only
+custody, a non-false-passing synchronized one-winner contention test with zero
+effects, and that the 301-to-360 adjustment is positive-fixture slack only
+while the 299-second negatives and 300-second production boundary remain
+exact. Reviewers made no edit and ran no Cargo/test command or external effect.
+
+E0002-06 and E0002-07 therefore join already accepted E0002-11 as done, and
+shifted W9 is complete. E0002-14 and E0002-02 have satisfied dependencies and
+are now W10 dependency-ready, but both remain `pending`. A separate explicit
+product-owner decision is required to dispatch W10. This acceptance performs
+no W10 source/manifest/lock work and authorizes no provider/tool/browser
+effect, product database operation, destructive action, commit, push, Gate C,
+or release.

@@ -2942,7 +2942,7 @@
                   "type": "null"
                 },
                 "fence_epoch": {
-                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
                 },
                 "auth_epoch": {
                   "type": "null"
@@ -3027,7 +3027,7 @@
                   "type": "null"
                 },
                 "fence_epoch": {
-                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
                 },
                 "auth_epoch": {
                   "type": "null"
@@ -3112,7 +3112,7 @@
                   "type": "null"
                 },
                 "fence_epoch": {
-                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
                 },
                 "auth_epoch": {
                   "type": "null"
@@ -3197,7 +3197,7 @@
                   "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/UuidV7"
                 },
                 "fence_epoch": {
-                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/SafeInteger"
+                  "$ref": "https://proof.local/schemas/operator-control/common/v1#/$defs/PositiveSafeInteger"
                 },
                 "auth_epoch": {
                   "type": "null"

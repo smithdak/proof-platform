@@ -23,7 +23,7 @@
     {
       "path": "schemas/operator-control/reads-v1.schema.json",
       "id": "https://proof.local/schemas/operator-control/reads/v1",
-      "sha256": "sha256:acbf50d28c57129794e8becb92236706794468f3ace63afc0a80fcfed1ce29c5"
+      "sha256": "sha256:1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542"
     },
     {
       "path": "schemas/operator-control/mutations-v1.schema.json",

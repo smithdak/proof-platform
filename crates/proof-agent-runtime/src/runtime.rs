@@ -16566,7 +16566,7 @@ mod tests {
     fn live_resume_accepts_authority_valid_through_original_deadline() {
         let fixture = LiveFixture::new();
         let mut setup = fixture.setup.clone();
-        setup.authority.delegation.valid_until = Utc::now() + Duration::seconds(301);
+        setup.authority.delegation.valid_until = Utc::now() + Duration::seconds(360);
         reseal_fixture_delegation(&mut setup);
         let waiting = fixture
             .runtime(fixture.factory(vec![LiveGatewayAction::Tool(fixture.arguments.clone())]))

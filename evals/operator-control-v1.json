@@ -34,7 +34,7 @@
       "ordinal": 4,
       "path": "schemas/operator-control/reads-v1.schema.json",
       "role": "schema",
-      "sha256": "sha256:acbf50d28c57129794e8becb92236706794468f3ace63afc0a80fcfed1ce29c5"
+      "sha256": "sha256:1d02cf888c00dcc024fae2ed930e227aa11fdb99b32ec1d498457f7317647542"
     },
     {
       "ordinal": 5,
@@ -70,7 +70,7 @@
       "ordinal": 10,
       "path": "schemas/operator-control/manifest-v1.json",
       "role": "schema_manifest",
-      "sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8"
+      "sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c"
     }
   ],
   "execution_policy": {
@@ -1749,7 +1749,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -2279,7 +2279,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:0e9c2006c0a8c6ce1346c3de8b680d325a0482be91914d880162204e0e51cd81"
+      "case_semantic_sha256": "sha256:e53f5fdece129a0e026cea8a46c442ed075d6f143e7b640a560120468c1ba441"
     },
     {
       "ordinal": 11,
@@ -2901,7 +2901,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -3199,7 +3199,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0"
+      "case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a"
     },
     {
       "ordinal": 15,
@@ -4239,7 +4239,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -4260,7 +4260,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -4575,7 +4575,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:d3ddd135ec1cbbdaadc85f7333ca0496e6f0cd6967ded120fa56276f059064ae"
+      "case_semantic_sha256": "sha256:6e7d155bf8693c407d52ef17ec29f0fbec9d28258b0c6e5e72bf1690a5bc75be"
     },
     {
       "ordinal": 2,
@@ -4611,7 +4611,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -4632,7 +4632,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -4947,7 +4947,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:b55b6a49dacb5a1d9db5691dd98a9fd2e9520ae241eb0db4536bba2f7ef4a6d1"
+      "case_semantic_sha256": "sha256:ddd5f94e5aed6047a7d343fe90056e2cb40848b68da7eaa2325fc7b682a10b29"
     },
     {
       "ordinal": 3,
@@ -4983,7 +4983,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -5004,7 +5004,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -5319,7 +5319,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:a84e294fe494b26abc8df6c8e2629ca148ed8a8faa258ad1831ced7072032aa1"
+      "case_semantic_sha256": "sha256:1f183c16077e53c5ee19132c88fd5fc3c0ed424dcbb92c437b99598d5fb255ed"
     },
     {
       "ordinal": 4,
@@ -5355,7 +5355,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -5376,7 +5376,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -5691,7 +5691,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:57fb86b8592d0cf8d7d25245d9c1edeb315e9560301aeef338d2348a3be3c347"
+      "case_semantic_sha256": "sha256:94b09406acb74c2d5a855037758ca887281f025c70c6735e1e5ce9c95fc4d424"
     },
     {
       "ordinal": 5,
@@ -5727,7 +5727,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -5748,7 +5748,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -6063,7 +6063,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:3e8bcec4e49bc76a2e5b7258b6c48fd7e983b73b5957a4a3f0a92ed028f4008a"
+      "case_semantic_sha256": "sha256:33678e51000a1fed3f979fbfe92832443fbd09e8f564a793432bde607f705a13"
     },
     {
       "ordinal": 6,
@@ -6100,7 +6100,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -6121,7 +6121,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -6436,7 +6436,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:19f2eebef04c1b7f692847a89085a9af568a7bfd6f5c1f8e6a5989a3e489d80f"
+      "case_semantic_sha256": "sha256:5ac3c2c7d3418f2e5c454641894686424a74f22b96f255d593c9f944ef905541"
     },
     {
       "ordinal": 7,
@@ -6473,7 +6473,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -6494,7 +6494,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -6809,7 +6809,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:745fd1e4006ec24ebaf3a1b560f4439940a1f71638d1ee2b6531c934d245620c"
+      "case_semantic_sha256": "sha256:5a74f017d9dcc6d9e2f25d9561baab47219e8304b2c40956f4534c2a61d9c7cc"
     },
     {
       "ordinal": 8,
@@ -6846,7 +6846,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -6867,7 +6867,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -7182,7 +7182,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:146f9e831a2b8cf23c31ab1c60740685c68893edf030901d657e48cd64d36ed1"
+      "case_semantic_sha256": "sha256:d1ecc1f8608d35cc14d028d4a01d435b4ad5f411d7fa0d979af216f4257f62da"
     },
     {
       "ordinal": 9,
@@ -7219,7 +7219,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -7240,7 +7240,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -7555,7 +7555,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:59ab9534c157382e01d4c43dae048512217733e7c9a36831c038f5622681e244"
+      "case_semantic_sha256": "sha256:84ba05b3844d3a65ccb2ab2580838aad64ef6a77e20536dff7db891def4517ae"
     },
     {
       "ordinal": 10,
@@ -7592,7 +7592,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -7613,7 +7613,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -7928,7 +7928,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:8688aca74ef85cbea08a0f2f0de08c8e5eca846285c26170932fe1eb2c195eb7"
+      "case_semantic_sha256": "sha256:23f2c8f33d5a61765ce69b4b2ae33d9b85a07b6d03aa700f2b8e06f5b4e36dcf"
     },
     {
       "ordinal": 11,
@@ -12775,7 +12775,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -12796,7 +12796,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -13113,7 +13113,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:af5b94918861d500adfec06ae6727b288043b90890e351a5c00e1a6c874cf386"
+      "case_semantic_sha256": "sha256:04532869090ca92d8e380ca363e11d3c1a4504933b3f6abf9674e0c9327362a1"
     },
     {
       "ordinal": 39,
@@ -13150,7 +13150,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -13171,7 +13171,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -13488,7 +13488,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:6d9ebbc74dd4e6604b1931579d1a7a6d2aab56d8e467570f7021dc4292cf2737"
+      "case_semantic_sha256": "sha256:a9ebf31d953243d28b1a3e387c169d1b505b6ce472157a6f5a3771f5ba7e2993"
     },
     {
       "ordinal": 40,
@@ -13525,7 +13525,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -13546,7 +13546,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -13863,7 +13863,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:cc5ea4e6b685b160cc0633ba1298e31888d0890dfebfdb87e2dcb8faaea265bf"
+      "case_semantic_sha256": "sha256:f4e0eba461c26ad6390d61a256bcf735c3f4e582f9de390c6b897acfcd3bcbf6"
     },
     {
       "ordinal": 41,
@@ -13900,7 +13900,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -13921,7 +13921,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -14238,7 +14238,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:36828075cab73f6bd156eaf6673f6d5d44cc4e9a2d8ef7ff0c3fac3f5ebee296"
+      "case_semantic_sha256": "sha256:c8607ef094c4c213876277754d391a68fe22268b6aafcb18f5b0b9faaee92be6"
     },
     {
       "ordinal": 42,
@@ -14275,7 +14275,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -14296,7 +14296,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -14613,7 +14613,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:9e07e0e8eba569d229ee772b65155ae9561a9f318644e67f9f42f21c2f237d36"
+      "case_semantic_sha256": "sha256:8266645c814d24baebe1b9fedd00a23309f5fcb2c33c8778eedef5d4046300aa"
     },
     {
       "ordinal": 43,
@@ -14650,7 +14650,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -14671,7 +14671,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -14988,7 +14988,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:7eaabe9fb0fa2736f9cb5c4155a648bb693b8e04fef03cfc360de9859e2e0613"
+      "case_semantic_sha256": "sha256:07e5e2b05eb6321c4eb354e07b0507a346587b861ead0c3f2bda6f8391c8780e"
     },
     {
       "ordinal": 44,
@@ -15024,7 +15024,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -15045,7 +15045,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -15362,7 +15362,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:bc924651e23d48ecf9818bcce83e12ac38d199b79c0cd83d748ca9b72ed2b189"
+      "case_semantic_sha256": "sha256:b6a1f76d925719a3cd2e9104183bebf6deb967de9ad8534069a55b4c99b90c16"
     },
     {
       "ordinal": 45,
@@ -15398,7 +15398,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "existing_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -15419,7 +15419,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -15736,7 +15736,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:f410c25a5132cf26425b1fd9f8136fe46074375045b25dadf80f6d96e7f2b701"
+      "case_semantic_sha256": "sha256:7133f09072e4a3e10dc924d96a841f5c7319aaba56982e5fbdea96e36eefaded"
     },
     {
       "ordinal": 46,
@@ -19775,10 +19775,10 @@
             "observations": [
               {
                 "step_id": "action_1",
-                "stage": "reclaim",
+                "stage": "claim_lease",
                 "disposition": "error",
                 "result": null,
-                "error": "stale_fence",
+                "error": "not_actionable",
                 "result_variant": null
               }
             ],
@@ -19812,7 +19812,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:f122dd64aa41cb62bee9c36721338b09f7be01978a089a6a943f2f5dfa3fe9f5"
+      "case_semantic_sha256": "sha256:cfe7cb112ec6a0dcf078e1b58f7ded2662a3e7b1a986faf6bfe0411a896cd1f7"
     },
     {
       "ordinal": 68,
@@ -21768,7 +21768,7 @@
             "observations": [
               {
                 "step_id": "action_1",
-                "stage": "reclaim",
+                "stage": "settle_budget",
                 "disposition": "error",
                 "result": null,
                 "error": "not_actionable",
@@ -21818,7 +21818,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:c440040996ab1b2dbf3ccbc671a14a4b95ad7a78fb5d12da0bdb16b616b4d290"
+      "case_semantic_sha256": "sha256:40a43f4ba59ce201b24a61098b26af16f7b4c9b4f6c862d27a90e5dfb19b7136"
     },
     {
       "ordinal": 79,
@@ -22225,7 +22225,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_control_plane_restart",
-                  "baseline_case_semantic_sha256": "sha256:0e9c2006c0a8c6ce1346c3de8b680d325a0482be91914d880162204e0e51cd81",
+                  "baseline_case_semantic_sha256": "sha256:e53f5fdece129a0e026cea8a46c442ed075d6f143e7b640a560120468c1ba441",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "restarted_new_instance",
@@ -22250,7 +22250,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -22582,7 +22582,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:5558d6f306d3794e6fd8a637c3d0cc21bde175ad499aa0fb1a40f27123fd54dc"
+      "case_semantic_sha256": "sha256:8e0b9941ff581f65c3bd43f4f93ff4d36fd1e7f5c3692387358f8a5907b86e4c"
     },
     {
       "ordinal": 82,
@@ -22946,7 +22946,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -22967,7 +22967,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -23282,7 +23282,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:d79c8def5b760b1a9c1d456c83096d5684f77dc4fe36645dd8a0a0ccdcf6666a"
+      "case_semantic_sha256": "sha256:461d89e5be9f1d5cb8ad43057b98d44f0aca51c33d18a1c50761e502fe0bd1a7"
     },
     {
       "ordinal": 85,
@@ -23318,7 +23318,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -23339,7 +23339,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -23656,7 +23656,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:c4fd149309d2971740206ac83d2a35e778afaffb125fd7bceba35173e47dbd97"
+      "case_semantic_sha256": "sha256:dfbbe10da2ed9afa499f04f0a4a0d5902c774a6a8fb87e20c569a43ea0d176d0"
     },
     {
       "ordinal": 86,
@@ -23693,7 +23693,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -23714,7 +23714,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -24029,7 +24029,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:677e51c4a191f1984e26bc64a228c39daf711b235c18b74bd142875aadd7320e"
+      "case_semantic_sha256": "sha256:d40be054d155f1d3ece2f58da91d74ddee272c8965c8cc8b6c7930d66bb56ae7"
     },
     {
       "ordinal": 87,
@@ -24066,7 +24066,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -24087,7 +24087,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -24404,7 +24404,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:635e1a89d47c147d07aad97dac507ef9df087a24525a78965bf9b082a8b67bc9"
+      "case_semantic_sha256": "sha256:2788bb321771de43dabd6778b8ab8aa39ea0f340bb1f2fbd1365ee7285ee8d72"
     },
     {
       "ordinal": 88,
@@ -24441,7 +24441,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -24462,7 +24462,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -24777,7 +24777,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:4ce15df9eef48ddd4a21d2998a2747b8c50510400889db7447fbb6e61948c008"
+      "case_semantic_sha256": "sha256:420f95efb3b82ad2925e13383e1d9172b4677f98a086d5247ed1fc745fe33dd5"
     },
     {
       "ordinal": 89,
@@ -26151,7 +26151,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_real_product_assembly",
-                  "baseline_case_semantic_sha256": "sha256:0e77c6c5a039a83d924e4f9014b6da1d62907558637d66e4147f302fe33dfad0",
+                  "baseline_case_semantic_sha256": "sha256:b15230793ea1ecb87705df9533b27ceb05177831437e7e832d3f8b0f27dea20a",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "stopped",
@@ -26172,7 +26172,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -26489,7 +26489,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:9381432a1488a4807267b285aee693212f5017cff4f30fe46f43f4318b4d6db7"
+      "case_semantic_sha256": "sha256:98650198b7f2d9dece3f8b645ccb979dc03719d80a383cb982ab484596966bd5"
     },
     {
       "ordinal": 97,
@@ -27555,7 +27555,7 @@
       ],
       "fixture_schema": "RejectionFixture",
       "fixture_path": "evals/fixtures/operator-control/reject/103-reject_wrong_lease_token.json",
-      "subject_schema": "LeaseClaimRequest",
+      "subject_schema": "BeginDispatchRequest",
       "baseline_scenario_id": "valid_runtime_worker_restart",
       "action": "runtime_call",
       "mutation": "Use the current lease_id and fence_epoch with a different raw proof-of-possession lease token.",
@@ -27624,8 +27624,8 @@
               "value": {
                 "schema": "proof.operator.evaluator-mutation-spec/v1",
                 "operator": "replace_signer_material",
-                "target": "LeaseClaimRequest",
-                "field_path": "/lease_token",
+                "target": "BeginDispatchRequest",
+                "field_path": "/authority/lease_token",
                 "replacement": "different_raw_token",
                 "timing": "before_authority",
                 "injected_error": null,
@@ -27652,12 +27652,12 @@
                 "value": {
                   "schema": "proof.operator.evaluator-action-spec/v1",
                   "surface": "runtime_call",
-                  "operation": "claim_run_lease",
-                  "subject_schema": "LeaseClaimRequest",
+                  "operation": "begin_dispatch",
+                  "subject_schema": "BeginDispatchRequest",
                   "authority_selector": "mutated",
                   "method": null,
                   "path": null,
-                  "store_method": "claim_run_lease",
+                  "store_method": "begin_dispatch",
                   "repeat": 1,
                   "schedule": "sequential",
                   "input_source": "strict_fixture_document",
@@ -27677,7 +27677,7 @@
             "observations": [
               {
                 "step_id": "action_1",
-                "stage": "reclaim",
+                "stage": "begin_dispatch",
                 "disposition": "error",
                 "result": null,
                 "error": "stale_fence",
@@ -27714,7 +27714,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:ed28dc0fecc23cb238b6a3833fc277afc3220d52c3a5034bc685db60edc24781"
+      "case_semantic_sha256": "sha256:0bbdb382be855c671e9d76dc50e29edf8527892e4626db8bf8fe9e0d3265cf0e"
     },
     {
       "ordinal": 104,
@@ -27751,7 +27751,7 @@
                 "value": {
                   "schema": "proof.operator.evaluator-setup-spec/v1",
                   "baseline_fixture_id": "valid_control_plane_restart",
-                  "baseline_case_semantic_sha256": "sha256:0e9c2006c0a8c6ce1346c3de8b680d325a0482be91914d880162204e0e51cd81",
+                  "baseline_case_semantic_sha256": "sha256:e53f5fdece129a0e026cea8a46c442ed075d6f143e7b640a560120468c1ba441",
                   "workspace_state": "fresh_schema14_locked",
                   "identity_state": "fresh_enrolled_agent_human",
                   "control_state": "live_same_instance",
@@ -27776,7 +27776,7 @@
                     "schema": "proof.operator.real-product-assembly-expectation/v1",
                     "source": "assembled_product_evidence",
                     "binary_binding": "measure_sha256_and_replay_equal",
-                    "schema_manifest_sha256": "sha256:a6015dae7f20d379783e0ac0aa22a4125b4b6167625a1beeaadc3f0d00d02ad8",
+                    "schema_manifest_sha256": "sha256:1ffc871f4478732ba4511e6ae413c30cdfb3cdf588a60bc03de5479dcdfd176c",
                     "static_bundle_binding": "validate_inventory_measure_sha256_and_replay_equal",
                     "identity_binding": "fresh_enrolled_agent_human_from_setup",
                     "workspace_binding": "recompute_and_match_open_descriptors",
@@ -28093,7 +28093,7 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:d2db8bf514a9ef7a6e1de8e429d9e05c830b26400c7e7ca0957ee31f9b9a510e"
+      "case_semantic_sha256": "sha256:03f30a16d592ee86e845b08d3b0b77fa7845f391c4770cdf4f777a48ac1c2132"
     },
     {
       "ordinal": 105,
@@ -28106,7 +28106,7 @@
       ],
       "fixture_schema": "RejectionFixture",
       "fixture_path": "evals/fixtures/operator-control/reject/105-reject_revoked_instance_split_brain.json",
-      "subject_schema": "LeaseClaimRequest",
+      "subject_schema": "BeginDispatchRequest",
       "baseline_scenario_id": "valid_runtime_worker_restart",
       "action": "runtime_call",
       "mutation": "Attempt a mutable runtime call from an instance epoch revoked by the newly authoritative control process.",
@@ -28175,8 +28175,8 @@
               "value": {
                 "schema": "proof.operator.evaluator-mutation-spec/v1",
                 "operator": "replace_identity",
-                "target": "LeaseClaimRequest",
-                "field_path": "/server_instance_id",
+                "target": "BeginDispatchRequest",
+                "field_path": "/authority/owner_instance_id",
                 "replacement": "revoked_instance",
                 "timing": "before_authority",
                 "injected_error": null,
@@ -28203,12 +28203,12 @@
                 "value": {
                   "schema": "proof.operator.evaluator-action-spec/v1",
                   "surface": "runtime_call",
-                  "operation": "claim_run_lease",
-                  "subject_schema": "LeaseClaimRequest",
+                  "operation": "begin_dispatch",
+                  "subject_schema": "BeginDispatchRequest",
                   "authority_selector": "mutated",
                   "method": null,
                   "path": null,
-                  "store_method": "claim_run_lease",
+                  "store_method": "begin_dispatch",
                   "repeat": 1,
                   "schedule": "sequential",
                   "input_source": "strict_fixture_document",
@@ -28228,7 +28228,7 @@
             "observations": [
               {
                 "step_id": "action_1",
-                "stage": "reclaim",
+                "stage": "begin_dispatch",
                 "disposition": "error",
                 "result": null,
                 "error": "stale_fence",
@@ -28265,15 +28265,15 @@
           ]
         }
       },
-      "case_semantic_sha256": "sha256:3ffc8f919d81b157be938d3e39fb44d3209a9a0985c04fac08d956e9879220a4"
+      "case_semantic_sha256": "sha256:b898ef56937c4a0733da8f81740cd524d4c1fef602ac0b2747f384757778dd95"
     }
   ],
   "semantic_digests": {
     "algorithm": "sha256",
     "canonical_input": "selected ordered JSON value; compact UTF-8 JSON; recursively lexicographically sorted object keys; no trailing newline",
     "checks": "sha256:43b5e0daa4fd2f810c04a8ecaf61b295e6069bf8b43a92d111accc4201ac958d",
-    "rejection_vectors": "sha256:094d2bc6109752e44bd6ee2a1c3f8f7f6c1cc97f3fa92fbbdeeb6170dc17afe1",
-    "valid_scenarios": "sha256:f8b623b06f84d6f2e2b8f018865b662daf0dee5a59c7e3bbb40d4bd520bce95d",
+    "rejection_vectors": "sha256:388ddb7eefa13f831fbf149e77438e73715a8e00aa4f1ddf297b4486a694d55a",
+    "valid_scenarios": "sha256:240d33818aaeb9fe6bf89bba0ba7393bca71cb0ec41174a95040fe73916982fd",
     "backend_subset": "sha256:5298e900fec2d3314cde366a2ec90ca11ea6dd812459bf8e6af0ffb6dd980c3b",
     "store_error_matrix": "sha256:cd99bd03809a467a9478b77ebe2e73fd2959db98cafa038f98744d7491beaa6c"
   },

@@ -1527,7 +1527,15 @@ impl AuditEvent {
                 self.outcome == AuditOutcome::Accepted && mask == 0x12830
             }
             AuditEventKind::StaleFenceRejected => {
-                self.outcome == AuditOutcome::Rejected && mask == 0x16c30
+                self.outcome == AuditOutcome::Rejected
+                    && self.fence_epoch.is_some_and(|fence| fence != 0)
+                    && matches!(
+                        (self.command_kind, mask),
+                        (Some(CommandKind::ApprovalDecide), 0x101e3)
+                            | (Some(CommandKind::RunCancel), 0x101a3)
+                            | (Some(CommandKind::RunResume), 0x2101e3)
+                            | (Some(CommandKind::RunResume), 0x4181a3)
+                    )
             }
             AuditEventKind::BudgetReserved | AuditEventKind::BudgetReleased => {
                 self.outcome == AuditOutcome::Accepted && mask == 0x90e20
@@ -2672,8 +2680,32 @@ mod tests {
             (
                 AuditEventKind::StaleFenceRejected,
                 AuditOutcome::Rejected,
-                0x16c30,
+                0x101e3,
+                Some(CommandKind::ApprovalDecide),
+                "test.echo",
                 None,
+            ),
+            (
+                AuditEventKind::StaleFenceRejected,
+                AuditOutcome::Rejected,
+                0x101a3,
+                Some(CommandKind::RunCancel),
+                "test.echo",
+                None,
+            ),
+            (
+                AuditEventKind::StaleFenceRejected,
+                AuditOutcome::Rejected,
+                0x2101e3,
+                Some(CommandKind::RunResume),
+                "test.echo",
+                None,
+            ),
+            (
+                AuditEventKind::StaleFenceRejected,
+                AuditOutcome::Rejected,
+                0x4181a3,
+                Some(CommandKind::RunResume),
                 "test.echo",
                 None,
             ),
@@ -2793,6 +2825,49 @@ mod tests {
             );
             assert_eq!(event.validate_chain_link(1, None), Ok(()), "{kind:?}");
         }
+
+        let obsolete_stale_fence = audit_for_profile(
+            AuditEventKind::StaleFenceRejected,
+            AuditOutcome::Rejected,
+            0x16c30,
+            None,
+            "test.echo",
+            None,
+        );
+        assert_eq!(
+            obsolete_stale_fence.validate_chain_link(1, None),
+            Err(OperatorValidationError::InvalidBranch)
+        );
+
+        let mut zero_fence = audit_for_profile(
+            AuditEventKind::StaleFenceRejected,
+            AuditOutcome::Rejected,
+            0x101e3,
+            Some(CommandKind::ApprovalDecide),
+            "test.echo",
+            None,
+        );
+        zero_fence.fence_epoch = Some(0);
+        zero_fence.event_digest =
+            digest_without_field("Proof-Operator-Audit-Event-v1", &zero_fence, "event_digest")
+                .unwrap();
+        assert_eq!(
+            zero_fence.validate_chain_link(1, None),
+            Err(OperatorValidationError::InvalidBranch)
+        );
+
+        let wrong_command_kind = audit_for_profile(
+            AuditEventKind::StaleFenceRejected,
+            AuditOutcome::Rejected,
+            0x101e3,
+            Some(CommandKind::RunCancel),
+            "test.echo",
+            None,
+        );
+        assert_eq!(
+            wrong_command_kind.validate_chain_link(1, None),
+            Err(OperatorValidationError::InvalidBranch)
+        );
 
         let mut invalid = audit_for_profile(
             AuditEventKind::ControlShutdown,

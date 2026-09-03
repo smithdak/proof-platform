@@ -1015,7 +1015,9 @@ fn append_audit_event(
                 event.proof.as_ref().map(|proof| proof.proof_id.to_string()),
                 event.proof.as_ref().map(|proof| proof.operation.clone()),
                 event.proof.as_ref().map(|proof| proof.proof_digest.hex()),
-                event.occurred_at.to_rfc3339(),
+                event
+                    .occurred_at
+                    .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true),
                 json(event)?,
             ],
         )
@@ -7187,7 +7189,9 @@ impl OperatorRuntimeStore for SqliteStore {
         self.operator_context()?;
         invalid_if(
             request.schema != "proof.operator.budget-settlement-request/v1"
-                || !proof_kernel::uuid_is_v7(request.reservation_id),
+                || !proof_kernel::uuid_is_v7(request.reservation_id)
+                || request.disposition
+                    != proof_kernel::BudgetSettlementDisposition::ReleasePreDispatch,
         )?;
         let connection = self
             .conn
@@ -7198,10 +7202,28 @@ impl OperatorRuntimeStore for SqliteStore {
         let now = self.operator_now()?;
         let (mut control, lease) = validate_authority(&transaction, &request.authority, now)?;
         let mut reservation = load_reservation(&transaction, request.reservation_id)?;
-        if reservation.state != BudgetReservationState::Reserved
-            || reservation.run_id != control.run_id
-            || reservation.lease_id != lease.lease_id
-        {
+        if reservation.run_id != control.run_id || reservation.lease_id != lease.lease_id {
+            return Err(OperatorStoreError::NotActionable);
+        }
+        if reservation.state == BudgetReservationState::Dispatching {
+            if control.active_dispatch_reservation_id != Some(reservation.reservation_id) {
+                return Err(OperatorStoreError::Corrupt);
+            }
+            append_budget_event(
+                self,
+                &transaction,
+                &control,
+                &lease,
+                reservation.reservation_id,
+                reservation.intent_digest,
+                AuditEventKind::BudgetRejected,
+                AuditOutcome::Rejected,
+                now,
+            )?;
+            transaction.commit().map_err(map_db)?;
+            return Err(OperatorStoreError::NotActionable);
+        }
+        if reservation.state != BudgetReservationState::Reserved {
             return Err(OperatorStoreError::NotActionable);
         }
         let mut budget = load_budget(&transaction, reservation.budget_id)?;
@@ -7572,3 +7594,7 @@ impl OperatorRuntimeStore for SqliteStore {
         reclaim(self, request)
     }
 }
+
+#[cfg(test)]
+#[path = "operator_store_tests.rs"]
+mod tests;

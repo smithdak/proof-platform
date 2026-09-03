@@ -1024,6 +1024,7 @@ mod tests {
     struct EffectCounters {
         provider_calls: AtomicUsize,
         tool_calls: AtomicUsize,
+        governed_writes: AtomicUsize,
         external_effects: AtomicUsize,
     }
 
@@ -2662,7 +2663,170 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_lease_claim_has_one_owner_and_no_boundary_effect() {
+    fn active_second_lease_claim_is_not_actionable_without_state_audit_or_effect() {
+        let fixture = fixture(false, HandlerMode::Valid);
+        let run_id = Uuid::now_v7();
+        let active_lease = Arc::new(Mutex::new(None::<RunLease>));
+        let audit = Arc::new(Mutex::new(vec!["prior_audit_event"]));
+        let durable_mutations = Arc::new(AtomicUsize::new(0));
+        let at = fixture.at;
+        fixture
+            .store
+            .set_responder(OperatorStoreBoundary::ClaimRunLease, {
+                let active_lease = active_lease.clone();
+                let audit = audit.clone();
+                let durable_mutations = durable_mutations.clone();
+                move |request| {
+                    let RecordingOperatorRequest::Claim {
+                        workspace_id,
+                        run_id,
+                        lease_id,
+                        owner_instance_id,
+                        process_epoch_id,
+                        expected_fence_epoch,
+                        expected_control_revision,
+                        lease_token_digest,
+                    } = request
+                    else {
+                        return Err(OperatorStoreError::Corrupt);
+                    };
+                    let mut active_lease = active_lease.lock().unwrap();
+                    if active_lease.is_some() {
+                        return Err(OperatorStoreError::NotActionable);
+                    }
+                    let mut lease = RunLease {
+                        schema: RunLease::SCHEMA.into(),
+                        run_id: *run_id,
+                        workspace_id: *workspace_id,
+                        lease_id: *lease_id,
+                        owner_instance_id: *owner_instance_id,
+                        process_epoch_id: *process_epoch_id,
+                        lease_token_digest: *lease_token_digest,
+                        fence_epoch: *expected_fence_epoch + 1,
+                        revision: 0,
+                        state: RunLeaseState::Active,
+                        acquired_at: at,
+                        renewed_at: at,
+                        expires_at: at + Duration::seconds(30),
+                        released_at: None,
+                        lease_digest: proof_kernel::ControlDigest::from_bytes([0; 32]),
+                    };
+                    let mut value = serde_json::to_value(&lease).unwrap();
+                    value.as_object_mut().unwrap().remove("lease_digest");
+                    lease.lease_digest =
+                        control_digest_serialized("Proof-Operator-Lease-v1", &value).unwrap();
+                    *active_lease = Some(lease.clone());
+                    audit.lock().unwrap().push("lease_acquired");
+                    durable_mutations.fetch_add(1, Ordering::SeqCst);
+                    Ok(RecordingOperatorResponse::Lease(LeaseMutationResult {
+                        schema: LeaseMutationResult::SCHEMA.into(),
+                        outcome: LeaseMutationOutcome::Acquired,
+                        lease,
+                        control_revision: *expected_control_revision + 1,
+                    }))
+                }
+            });
+        let first = fixture
+            .runtime
+            .claim_lease(OperatorLeaseClaim {
+                workspace_id: fixture.workspace_id,
+                run_id,
+                owner_instance_id: fixture.owner_instance_id,
+                process_epoch_id: fixture.process_epoch_id,
+                expected_fence_epoch: 0,
+                expected_control_revision: 0,
+            })
+            .unwrap();
+        let state_before_second = active_lease.lock().unwrap().clone();
+        let audit_before_second = audit.lock().unwrap().clone();
+        let mutations_before_second = durable_mutations.load(Ordering::SeqCst);
+
+        let second_claim = OperatorLeaseClaim {
+            workspace_id: fixture.workspace_id,
+            run_id,
+            owner_instance_id: fixture.owner_instance_id,
+            process_epoch_id: Uuid::now_v7(),
+            expected_fence_epoch: 0,
+            expected_control_revision: 0,
+        };
+        let second = match fixture.runtime.claim_lease(second_claim) {
+            Ok(_) => panic!("an active lease must reject the second claim"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(
+            &second,
+            OperatorRuntimeError::Store {
+                stage: OperatorRuntimeStage::ClaimLease,
+                source: OperatorStoreError::NotActionable
+            }
+        ));
+        assert!(first.is_live());
+        assert_eq!(first.lease().run_id, run_id);
+        assert_eq!(first.lease().fence_epoch, 1);
+        assert_eq!(first.control_revision(), 1);
+        assert_eq!(state_before_second.as_ref(), Some(first.lease()));
+        assert_eq!(mutations_before_second, 1);
+        assert_eq!(*active_lease.lock().unwrap(), state_before_second);
+        assert_eq!(*audit.lock().unwrap(), audit_before_second);
+        assert_eq!(audit_before_second, ["prior_audit_event", "lease_acquired"]);
+        assert_eq!(
+            durable_mutations.load(Ordering::SeqCst),
+            mutations_before_second
+        );
+        assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.provider_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.tool_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.governed_writes.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.external_effects.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            fixture.store.calls(),
+            vec![
+                OperatorStoreBoundary::ClaimRunLease,
+                OperatorStoreBoundary::ClaimRunLease,
+            ]
+        );
+        let requests = fixture.store.requests();
+        let (
+            RecordingOperatorRequest::Claim {
+                run_id: first_run,
+                lease_id: first_lease,
+                process_epoch_id: first_process,
+                ..
+            },
+            RecordingOperatorRequest::Claim {
+                run_id: second_run,
+                lease_id: second_lease,
+                process_epoch_id: second_process,
+                ..
+            },
+        ) = (&requests[0], &requests[1])
+        else {
+            panic!("both attempts must reach the claim boundary")
+        };
+        assert_eq!(*first_run, run_id);
+        assert_eq!(*second_run, run_id);
+        assert_ne!(first_lease, second_lease);
+        assert_ne!(first_process, second_process);
+        let expected_token_digest = control_digest("Proof-Operator-Lease-Token-v1", &LEASE_TOKEN);
+        for request in &requests {
+            assert!(matches!(
+                request,
+                RecordingOperatorRequest::Claim {
+                    lease_token_digest,
+                    ..
+                } if *lease_token_digest == expected_token_digest
+            ));
+        }
+        let diagnostic = format!("{requests:?} {second:?}");
+        assert!(diagnostic.contains("lease_token_digest"));
+        assert!(!diagnostic.contains("lease_token:"));
+        assert!(!diagnostic.contains(&format!("{LEASE_TOKEN:?}")));
+        assert!(!diagnostic.contains(&"08".repeat(LEASE_TOKEN.len())));
+    }
+
+    #[test]
+    fn concurrent_lease_claim_has_one_owner_and_not_actionable_loser() {
         let fixture = fixture(false, HandlerMode::Valid);
         let run_id = Uuid::now_v7();
         let claim_barrier = Arc::new(Barrier::new(2));
@@ -2692,7 +2856,7 @@ mod tests {
                         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                         .is_err()
                     {
-                        return Err(OperatorStoreError::Conflict);
+                        return Err(OperatorStoreError::NotActionable);
                     }
                     let mut lease = RunLease {
                         schema: RunLease::SCHEMA.into(),
@@ -2743,20 +2907,21 @@ mod tests {
         let second = second.join().unwrap();
 
         assert_eq!(usize::from(first.is_ok()) + usize::from(second.is_ok()), 1);
-        assert!(
-            matches!(
+        assert_eq!(
+            usize::from(matches!(
                 &first,
                 Err(OperatorRuntimeError::Store {
                     stage: OperatorRuntimeStage::ClaimLease,
-                    source: OperatorStoreError::Conflict
+                    source: OperatorStoreError::NotActionable
                 })
-            ) || matches!(
+            )) + usize::from(matches!(
                 &second,
                 Err(OperatorRuntimeError::Store {
                     stage: OperatorRuntimeStage::ClaimLease,
-                    source: OperatorStoreError::Conflict
+                    source: OperatorStoreError::NotActionable
                 })
-            )
+            )),
+            1
         );
         let owner = first
             .ok()
@@ -2767,6 +2932,10 @@ mod tests {
         assert_eq!(owner.lease().fence_epoch, 1);
         assert_eq!(owner.control_revision(), 1);
         assert_eq!(fixture.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.provider_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.tool_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.governed_writes.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.counters.external_effects.load(Ordering::SeqCst), 0);
         assert_eq!(
             fixture.store.calls(),
             vec![

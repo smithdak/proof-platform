@@ -4,7 +4,8 @@
 - Title: One Human Oversees Many Runs
 - Owner: product owner
 - Base revision: `b5646b50689d41837ed7fcdaca431b1421f693ab`
-- Status: `blocked — Gate-B consistency repair authorized; implementation closed`
+- Status: `building — shifted W9 accepted under D-E0002-095; W10
+  dependency-ready but not dispatched`
 - Planning authority: D-E0006-025, E0002 Gate A scaffolding only
 - External dependency disposition: AXP-E0006 Gate C was deferred/no-go;
   E0006 is quiescent, unreleased, and supplies no authority to this edition
@@ -121,14 +122,14 @@ Budget (time, agent/model, tokens, live spend):
   read-only reviews completed within cap. D-E0002-013 accepted Gate B and
   dispatched only the three dependency-ready W3 lanes, with zero provider use,
   zero live spend, and no external effect.
-- Proposed edition: seventeen tasks across W1-W12, one orchestrator plus at most
+- Authorized edition: twenty tasks across W1-W15, one orchestrator plus at most
   three concurrent workers, one retry maximum per failed task before
   task-local escalation, and no full-edition model upgrade.
 - Per-attempt ceilings are 45 minutes / 25,000 combined model tokens for Luna
   mechanical work, 90 minutes / 50,000 for Terra bounded implementation,
   120 minutes / 80,000 for Sol high-risk work, and 180 minutes / 120,000 for
-  the Sol xhigh integration task. The current primary ceiling is 1,230,000
-  combined model tokens and 31h30 agent time. Every task packet records its
+  the Sol xhigh integration task. The current primary ceiling is 1,415,000
+  combined model tokens and 36h15 agent time. Every task packet records its
   exact ceiling.
   The primary-plan ceiling is 1,125,000 combined model tokens and 28 hours 45
   minutes of agent time; the task-local one-retry policy is a hard maximum of
@@ -163,8 +164,19 @@ Material-risk triggers requiring Gate B:
 - Gate B decision/date: product owner accepted 2026-09-01 in D-E0002-013,
   binding D-E0002-012 packet digest
   `sha256:eaff3d4d78ca3e6e4fe521f53b12b9598765db50ffd38fde0d6bf3aeb4c42dd4`
+- Gate B repair decision/date: product owner accepted 2026-09-02 in
+  D-E0002-086, binding D-E0002-077 packet digest
+  `sha256:25f64ff58615d495abbe4b1058bf670b11ec6d527485658d8d5863950dc16eb2`;
+  implementation remains separately gated and closed
 - Gate C decision/date: pending; no candidate or release claim exists
 
 Gate B completes E0002-13 and authorizes only E0002-05, E0002-08, and E0002-12
-under their exact W3 paths, barriers, budgets, and acceptance tests. Every
-later task remains pending and non-dispatchable.
+under their exact W3 paths, barriers, budgets, and acceptance tests.
+D-E0002-071's serialized E0002-18/E0002-19 planning repair is complete under
+D-E0002-086, and the separately dispatched E0002-20 kernel alignment completes
+under D-E0002-088. The product owner separately dispatched only shifted W9's
+E0002-06/E0002-07/E0002-11 lanes under D-E0002-089. After the bounded
+D-E0002-092/D-E0002-094 continuations, all three lanes are accepted under
+D-E0002-095. E0002-14 and E0002-02 are now dependency-ready but remain pending
+until a separate product-owner W10 dispatch; every later task remains pending
+and non-dispatchable.
