@@ -100,7 +100,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ##### HTTP
 
-- Axum transport with registry-backed engine state, workspace keypair, SQLite store, and handler registration.
+- Axum transport with registry-backed engine state, a process-local keypair,
+  SQLite storage, and handler registration.
 - `POST /v1/operations/:name/:version` routed through `ExecutionEngine` with generated signed proofs.
 - Operation execution mappings for registry, governance, dispatch, delegation, handler, evidence, and storage errors.
 - Proof collection, filtering, retrieval, and signature verification endpoints.
@@ -123,7 +124,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Governed operation execution with local content handlers and proof persistence.
 - Cryptographic proof verification using persisted workspace identities.
 - Delegation grant, listing, revocation, and validation commands backed by SQLite.
-- Workspace creation, listing, switching, removal, and status commands.
+- Explicit workspace selection plus workspace initialization and status
+  commands.
 - Keypair export and rotation with archived prior keypairs.
 
 #### Delegation
@@ -151,11 +153,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Reorganized the public documentation into a concise project overview,
+  task-oriented getting-started guide, core concepts, CLI and HTTP references,
+  security model, development guide, and an implementation-focused
+  architecture document.
+- Clarified the current security and maturity boundaries for the generic HTTP
+  transport, the unreleased browser approval console, split development
+  storage paths, and the not-yet-assembled AXP-E0002 operator surface.
 - Centralized execution authority in `proof-kernel::ExecutionEngine` across CLI, HTTP, and MCP transports.
 - HTTP execution now uses the engine's registry and governance checks rather than an ad-hoc operation path.
 - MCP tool discovery is now driven directly by registry entries and exposes registry schemas.
-- SQLite storage is now shared across proof persistence, execution audit, principals, delegations, and registry state.
-- README architecture and usage documentation was expanded and reconciled with the implemented platform surface.
+- Each configured SQLite transport store now composes proof persistence,
+  execution audit, principals, delegations, and registry state; the generic
+  HTTP binary still uses a separate development database path.
 - HTTP registry schema loading and record listing are unified across content, commerce, workflow, and analytics domains.
 - Unauthenticated HTTP execution no longer trusts the caller-controlled `X-Principal-Kind` header; human-only operations fail closed until routed through signed approval evidence.
 - The legacy `proof release-publish` shortcut now fails closed instead of bypassing HumanOnly governance and writing a release directly.
@@ -171,4 +181,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Rotating proof envelopes and full multi-workspace CLI management are not yet present in the committed kernel/CLI surface.
 
-[Unreleased]: https://github.com/example/proof-platform/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/smithdak/proof-platform/compare/v0.1.0...HEAD
